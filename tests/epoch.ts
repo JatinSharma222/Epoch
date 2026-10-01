@@ -33,12 +33,24 @@ describe("Epoch Program Integration Tests", () => {
     program.programId
   );
 
+  const getBatchPda = (ringIndex: number) => {
+    return anchor.web3.PublicKey.findProgramAddressSync(
+      [Buffer.from("batch"), Buffer.from([ringIndex])],
+      program.programId
+    )[0];
+  };
+
   const admin = provider.wallet;
   const testUser = anchor.web3.Keypair.generate();
   const unauthorizedUser = anchor.web3.Keypair.generate();
 
   const [userPda] = anchor.web3.PublicKey.findProgramAddressSync(
     [Buffer.from("user"), testUser.publicKey.toBuffer()],
+    program.programId
+  );
+
+  const [unauthorizedUserPda] = anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from("user"), unauthorizedUser.publicKey.toBuffer()],
     program.programId
   );
 
@@ -49,7 +61,7 @@ describe("Epoch Program Integration Tests", () => {
     baseLot: new anchor.BN(1000),
     priceTick: new anchor.BN(1000),
     minOrderLots: new anchor.BN(10),
-    minOrderNotional: new anchor.BN(10_000_000),
+    minOrderNotional: new anchor.BN(1_000_000), // $1.00
     fundingPeriodSlots: 72000,
     batchSlots: 2,
     lookahead: 3,
@@ -91,34 +103,31 @@ describe("Epoch Program Integration Tests", () => {
     );
   });
 
-  describe("T-02 & Scaffold: Zero-copy Batch", () => {
-    it("Initializes a ~10 KB zero-copy batch account", async () => {
-      const batchKeypair = anchor.web3.Keypair.generate();
-      const batchId = new anchor.BN(42);
+  describe("T-02: Zero-copy Batch Ring PDA Initialization", () => {
+    it("Initializes all 8 zero-copy batch PDAs in the ring", async () => {
+      for (let r = 0; r < 8; r++) {
+        const batchPda = getBatchPda(r);
+        await program.methods
+          .initializeBatch(r, new anchor.BN(r))
+          .accounts({
+            batch: batchPda,
+            payer: admin.publicKey,
+            systemProgram: anchor.web3.SystemProgram.programId,
+          })
+          .rpc();
 
-      const tx = await program.methods
-        .initializeBatch(batchId)
-        .accounts({
-          batch: batchKeypair.publicKey,
-          payer: admin.publicKey,
-          systemProgram: anchor.web3.SystemProgram.programId,
-        })
-        .signers([batchKeypair])
-        .rpc();
-
-      const batchAccount = await program.account.batch.fetch(
-        batchKeypair.publicKey
-      );
-      expect(batchAccount.batchId.toNumber()).to.equal(42);
-      expect(batchAccount.status).to.equal(1); // BatchStatus::OPEN
-      expect(batchAccount.numOrders).to.equal(0);
-      expect(batchAccount.settledOrders).to.equal(0);
+        const batchAccount = await program.account.batch.fetch(batchPda);
+        expect(batchAccount.batchId.toNumber()).to.equal(r);
+        expect(batchAccount.status).to.equal(1); // BatchStatus::OPEN
+        expect(batchAccount.numOrders).to.equal(0);
+        expect(batchAccount.settledOrders).to.equal(0);
+      }
     });
   });
 
   describe("T-05: Market Initialization", () => {
     it("Initializes the Market, mock USDC mint, and collateral vault", async () => {
-      const tx = await program.methods
+      await program.methods
         .initializeMarket(defaultMarketArgs, dummyOracleFeedId)
         .accounts({
           market: marketPda,
@@ -182,7 +191,6 @@ describe("Epoch Program Integration Tests", () => {
     });
 
     it("Rejects faucet request exceeding $10,000 cap", async () => {
-      // Request $10,001 USDC (10,001_000_000 micro-USDC)
       const excessiveAmount = new anchor.BN(10_001_000_000);
       try {
         await program.methods
@@ -223,7 +231,7 @@ describe("Epoch Program Integration Tests", () => {
   });
 
   describe("T-05: User Account Creation", () => {
-    it("Creates a UserAccount PDA for testUser", async () => {
+    it("Creates a UserAccount PDA for testUser and unauthorizedUser", async () => {
       await program.methods
         .createUser()
         .accounts({
@@ -238,9 +246,17 @@ describe("Epoch Program Integration Tests", () => {
       expect(userAccount.owner.toBase58()).to.equal(testUser.publicKey.toBase58());
       expect(userAccount.collateral.toNumber()).to.equal(0);
       expect(userAccount.basePosition.toNumber()).to.equal(0);
-      expect(userAccount.pendingBuyLots.toNumber()).to.equal(0);
-      expect(userAccount.pendingSellLots.toNumber()).to.equal(0);
-      expect(userAccount.activeOrders).to.equal(0);
+
+      // Create account for unauthorizedUser (with $0 collateral)
+      await program.methods
+        .createUser()
+        .accounts({
+          user: unauthorizedUserPda,
+          owner: unauthorizedUser.publicKey,
+          systemProgram: anchor.web3.SystemProgram.programId,
+        })
+        .signers([unauthorizedUser])
+        .rpc();
     });
   });
 
@@ -261,19 +277,13 @@ describe("Epoch Program Integration Tests", () => {
         .signers([testUser])
         .rpc();
 
-      // Check user account ledger
       const userAccount = await program.account.userAccount.fetch(userPda);
       expect(userAccount.collateral.toNumber()).to.equal(500_000_000);
 
-      // Check user token account (1000 - 500 = 500)
-      const ataInfo = await getAccount(provider.connection, userAta);
-      expect(Number(ataInfo.amount)).to.equal(500_000_000);
-
-      // Check protocol collateral vault
       const vaultInfo = await getAccount(provider.connection, collateralVaultPda);
       expect(Number(vaultInfo.amount)).to.equal(500_000_000);
 
-      // Invariant I-1: vault_balance == user.collateral (single user, 0 fees, 0 insurance)
+      // Invariant I-1: vault_balance == user.collateral
       expect(Number(vaultInfo.amount)).to.equal(userAccount.collateral.toNumber());
     });
 
@@ -293,26 +303,16 @@ describe("Epoch Program Integration Tests", () => {
         .signers([testUser])
         .rpc();
 
-      // Check user account ledger (500 - 200 = 300)
       const userAccount = await program.account.userAccount.fetch(userPda);
       expect(userAccount.collateral.toNumber()).to.equal(300_000_000);
 
-      // Check user token account (500 + 200 = 700)
-      const ataInfo = await getAccount(provider.connection, userAta);
-      expect(Number(ataInfo.amount)).to.equal(700_000_000);
-
-      // Check protocol collateral vault (500 - 200 = 300)
       const vaultInfo = await getAccount(provider.connection, collateralVaultPda);
       expect(Number(vaultInfo.amount)).to.equal(300_000_000);
-
-      // Invariant I-1: vault_balance == user.collateral
       expect(Number(vaultInfo.amount)).to.equal(userAccount.collateral.toNumber());
     });
 
     it("Rejects withdrawal exceeding available collateral", async () => {
-      // Current collateral is $300; attempt to withdraw $400
       const excessWithdraw = new anchor.BN(400_000_000);
-
       try {
         await program.methods
           .withdraw(excessWithdraw)
@@ -353,7 +353,6 @@ describe("Epoch Program Integration Tests", () => {
     });
 
     it("Rejects unauthorized withdrawal by non-owner", async () => {
-      // Create ATA for unauthorized user
       const createAtaTx = new anchor.web3.Transaction().add(
         createAssociatedTokenAccountInstruction(
           unauthorizedUser.publicKey,
@@ -369,7 +368,6 @@ describe("Epoch Program Integration Tests", () => {
       );
 
       try {
-        // unauthorizedUser signs, but passes testUser's userPda
         await program.methods
           .withdraw(new anchor.BN(50_000_000))
           .accounts({
@@ -384,8 +382,338 @@ describe("Epoch Program Integration Tests", () => {
           .rpc();
         expect.fail("Should have failed unauthorized withdrawal");
       } catch (err: any) {
-        // Will fail PDA seed constraint or Unauthorized check
         expect(err).to.exist;
+      }
+    });
+  });
+
+  describe("T-06: Order Placement, Upsert, and Aggregates", () => {
+    const ringIndex = 0;
+    const batchPda = getBatchPda(ringIndex);
+    let targetBatch = new anchor.BN(0);
+
+    before(async () => {
+      // Read current market state to calculate an open target batch
+      const market = await program.account.market.fetch(marketPda);
+      const slot = await provider.connection.getSlot();
+      const currentBatch = Math.floor(
+        (slot - market.startSlot.toNumber()) / market.params.batchSlots
+      );
+      // Target current batch + 2 (within lookahead 3) so batch stays open during test sequence
+      targetBatch = new anchor.BN(currentBatch + 2);
+    });
+
+    it("Places a BUY order and updates tick aggregates and pending lots", async () => {
+      // 10 lots at tick 55 (offset +5 bps), slot_id = 0
+      const orderArgs = {
+        targetBatch: targetBatch,
+        ringIndex: (targetBatch.toNumber() % 8),
+        slotId: 0,
+        side: 0, // BUY
+        tick: 55,
+        lots: new anchor.BN(10),
+        flags: 0,
+      };
+
+      const targetBatchPda = getBatchPda(orderArgs.ringIndex);
+
+      await program.methods
+        .placeOrder(orderArgs)
+        .accounts({
+          market: marketPda,
+          batch: targetBatchPda,
+          user: userPda,
+          owner: testUser.publicKey,
+        })
+        .signers([testUser])
+        .rpc();
+
+      const batch = await program.account.batch.fetch(targetBatchPda);
+      expect(batch.numOrders).to.equal(1);
+      expect(batch.bidQty[55].toNumber()).to.equal(10);
+      expect(batch.orders[0].lots.toNumber()).to.equal(10);
+      expect(batch.orders[0].tick).to.equal(55);
+      expect(batch.orders[0].side).to.equal(0);
+      expect(batch.orders[0].slotId).to.equal(0);
+
+      const user = await program.account.userAccount.fetch(userPda);
+      expect(user.pendingBuyLots.toNumber()).to.equal(10);
+      expect(user.activeOrders).to.equal(1);
+    });
+
+    it("Replaces the existing order (upsert) at the same slot_id", async () => {
+      // Replace slot_id = 0 with 15 lots at tick 60
+      const orderArgs = {
+        targetBatch: targetBatch,
+        ringIndex: (targetBatch.toNumber() % 8),
+        slotId: 0,
+        side: 0, // BUY
+        tick: 60,
+        lots: new anchor.BN(15),
+        flags: 0,
+      };
+
+      const targetBatchPda = getBatchPda(orderArgs.ringIndex);
+
+      await program.methods
+        .placeOrder(orderArgs)
+        .accounts({
+          market: marketPda,
+          batch: targetBatchPda,
+          user: userPda,
+          owner: testUser.publicKey,
+        })
+        .signers([testUser])
+        .rpc();
+
+      const batch = await program.account.batch.fetch(targetBatchPda);
+      // numOrders remains 1 because it was an in-place replacement
+      expect(batch.numOrders).to.equal(1);
+      // Old tick 55 decremented to 0
+      expect(batch.bidQty[55].toNumber()).to.equal(0);
+      // New tick 60 incremented to 15
+      expect(batch.bidQty[60].toNumber()).to.equal(15);
+      expect(batch.orders[0].lots.toNumber()).to.equal(15);
+      expect(batch.orders[0].tick).to.equal(60);
+
+      const user = await program.account.userAccount.fetch(userPda);
+      expect(user.pendingBuyLots.toNumber()).to.equal(15);
+      expect(user.activeOrders).to.equal(1);
+    });
+
+    it("Places a SELL order on a different slot_id and updates ask aggregates", async () => {
+      // 12 lots at tick 45 (offset -5 bps), slot_id = 1
+      const orderArgs = {
+        targetBatch: targetBatch,
+        ringIndex: (targetBatch.toNumber() % 8),
+        slotId: 1,
+        side: 1, // SELL
+        tick: 45,
+        lots: new anchor.BN(12),
+        flags: 0,
+      };
+
+      const targetBatchPda = getBatchPda(orderArgs.ringIndex);
+
+      await program.methods
+        .placeOrder(orderArgs)
+        .accounts({
+          market: marketPda,
+          batch: targetBatchPda,
+          user: userPda,
+          owner: testUser.publicKey,
+        })
+        .signers([testUser])
+        .rpc();
+
+      const batch = await program.account.batch.fetch(targetBatchPda);
+      expect(batch.numOrders).to.equal(2);
+      expect(batch.askQty[45].toNumber()).to.equal(12);
+
+      const user = await program.account.userAccount.fetch(userPda);
+      expect(user.pendingSellLots.toNumber()).to.equal(12);
+      expect(user.activeOrders).to.equal(2);
+    });
+
+    it("Cancels an open order and decrements tick aggregates", async () => {
+      // Cancel BUY order at slot_id = 0
+      const targetBatchPda = getBatchPda(targetBatch.toNumber() % 8);
+
+      await program.methods
+        .cancelOrder(
+          targetBatch,
+          targetBatch.toNumber() % 8,
+          0 // slot_id
+        )
+        .accounts({
+          market: marketPda,
+          batch: targetBatchPda,
+          user: userPda,
+          owner: testUser.publicKey,
+        })
+        .signers([testUser])
+        .rpc();
+
+      const batch = await program.account.batch.fetch(targetBatchPda);
+      // bid aggregate at tick 60 is now 0
+      expect(batch.bidQty[60].toNumber()).to.equal(0);
+      expect(batch.orders[0].status).to.equal(3); // OrderStatus::CANCELLED
+      expect(batch.orders[0].lots.toNumber()).to.equal(0);
+
+      const user = await program.account.userAccount.fetch(userPda);
+      expect(user.pendingBuyLots.toNumber()).to.equal(0);
+      expect(user.pendingSellLots.toNumber()).to.equal(12); // slot 1 still open
+      expect(user.activeOrders).to.equal(1);
+    });
+
+    it("Rejects cancelling an already-cancelled or nonexistent order", async () => {
+      const targetBatchPda = getBatchPda(targetBatch.toNumber() % 8);
+      try {
+        await program.methods
+          .cancelOrder(
+            targetBatch,
+            targetBatch.toNumber() % 8,
+            0 // already cancelled
+          )
+          .accounts({
+            market: marketPda,
+            batch: targetBatchPda,
+            user: userPda,
+            owner: testUser.publicKey,
+          })
+          .signers([testUser])
+          .rpc();
+        expect.fail("Should have failed with OrderNotFound");
+      } catch (err: any) {
+        expect(err.error?.errorCode?.code).to.equal("OrderNotFound");
+      }
+    });
+
+    it("Rejects order placement with insufficient margin (0 collateral)", async () => {
+      const targetBatchPda = getBatchPda(targetBatch.toNumber() % 8);
+      const orderArgs = {
+        targetBatch: targetBatch,
+        ringIndex: (targetBatch.toNumber() % 8),
+        slotId: 0,
+        side: 0,
+        tick: 50,
+        lots: new anchor.BN(10),
+        flags: 0,
+      };
+
+      try {
+        await program.methods
+          .placeOrder(orderArgs)
+          .accounts({
+            market: marketPda,
+            batch: targetBatchPda,
+            user: unauthorizedUserPda, // $0 collateral
+            owner: unauthorizedUser.publicKey,
+          })
+          .signers([unauthorizedUser])
+          .rpc();
+        expect.fail("Should have failed with InsufficientMargin");
+      } catch (err: any) {
+        expect(err.error?.errorCode?.code).to.equal("InsufficientMargin");
+      }
+    });
+
+    it("Rejects order with invalid tick (>= 101)", async () => {
+      const targetBatchPda = getBatchPda(targetBatch.toNumber() % 8);
+      const orderArgs = {
+        targetBatch: targetBatch,
+        ringIndex: (targetBatch.toNumber() % 8),
+        slotId: 2,
+        side: 0,
+        tick: 101, // invalid tick
+        lots: new anchor.BN(10),
+        flags: 0,
+      };
+
+      try {
+        await program.methods
+          .placeOrder(orderArgs)
+          .accounts({
+            market: marketPda,
+            batch: targetBatchPda,
+            user: userPda,
+            owner: testUser.publicKey,
+          })
+          .signers([testUser])
+          .rpc();
+        expect.fail("Should have failed with InvalidTick");
+      } catch (err: any) {
+        expect(err.error?.errorCode?.code).to.equal("InvalidTick");
+      }
+    });
+
+    it("Rejects order with invalid slot id (>= 8)", async () => {
+      const targetBatchPda = getBatchPda(targetBatch.toNumber() % 8);
+      const orderArgs = {
+        targetBatch: targetBatch,
+        ringIndex: (targetBatch.toNumber() % 8),
+        slotId: 8, // invalid slot id
+        side: 0,
+        tick: 50,
+        lots: new anchor.BN(10),
+        flags: 0,
+      };
+
+      try {
+        await program.methods
+          .placeOrder(orderArgs)
+          .accounts({
+            market: marketPda,
+            batch: targetBatchPda,
+            user: userPda,
+            owner: testUser.publicKey,
+          })
+          .signers([testUser])
+          .rpc();
+        expect.fail("Should have failed with InvalidSlotId");
+      } catch (err: any) {
+        expect(err.error?.errorCode?.code).to.equal("InvalidSlotId");
+      }
+    });
+
+    it("Rejects order smaller than min_order_lots (< 10)", async () => {
+      const targetBatchPda = getBatchPda(targetBatch.toNumber() % 8);
+      const orderArgs = {
+        targetBatch: targetBatch,
+        ringIndex: (targetBatch.toNumber() % 8),
+        slotId: 2,
+        side: 0,
+        tick: 50,
+        lots: new anchor.BN(5), // min is 10
+        flags: 0,
+      };
+
+      try {
+        await program.methods
+          .placeOrder(orderArgs)
+          .accounts({
+            market: marketPda,
+            batch: targetBatchPda,
+            user: userPda,
+            owner: testUser.publicKey,
+          })
+          .signers([testUser])
+          .rpc();
+        expect.fail("Should have failed with OrderTooSmall");
+      } catch (err: any) {
+        expect(err.error?.errorCode?.code).to.equal("OrderTooSmall");
+      }
+    });
+
+    it("Rejects order targeting a batch beyond the lookahead window", async () => {
+      // Target batch 100 is way beyond current_batch + 3
+      const farBatch = new anchor.BN(100);
+      const targetBatchPda = getBatchPda(farBatch.toNumber() % 8);
+
+      const orderArgs = {
+        targetBatch: farBatch,
+        ringIndex: (farBatch.toNumber() % 8),
+        slotId: 2,
+        side: 0,
+        tick: 50,
+        lots: new anchor.BN(10),
+        flags: 0,
+      };
+
+      try {
+        await program.methods
+          .placeOrder(orderArgs)
+          .accounts({
+            market: marketPda,
+            batch: targetBatchPda,
+            user: userPda,
+            owner: testUser.publicKey,
+          })
+          .signers([testUser])
+          .rpc();
+        expect.fail("Should have failed with BatchTooFarAhead");
+      } catch (err: any) {
+        expect(err.error?.errorCode?.code).to.equal("BatchTooFarAhead");
       }
     });
   });

@@ -44,8 +44,27 @@ pub mod epoch {
     }
 
     /// Initialize a zero-copy Batch account for a ring slot.
-    pub fn initialize_batch(ctx: Context<InitializeBatch>, batch_id: u64) -> Result<()> {
-        handle_initialize_batch(ctx, batch_id)
+    pub fn initialize_batch(
+        ctx: Context<InitializeBatch>,
+        ring_index: u8,
+        batch_id: u64,
+    ) -> Result<()> {
+        handle_initialize_batch(ctx, ring_index, batch_id)
+    }
+
+    /// Place or replace (upsert) an order targeting a future or current batch.
+    pub fn place_order(ctx: Context<PlaceOrder>, args: PlaceOrderArgs) -> Result<()> {
+        handle_place_order(ctx, args)
+    }
+
+    /// Cancel an active order before its target batch closes.
+    pub fn cancel_order(
+        ctx: Context<CancelOrder>,
+        target_batch: u64,
+        ring_index: u8,
+        slot_id: u8,
+    ) -> Result<()> {
+        handle_cancel_order(ctx, target_batch, ring_index, slot_id)
     }
 }
 
@@ -88,7 +107,7 @@ mod tests {
     fn test_market_size() {
         let market_size = std::mem::size_of::<Market>();
         println!("Market size: {} bytes", market_size);
-        assert!(market_size == 384);
+        assert_eq!(market_size, 384);
         assert!(market_size < 1024, "Market must be < 1024 bytes");
     }
 }
