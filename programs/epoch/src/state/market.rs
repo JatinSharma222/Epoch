@@ -3,7 +3,7 @@ use anchor_lang::prelude::*;
 /// Market parameters stored inline in the Market account.
 /// All defaults are from `02-MECHANISM_SPEC.md` §1, §9 and `01-ARCHITECTURE.md` §5.1.
 #[zero_copy]
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 #[repr(C)]
 pub struct MarketParams {
     /// Base lot size in lamports (default 1000 = 0.001 SOL).
@@ -46,6 +46,32 @@ pub struct MarketParams {
     pub _pad0: [u8; 2],
 }
 
+impl Default for MarketParams {
+    fn default() -> Self {
+        Self {
+            base_lot: 1000,
+            price_tick: 1000,
+            min_order_lots: 10,
+            min_order_notional: 10_000_000,
+            funding_period_slots: 72000,
+            batch_slots: 2,
+            lookahead: 3,
+            k_ticks: 101,
+            tick_bps: 1,
+            imr_bps: 1000,
+            mmr_bps: 500,
+            fee_bps: 5,
+            liq_penalty_bps: 100,
+            max_oracle_age_secs: 10,
+            max_conf_bps: 20,
+            max_clear_delay_slots: 4,
+            max_orders_per_batch: 128,
+            funding_cap_bps: 50,
+            _pad0: [0; 2],
+        }
+    }
+}
+
 /// Global market configuration account (PDA seed `[b"market"]`).
 ///
 /// One per market. Contains admin keys, oracle config, funding state,
@@ -81,12 +107,17 @@ pub struct Market {
     pub fee_pool: u64,
     /// Accrued insurance fund in micro-USDC.
     pub insurance_fund: u64,
+    /// PDA bump for the market account.
+    pub bump: u8,
+    /// Padding to align to 8-byte boundary.
+    pub _pad_bump: [u8; 7],
     /// Reserved space for future fields without reallocation.
-    pub _reserved: [u8; 128],
+    pub _reserved: [u8; 120],
 }
 
 const _: () = {
     assert!(std::mem::size_of::<MarketParams>() % 8 == 0);
     assert!(std::mem::size_of::<MarketParams>() == 64);
+    assert!(std::mem::size_of::<Market>() == 384);
     assert!(std::mem::size_of::<Market>() % 16 == 0);
 };

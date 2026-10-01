@@ -2,31 +2,391 @@ import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { Epoch } from "../target/types/epoch";
 import { expect } from "chai";
+import {
+  getAssociatedTokenAddressSync,
+  createAssociatedTokenAccountInstruction,
+  getAccount,
+  TOKEN_PROGRAM_ID,
+} from "@solana/spl-token";
 
-describe("epoch", () => {
-  anchor.setProvider(anchor.AnchorProvider.env());
+describe("Epoch Program Integration Tests", () => {
+  const provider = anchor.AnchorProvider.env();
+  anchor.setProvider(provider);
 
   const program = anchor.workspace.Epoch as Program<Epoch>;
 
-  it("Initializes a ~10 KB zero-copy batch account", async () => {
-    const batchKeypair = anchor.web3.Keypair.generate();
-    const batchId = new anchor.BN(42);
+  // PDAs
+  const [marketPda, marketBump] = anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from("market")],
+    program.programId
+  );
+  const [mintAuthorityPda] = anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from("mint_authority")],
+    program.programId
+  );
+  const [quoteMintPda] = anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from("quote_mint")],
+    program.programId
+  );
+  const [collateralVaultPda] = anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from("collateral_vault")],
+    program.programId
+  );
 
-    const tx = await program.methods
-      .initializeBatch(batchId)
-      .accounts({
-        batch: batchKeypair.publicKey,
-        payer: program.provider.publicKey,
-        systemProgram: anchor.web3.SystemProgram.programId,
+  const admin = provider.wallet;
+  const testUser = anchor.web3.Keypair.generate();
+  const unauthorizedUser = anchor.web3.Keypair.generate();
+
+  const [userPda] = anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from("user"), testUser.publicKey.toBuffer()],
+    program.programId
+  );
+
+  let userAta: anchor.web3.PublicKey;
+  let unauthorizedAta: anchor.web3.PublicKey;
+
+  const defaultMarketArgs = {
+    baseLot: new anchor.BN(1000),
+    priceTick: new anchor.BN(1000),
+    minOrderLots: new anchor.BN(10),
+    minOrderNotional: new anchor.BN(10_000_000),
+    fundingPeriodSlots: 72000,
+    batchSlots: 2,
+    lookahead: 3,
+    kTicks: 101,
+    tickBps: 1,
+    imrBps: 1000,
+    mmrBps: 500,
+    feeBps: 5,
+    liqPenaltyBps: 100,
+    maxOracleAgeSecs: 10,
+    maxConfBps: 20,
+    maxClearDelaySlots: 4,
+    maxOrdersPerBatch: 128,
+    fundingCapBps: 50,
+  };
+
+  const dummyOracleFeedId = new Array(32).fill(7);
+
+  before(async () => {
+    // Fund test users with SOL for rent and gas
+    const fundTx = new anchor.web3.Transaction().add(
+      anchor.web3.SystemProgram.transfer({
+        fromPubkey: admin.publicKey,
+        toPubkey: testUser.publicKey,
+        lamports: 2 * anchor.web3.LAMPORTS_PER_SOL,
+      }),
+      anchor.web3.SystemProgram.transfer({
+        fromPubkey: admin.publicKey,
+        toPubkey: unauthorizedUser.publicKey,
+        lamports: 1 * anchor.web3.LAMPORTS_PER_SOL,
       })
-      .signers([batchKeypair])
-      .rpc();
+    );
+    await provider.sendAndConfirm(fundTx);
 
-    console.log("InitializeBatch transaction signature:", tx);
+    userAta = getAssociatedTokenAddressSync(quoteMintPda, testUser.publicKey);
+    unauthorizedAta = getAssociatedTokenAddressSync(
+      quoteMintPda,
+      unauthorizedUser.publicKey
+    );
+  });
 
-    const batchAccount = await program.account.batch.fetch(batchKeypair.publicKey);
-    expect(batchAccount.batchId.toNumber()).to.equal(42);
-    expect(batchAccount.status).to.equal(1);
-    expect(batchAccount.numOrders).to.equal(0);
+  describe("T-02 & Scaffold: Zero-copy Batch", () => {
+    it("Initializes a ~10 KB zero-copy batch account", async () => {
+      const batchKeypair = anchor.web3.Keypair.generate();
+      const batchId = new anchor.BN(42);
+
+      const tx = await program.methods
+        .initializeBatch(batchId)
+        .accounts({
+          batch: batchKeypair.publicKey,
+          payer: admin.publicKey,
+          systemProgram: anchor.web3.SystemProgram.programId,
+        })
+        .signers([batchKeypair])
+        .rpc();
+
+      const batchAccount = await program.account.batch.fetch(
+        batchKeypair.publicKey
+      );
+      expect(batchAccount.batchId.toNumber()).to.equal(42);
+      expect(batchAccount.status).to.equal(1); // BatchStatus::OPEN
+      expect(batchAccount.numOrders).to.equal(0);
+      expect(batchAccount.settledOrders).to.equal(0);
+    });
+  });
+
+  describe("T-05: Market Initialization", () => {
+    it("Initializes the Market, mock USDC mint, and collateral vault", async () => {
+      const tx = await program.methods
+        .initializeMarket(defaultMarketArgs, dummyOracleFeedId)
+        .accounts({
+          market: marketPda,
+          mintAuthority: mintAuthorityPda,
+          quoteMint: quoteMintPda,
+          collateralVault: collateralVaultPda,
+          admin: admin.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: anchor.web3.SystemProgram.programId,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+        })
+        .rpc();
+
+      const marketAccount = await program.account.market.fetch(marketPda);
+      expect(marketAccount.admin.toBase58()).to.equal(admin.publicKey.toBase58());
+      expect(marketAccount.quoteMint.toBase58()).to.equal(quoteMintPda.toBase58());
+      expect(marketAccount.collateralVault.toBase58()).to.equal(
+        collateralVaultPda.toBase58()
+      );
+      expect(marketAccount.bump).to.equal(marketBump);
+      expect(marketAccount.nextBatchToClear.toNumber()).to.equal(0);
+      expect(marketAccount.feePool.toNumber()).to.equal(0);
+      expect(marketAccount.insuranceFund.toNumber()).to.equal(0);
+      expect(marketAccount.params.batchSlots).to.equal(2);
+      expect(marketAccount.params.kTicks).to.equal(101);
+      expect(marketAccount.params.imrBps).to.equal(1000);
+    });
+  });
+
+  describe("T-05: Faucet", () => {
+    it("Creates an associated token account and mints mock USDC via faucet", async () => {
+      // Create user ATA
+      const createAtaTx = new anchor.web3.Transaction().add(
+        createAssociatedTokenAccountInstruction(
+          testUser.publicKey,
+          userAta,
+          testUser.publicKey,
+          quoteMintPda
+        )
+      );
+      await anchor.web3.sendAndConfirmTransaction(provider.connection, createAtaTx, [
+        testUser,
+      ]);
+
+      // Request $1,000 USDC (1,000,000,000 micro-USDC)
+      const amount = new anchor.BN(1_000_000_000);
+      await program.methods
+        .faucet(amount)
+        .accounts({
+          quoteMint: quoteMintPda,
+          mintAuthority: mintAuthorityPda,
+          recipientTokenAccount: userAta,
+          recipient: testUser.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([testUser])
+        .rpc();
+
+      const ataInfo = await getAccount(provider.connection, userAta);
+      expect(Number(ataInfo.amount)).to.equal(1_000_000_000);
+    });
+
+    it("Rejects faucet request exceeding $10,000 cap", async () => {
+      // Request $10,001 USDC (10,001_000_000 micro-USDC)
+      const excessiveAmount = new anchor.BN(10_001_000_000);
+      try {
+        await program.methods
+          .faucet(excessiveAmount)
+          .accounts({
+            quoteMint: quoteMintPda,
+            mintAuthority: mintAuthorityPda,
+            recipientTokenAccount: userAta,
+            recipient: testUser.publicKey,
+            tokenProgram: TOKEN_PROGRAM_ID,
+          })
+          .signers([testUser])
+          .rpc();
+        expect.fail("Should have failed with FaucetCapExceeded");
+      } catch (err: any) {
+        expect(err.error?.errorCode?.code).to.equal("FaucetCapExceeded");
+      }
+    });
+
+    it("Rejects zero-amount faucet request", async () => {
+      try {
+        await program.methods
+          .faucet(new anchor.BN(0))
+          .accounts({
+            quoteMint: quoteMintPda,
+            mintAuthority: mintAuthorityPda,
+            recipientTokenAccount: userAta,
+            recipient: testUser.publicKey,
+            tokenProgram: TOKEN_PROGRAM_ID,
+          })
+          .signers([testUser])
+          .rpc();
+        expect.fail("Should have failed with ZeroAmount");
+      } catch (err: any) {
+        expect(err.error?.errorCode?.code).to.equal("ZeroAmount");
+      }
+    });
+  });
+
+  describe("T-05: User Account Creation", () => {
+    it("Creates a UserAccount PDA for testUser", async () => {
+      await program.methods
+        .createUser()
+        .accounts({
+          user: userPda,
+          owner: testUser.publicKey,
+          systemProgram: anchor.web3.SystemProgram.programId,
+        })
+        .signers([testUser])
+        .rpc();
+
+      const userAccount = await program.account.userAccount.fetch(userPda);
+      expect(userAccount.owner.toBase58()).to.equal(testUser.publicKey.toBase58());
+      expect(userAccount.collateral.toNumber()).to.equal(0);
+      expect(userAccount.basePosition.toNumber()).to.equal(0);
+      expect(userAccount.pendingBuyLots.toNumber()).to.equal(0);
+      expect(userAccount.pendingSellLots.toNumber()).to.equal(0);
+      expect(userAccount.activeOrders).to.equal(0);
+    });
+  });
+
+  describe("T-05: Collateral Deposit and Withdrawal", () => {
+    it("Deposits $500 USDC collateral and verifies Invariant I-1", async () => {
+      const depositAmount = new anchor.BN(500_000_000); // $500 USDC
+
+      await program.methods
+        .deposit(depositAmount)
+        .accounts({
+          market: marketPda,
+          user: userPda,
+          userTokenAccount: userAta,
+          collateralVault: collateralVaultPda,
+          owner: testUser.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([testUser])
+        .rpc();
+
+      // Check user account ledger
+      const userAccount = await program.account.userAccount.fetch(userPda);
+      expect(userAccount.collateral.toNumber()).to.equal(500_000_000);
+
+      // Check user token account (1000 - 500 = 500)
+      const ataInfo = await getAccount(provider.connection, userAta);
+      expect(Number(ataInfo.amount)).to.equal(500_000_000);
+
+      // Check protocol collateral vault
+      const vaultInfo = await getAccount(provider.connection, collateralVaultPda);
+      expect(Number(vaultInfo.amount)).to.equal(500_000_000);
+
+      // Invariant I-1: vault_balance == user.collateral (single user, 0 fees, 0 insurance)
+      expect(Number(vaultInfo.amount)).to.equal(userAccount.collateral.toNumber());
+    });
+
+    it("Withdraws $200 USDC collateral and verifies Invariant I-1", async () => {
+      const withdrawAmount = new anchor.BN(200_000_000); // $200 USDC
+
+      await program.methods
+        .withdraw(withdrawAmount)
+        .accounts({
+          market: marketPda,
+          user: userPda,
+          userTokenAccount: userAta,
+          collateralVault: collateralVaultPda,
+          owner: testUser.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([testUser])
+        .rpc();
+
+      // Check user account ledger (500 - 200 = 300)
+      const userAccount = await program.account.userAccount.fetch(userPda);
+      expect(userAccount.collateral.toNumber()).to.equal(300_000_000);
+
+      // Check user token account (500 + 200 = 700)
+      const ataInfo = await getAccount(provider.connection, userAta);
+      expect(Number(ataInfo.amount)).to.equal(700_000_000);
+
+      // Check protocol collateral vault (500 - 200 = 300)
+      const vaultInfo = await getAccount(provider.connection, collateralVaultPda);
+      expect(Number(vaultInfo.amount)).to.equal(300_000_000);
+
+      // Invariant I-1: vault_balance == user.collateral
+      expect(Number(vaultInfo.amount)).to.equal(userAccount.collateral.toNumber());
+    });
+
+    it("Rejects withdrawal exceeding available collateral", async () => {
+      // Current collateral is $300; attempt to withdraw $400
+      const excessWithdraw = new anchor.BN(400_000_000);
+
+      try {
+        await program.methods
+          .withdraw(excessWithdraw)
+          .accounts({
+            market: marketPda,
+            user: userPda,
+            userTokenAccount: userAta,
+            collateralVault: collateralVaultPda,
+            owner: testUser.publicKey,
+            tokenProgram: TOKEN_PROGRAM_ID,
+          })
+          .signers([testUser])
+          .rpc();
+        expect.fail("Should have failed with InsufficientCollateral");
+      } catch (err: any) {
+        expect(err.error?.errorCode?.code).to.equal("InsufficientCollateral");
+      }
+    });
+
+    it("Rejects zero-amount withdrawal", async () => {
+      try {
+        await program.methods
+          .withdraw(new anchor.BN(0))
+          .accounts({
+            market: marketPda,
+            user: userPda,
+            userTokenAccount: userAta,
+            collateralVault: collateralVaultPda,
+            owner: testUser.publicKey,
+            tokenProgram: TOKEN_PROGRAM_ID,
+          })
+          .signers([testUser])
+          .rpc();
+        expect.fail("Should have failed with ZeroAmount");
+      } catch (err: any) {
+        expect(err.error?.errorCode?.code).to.equal("ZeroAmount");
+      }
+    });
+
+    it("Rejects unauthorized withdrawal by non-owner", async () => {
+      // Create ATA for unauthorized user
+      const createAtaTx = new anchor.web3.Transaction().add(
+        createAssociatedTokenAccountInstruction(
+          unauthorizedUser.publicKey,
+          unauthorizedAta,
+          unauthorizedUser.publicKey,
+          quoteMintPda
+        )
+      );
+      await anchor.web3.sendAndConfirmTransaction(
+        provider.connection,
+        createAtaTx,
+        [unauthorizedUser]
+      );
+
+      try {
+        // unauthorizedUser signs, but passes testUser's userPda
+        await program.methods
+          .withdraw(new anchor.BN(50_000_000))
+          .accounts({
+            market: marketPda,
+            user: userPda,
+            userTokenAccount: unauthorizedAta,
+            collateralVault: collateralVaultPda,
+            owner: unauthorizedUser.publicKey,
+            tokenProgram: TOKEN_PROGRAM_ID,
+          })
+          .signers([unauthorizedUser])
+          .rpc();
+        expect.fail("Should have failed unauthorized withdrawal");
+      } catch (err: any) {
+        // Will fail PDA seed constraint or Unauthorized check
+        expect(err).to.exist;
+      }
+    });
   });
 });

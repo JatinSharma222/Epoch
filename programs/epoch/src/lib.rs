@@ -1,7 +1,12 @@
 use anchor_lang::prelude::*;
 
+pub mod errors;
+pub mod instructions;
 pub mod state;
-use state::*;
+
+pub use errors::*;
+pub use instructions::*;
+pub use state::*;
 
 declare_id!("CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap");
 
@@ -9,28 +14,39 @@ declare_id!("CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap");
 pub mod epoch {
     use super::*;
 
-    pub fn initialize_batch(ctx: Context<InitializeBatch>, batch_id: u64) -> Result<()> {
-        let mut batch = ctx.accounts.batch.load_init()?;
-        batch.batch_id = batch_id;
-        batch.status = BatchStatus::OPEN;
-        batch.num_orders = 0;
-        batch.settled_orders = 0;
-        msg!("Epoch batch account initialized: id={}", batch_id);
-        Ok(())
+    /// Initialize the global Market account, mock USDC mint, and collateral vault.
+    pub fn initialize_market(
+        ctx: Context<InitializeMarket>,
+        args: InitializeMarketArgs,
+        oracle_feed_id: [u8; 32],
+    ) -> Result<()> {
+        handle_initialize_market(ctx, args, oracle_feed_id)
     }
-}
 
-#[derive(Accounts)]
-pub struct InitializeBatch<'info> {
-    #[account(
-        init,
-        payer = payer,
-        space = 8 + std::mem::size_of::<Batch>(),
-    )]
-    pub batch: AccountLoader<'info, Batch>,
-    #[account(mut)]
-    pub payer: Signer<'info>,
-    pub system_program: Program<'info, System>,
+    /// Create a new per-user account for trading and collateral accounting.
+    pub fn create_user(ctx: Context<CreateUser>) -> Result<()> {
+        handle_create_user(ctx)
+    }
+
+    /// Mint mock USDC to caller for testing on devnet / localnet (capped per call).
+    pub fn faucet(ctx: Context<Faucet>, amount: u64) -> Result<()> {
+        handle_faucet(ctx, amount)
+    }
+
+    /// Deposit mock USDC collateral into the protocol vault.
+    pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+        handle_deposit(ctx, amount)
+    }
+
+    /// Withdraw mock USDC collateral from the protocol vault (flat position rule).
+    pub fn withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
+        handle_withdraw(ctx, amount)
+    }
+
+    /// Initialize a zero-copy Batch account for a ring slot.
+    pub fn initialize_batch(ctx: Context<InitializeBatch>, batch_id: u64) -> Result<()> {
+        handle_initialize_batch(ctx, batch_id)
+    }
 }
 
 #[cfg(test)]
@@ -72,6 +88,7 @@ mod tests {
     fn test_market_size() {
         let market_size = std::mem::size_of::<Market>();
         println!("Market size: {} bytes", market_size);
+        assert!(market_size == 384);
         assert!(market_size < 1024, "Market must be < 1024 bytes");
     }
 }

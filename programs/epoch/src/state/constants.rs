@@ -24,3 +24,6 @@ pub const MAX_SLOTS_PER_USER: u8 = 8;
 
 /// Number of batch account slots in the ring buffer.
 pub const RING_SIZE: u8 = 8;
+
+/// Maximum mock USDC allowed per faucet request: $10,000 (in micro-USDC).
+pub const MAX_FAUCET_AMOUNT: u64 = 10_000_000_000;
