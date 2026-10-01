@@ -66,6 +66,24 @@ pub mod epoch {
     ) -> Result<()> {
         handle_cancel_order(ctx, target_batch, ring_index, slot_id)
     }
+
+    /// Clear an expired batch, execute auction, compute clearing price, and allocate fills.
+    pub fn clear_batch(
+        ctx: Context<ClearBatch>,
+        batch_id: u64,
+        ring_index: u8,
+        oracle_price: u64,
+    ) -> Result<()> {
+        handle_clear_batch(ctx, batch_id, ring_index, oracle_price)
+    }
+
+    /// Admin updates tunable market parameters.
+    pub fn update_market_params(
+        ctx: Context<UpdateMarketParams>,
+        new_params: InitializeMarketArgs,
+    ) -> Result<()> {
+        handle_update_market_params(ctx, new_params)
+    }
 }
 
 #[cfg(test)]

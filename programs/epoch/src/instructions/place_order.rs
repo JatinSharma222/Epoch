@@ -123,7 +123,10 @@ pub fn handle_place_order(ctx: Context<PlaceOrder>, args: PlaceOrderArgs) -> Res
     // 3. Batch ring account lifecycle & reuse
     let mut batch = ctx.accounts.batch.load_mut()?;
     if batch.batch_id != target_batch {
-        if batch.status == BatchStatus::EMPTY || batch.status == BatchStatus::SETTLED {
+        if batch.status == BatchStatus::EMPTY
+            || batch.status == BatchStatus::SETTLED
+            || batch.num_orders == 0
+        {
             // Re-open this ring slot for the new batch
             batch.batch_id = target_batch;
             batch.status = BatchStatus::OPEN;

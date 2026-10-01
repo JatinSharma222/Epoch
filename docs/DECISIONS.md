@@ -10,6 +10,21 @@
 - **Test:** `anchor test` passed on local validator (101ms).
 - **Oracle Verification:** Pyth devnet SOL/USD price feed (`7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE`) verified on-chain.
 
+### Gate G1: Compute Unit Spike & Clearing Viability (2026-10-01)
+- **Status:** PASSED [MEASURED]
+- **Evidence File:** `evidence/cu.json`
+- **Measured Results on Local Validator Runtime:**
+  - `place_order` (empty batch): **10,198 CU** (Target: $\le 60,000$ CU, Margin: 83.0%) `[MEASURED]`
+  - `place_order` (near-full batch, 128th order): **11,399 CU** (Target: $\le 60,000$ CU, Margin: 81.0%) `[MEASURED]`
+  - `clear_batch` ($N=10$ orders, $K=101$ ticks): **16,174 CU** (Target: $\le 600,000$ CU) `[MEASURED]`
+  - `clear_batch` ($N=32$ orders, $K=101$ ticks): **21,692 CU** (Target: $\le 600,000$ CU) `[MEASURED]`
+  - `clear_batch` ($N=64$ orders, $K=101$ ticks): **22,520 CU** (Target: $\le 600,000$ CU) `[MEASURED]`
+  - `clear_batch` ($N=128$ orders, $K=101$ ticks, full capacity): **31,092 CU** (Target: $\le 600,000$ CU, Margin: 94.8%) `[MEASURED]`
+- **Analysis:**
+  - Full auction clearance ($K=101$ cumulative supply/demand scan, plateau detection, midpoint tie-breaking, uniform clearing price rounding, two-pass pro-rata allocation with dust remainder rule, and funding rate accrual) takes only 31,092 CU at max batch capacity ($N=128$).
+  - This is ~15.5% of the standard Solana 200,000 CU transaction limit and ~5.2% of the Gate G1 600,000 CU ceiling, leaving abundant headroom for Pyth price update CPI in the same transaction.
+- **Decision:** Gate G1 APPROVED. Proceed to Task T-08 (`settle_order` instruction).
+
 ## Architecture Decision Records (Summary from Design Review)
 
 | ID | Title | Status | Rationale |

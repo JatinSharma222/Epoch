@@ -1,0 +1,82 @@
+{
+  "description": "Gate G1 Compute Unit Spike Measurements",
+  "timestamp": "2026-10-01T16:28:18.258Z",
+  "network": "localnet",
+  "toolchain": {
+    "solana": "3.0.15",
+    "anchor": "0.32.0",
+    "rust": "1.89.0"
+  },
+  "gate_g1_budget_targets": {
+    "clear_batch_max": 600000,
+    "place_order_max": 60000
+  },
+  "measurements": [
+    {
+      "instruction": "place_order",
+      "condition": "empty_batch",
+      "cu_consumed": 10198,
+      "target_max_cu": 60000,
+      "passed": true,
+      "label": "MEASURED"
+    },
+    {
+      "instruction": "clear_batch",
+      "load_orders": 10,
+      "k_ticks": 101,
+      "matched_lots": 60,
+      "clearing_tick": 50,
+      "clearing_price": 150000000,
+      "cu_consumed": 16174,
+      "target_max_cu": 600000,
+      "passed": true,
+      "label": "MEASURED"
+    },
+    {
+      "instruction": "clear_batch",
+      "load_orders": 32,
+      "k_ticks": 101,
+      "matched_lots": 190,
+      "clearing_tick": 50,
+      "clearing_price": 150000000,
+      "cu_consumed": 21692,
+      "target_max_cu": 600000,
+      "passed": true,
+      "label": "MEASURED"
+    },
+    {
+      "instruction": "clear_batch",
+      "load_orders": 64,
+      "k_ticks": 101,
+      "matched_lots": 382,
+      "clearing_tick": 50,
+      "clearing_price": 150000000,
+      "cu_consumed": 22520,
+      "target_max_cu": 600000,
+      "passed": true,
+      "label": "MEASURED"
+    },
+    {
+      "instruction": "place_order",
+      "condition": "near_full_batch_128",
+      "cu_consumed": 11399,
+      "target_max_cu": 60000,
+      "passed": true,
+      "label": "MEASURED"
+    },
+    {
+      "instruction": "clear_batch",
+      "load_orders": 128,
+      "k_ticks": 101,
+      "matched_lots": 766,
+      "clearing_tick": 50,
+      "clearing_price": 150000000,
+      "cu_consumed": 31092,
+      "target_max_cu": 600000,
+      "passed": true,
+      "label": "MEASURED"
+    }
+  ],
+  "gate_g1_decision": "PASSED",
+  "gate_g1_summary": "All measured compute units fall well within budget targets. clear_batch uses < 100k CU even at full load (128 orders, K=101 ticks)."
+}
