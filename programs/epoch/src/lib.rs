@@ -1,9 +1,9 @@
 use anchor_lang::prelude::*;
 
-declare_id!("CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap");
+pub mod state;
+use state::*;
 
-pub const MAX_ORDERS: usize = 128;
-pub const K_TICKS: usize = 101;
+declare_id!("CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap");
 
 #[program]
 pub mod epoch {
@@ -12,7 +12,7 @@ pub mod epoch {
     pub fn initialize_batch(ctx: Context<InitializeBatch>, batch_id: u64) -> Result<()> {
         let mut batch = ctx.accounts.batch.load_init()?;
         batch.batch_id = batch_id;
-        batch.status = 1; // 1 = OPEN
+        batch.status = BatchStatus::OPEN;
         batch.num_orders = 0;
         batch.settled_orders = 0;
         msg!("Epoch batch account initialized: id={}", batch_id);
@@ -33,55 +33,6 @@ pub struct InitializeBatch<'info> {
     pub system_program: Program<'info, System>,
 }
 
-#[zero_copy]
-#[derive(Debug, PartialEq, Eq)]
-#[repr(C)]
-pub struct Order {
-    pub user_pda: Pubkey,   // 32
-    pub lots: u64,          // 8
-    pub filled_lots: u64,   // 8
-    pub tick: u16,          // 2
-    pub side: u8,           // 1
-    pub slot_id: u8,        // 1
-    pub status: u8,         // 1
-    pub flags: u8,          // 1
-    pub _padding: [u8; 10], // 10 -> Total 64 bytes
-}
-
-#[account(zero_copy)]
-#[derive(Debug)]
-#[repr(C)]
-pub struct Batch {
-    pub batch_id: u64,               // 8
-    pub status: u8,                  // 1
-    pub _pad0: [u8; 7],              // 7
-    pub num_orders: u16,             // 2
-    pub settled_orders: u16,         // 2
-    pub clearing_tick: u16,          // 2
-    pub _pad1: [u8; 2],              // 2
-    pub oracle_price: u64,           // 8
-    pub oracle_conf: u64,            // 8
-    pub oracle_posted_slot: u64,     // 8
-    pub clearing_price: u64,         // 8
-    pub matched_lots: u64,           // 8
-    pub bid_marginal_tick: u16,      // 2
-    pub _pad2: [u8; 6],              // 6
-    pub bid_marginal_alloc: u64,     // 8
-    pub bid_marginal_total: u64,     // 8
-    pub ask_marginal_tick: u16,      // 2
-    pub _pad3: [u8; 6],              // 6
-    pub ask_marginal_alloc: u64,     // 8
-    pub ask_marginal_total: u64,     // 8
-    pub bid_qty: [u64; K_TICKS],     // 808
-    pub ask_qty: [u64; K_TICKS],     // 808
-    pub orders: [Order; MAX_ORDERS], // 8192
-}
-
-const _: () = {
-    assert!(std::mem::size_of::<Order>() == 64);
-    assert!(8 + std::mem::size_of::<Batch>() <= 10240);
-};
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -99,5 +50,28 @@ mod tests {
             total_size <= 10240,
             "Batch account must fit within 10,240-byte Anchor init limit"
         );
+    }
+
+    #[test]
+    fn test_market_params_size() {
+        let params_size = std::mem::size_of::<MarketParams>();
+        println!("MarketParams size: {} bytes", params_size);
+        assert_eq!(params_size, 64);
+        assert!(params_size % 8 == 0, "MarketParams must be 8-byte aligned");
+    }
+
+    #[test]
+    fn test_user_account_size() {
+        let user_size = std::mem::size_of::<UserAccount>();
+        println!("UserAccount size: {} bytes", user_size);
+        assert!(user_size < 1024, "UserAccount must be < 1024 bytes");
+        assert!(user_size % 8 == 0, "UserAccount must be 8-byte aligned");
+    }
+
+    #[test]
+    fn test_market_size() {
+        let market_size = std::mem::size_of::<Market>();
+        println!("Market size: {} bytes", market_size);
+        assert!(market_size < 1024, "Market must be < 1024 bytes");
     }
 }
