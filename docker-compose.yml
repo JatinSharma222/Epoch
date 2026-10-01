@@ -1,0 +1,89 @@
+name: epoch
+
+services:
+  epoch-postgres:
+    image: postgres:16.4-alpine
+    container_name: epoch-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${EPOCH_PG_DB:-epoch}
+      POSTGRES_USER: ${EPOCH_PG_USER:-epoch}
+      POSTGRES_PASSWORD: ${EPOCH_PG_PASSWORD:?set EPOCH_PG_PASSWORD in .env}
+    volumes:
+      - epoch-pgdata:/var/lib/postgresql/data
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:${EPOCH_PG_PORT:-55432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${EPOCH_PG_USER:-epoch} -d ${EPOCH_PG_DB:-epoch}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks: [epoch-net]
+
+  epoch-indexer:
+    build:
+      context: .
+      dockerfile: docker/bun.Dockerfile
+      args: { SERVICE: indexer }
+    image: epoch/indexer:dev
+    container_name: epoch-indexer
+    restart: unless-stopped
+    depends_on:
+      epoch-postgres: { condition: service_healthy }
+    environment:
+      EPOCH_RPC_URL: ${EPOCH_RPC_URL:?set in .env}
+      EPOCH_WS_URL: ${EPOCH_WS_URL:?set in .env}
+      EPOCH_PROGRAM_ID: ${EPOCH_PROGRAM_ID:?set in .env}
+      EPOCH_COMMITMENT: ${EPOCH_COMMITMENT:-confirmed}
+      EPOCH_DATABASE_URL: postgres://${EPOCH_PG_USER:-epoch}:${EPOCH_PG_PASSWORD}@epoch-postgres:5432/${EPOCH_PG_DB:-epoch}
+    networks: [epoch-net]
+
+  epoch-api:
+    build:
+      context: .
+      dockerfile: docker/bun.Dockerfile
+      args: { SERVICE: api }
+    image: epoch/api:dev
+    container_name: epoch-api
+    restart: unless-stopped
+    depends_on:
+      epoch-postgres: { condition: service_healthy }
+    environment:
+      EPOCH_RPC_URL: ${EPOCH_RPC_URL:?set in .env}
+      EPOCH_CORS_ORIGINS: ${EPOCH_CORS_ORIGINS:-http://localhost:3000}
+      EPOCH_DATABASE_URL: postgres://${EPOCH_PG_USER:-epoch}:${EPOCH_PG_PASSWORD}@epoch-postgres:5432/${EPOCH_PG_DB:-epoch}
+      PORT: "8080"
+    ports:
+      - "127.0.0.1:${EPOCH_API_PORT:-48080}:8080"
+    networks: [epoch-net]
+
+  epoch-keeper:
+    build:
+      context: .
+      dockerfile: docker/bun.Dockerfile
+      args: { SERVICE: keeper }
+    image: epoch/keeper:dev
+    container_name: epoch-keeper
+    restart: unless-stopped
+    depends_on:
+      epoch-postgres: { condition: service_healthy }
+    environment:
+      EPOCH_RPC_URL: ${EPOCH_RPC_URL:?set in .env}
+      EPOCH_WS_URL: ${EPOCH_WS_URL:?set in .env}
+      EPOCH_PROGRAM_ID: ${EPOCH_PROGRAM_ID:?set in .env}
+      EPOCH_KEEPER_KEYPAIR_PATH: /run/secrets/keeper.json
+      EPOCH_DATABASE_URL: postgres://${EPOCH_PG_USER:-epoch}:${EPOCH_PG_PASSWORD}@epoch-postgres:5432/${EPOCH_PG_DB:-epoch}
+    volumes:
+      - ${EPOCH_KEEPER_KEYPAIR:-./target/deploy/epoch-keypair.json}:/run/secrets/keeper.json:ro
+    networks: [epoch-net]
+
+networks:
+  epoch-net:
+    name: epoch-net
+
+volumes:
+  epoch-pgdata:
+    name: epoch-pgdata
+  epoch-ledger:
+    name: epoch-ledger

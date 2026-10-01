@@ -1,0 +1,11 @@
+{
+  "name": "epoch-api",
+  "version": "0.1.0",
+  "description": "Read-only history and evidence API for Epoch",
+  "scripts": {
+    "start": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.98.0"
+  }
+}

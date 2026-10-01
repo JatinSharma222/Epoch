@@ -1,0 +1,42 @@
+# === Epoch Project .gitignore ===
+
+# Local-only development materials (never commit)
+/context/
+/research/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Node / Bun
+node_modules/
+
+# Rust
+target/
+
+# Anchor
+.anchor/
+test-ledger/
+
+# Next.js
+.next/
+dist/
+
+# macOS
+.DS_Store
+
+# Secrets and keypairs (NEVER commit)
+*.keypair.json
+id.json
+keys/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db

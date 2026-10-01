@@ -1,0 +1,12 @@
+{
+  "name": "epoch-keeper",
+  "version": "0.1.0",
+  "description": "Permissionless keeper service for Epoch batch clearing and settlement",
+  "scripts": {
+    "start": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "@coral-xyz/anchor": "^0.32.1",
+    "@solana/web3.js": "^1.98.0"
+  }
+}

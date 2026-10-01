@@ -1,0 +1,12 @@
+{
+  "name": "epoch-indexer",
+  "version": "0.1.0",
+  "description": "Event indexer for Epoch batch auctions on Solana into Postgres",
+  "scripts": {
+    "start": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "@coral-xyz/anchor": "^0.32.1",
+    "@solana/web3.js": "^1.98.0"
+  }
+}
