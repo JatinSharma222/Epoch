@@ -81,12 +81,20 @@ pub fn compute_clearing_price(
     rounded as u64
 }
 
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Default)]
+pub struct ClearBatchParams {
+    pub oracle_price: u64,
+    pub oracle_conf: u64,
+    pub oracle_posted_slot: u64,
+    pub oracle_timestamp: i64,
+}
+
 #[allow(clippy::needless_range_loop)]
 pub fn handle_clear_batch(
     ctx: Context<ClearBatch>,
     batch_id: u64,
     ring_index: u8,
-    oracle_price_param: u64,
+    params: ClearBatchParams,
 ) -> Result<()> {
     // 1. Verify ring index
     let expected_ring_index = (batch_id % RING_SIZE as u64) as u8;
@@ -95,6 +103,7 @@ pub fn handle_clear_batch(
     // 2. Validate timing (current slot >= close_slot)
     let mut market = ctx.accounts.market.load_mut()?;
     let current_slot = Clock::get()?.slot;
+    let current_ts = Clock::get()?.unix_timestamp;
     let start_slot = market.start_slot;
     let n_slots = market.params.batch_slots as u64;
     let close_slot = start_slot + (batch_id + 1) * n_slots;
@@ -109,9 +118,9 @@ pub fn handle_clear_batch(
     require_eq!(batch.batch_id, batch_id, EpochError::OrderNotFound);
     require!(batch.status == BatchStatus::OPEN, EpochError::BatchNotOpen);
 
-    // Oracle price
-    let oracle_price = if oracle_price_param > 0 {
-        oracle_price_param
+    // Oracle price resolution
+    let oracle_price = if params.oracle_price > 0 {
+        params.oracle_price
     } else if market.last_oracle_price > 0 {
         market.last_oracle_price
     } else {
@@ -121,6 +130,63 @@ pub fn handle_clear_batch(
 
     let k = K_TICKS;
     let c = CENTER_TICK;
+
+    // 4. Oracle & Timing VOID validation (spec §12)
+    // a. Late clearance: current_slot > close_slot + max_clear_delay_slots
+    let max_delay = market.params.max_clear_delay_slots as u64;
+    let is_late = max_delay > 0 && current_slot > close_slot.saturating_add(max_delay);
+
+    // b. Oracle confidence too wide: (conf * 10,000) / price > max_conf_bps
+    let is_wide_conf = if oracle_price > 0 && params.oracle_conf > 0 {
+        let max_conf_bps = market.params.max_conf_bps as u128;
+        let conf_bps = (params.oracle_conf as u128 * 10_000) / oracle_price as u128;
+        conf_bps > max_conf_bps
+    } else {
+        false
+    };
+
+    // c. Oracle stale: (current_time - oracle_timestamp) > max_oracle_age_secs
+    let is_stale = if params.oracle_timestamp > 0 {
+        let max_age = market.params.max_oracle_age_secs as i64;
+        current_ts > params.oracle_timestamp && (current_ts - params.oracle_timestamp) > max_age
+    } else {
+        false
+    };
+
+    // d. Oracle posted slot invalid: in future
+    let is_invalid_slot = if params.oracle_posted_slot > 0 {
+        params.oracle_posted_slot > current_slot
+    } else {
+        false
+    };
+
+    if is_late || is_wide_conf || is_stale || is_invalid_slot {
+        batch.status = BatchStatus::VOID;
+        batch.clearing_tick = c as u16;
+        batch.clearing_price = oracle_price;
+        batch.matched_lots = 0;
+        batch.oracle_price = oracle_price;
+        batch.oracle_conf = params.oracle_conf;
+        batch.oracle_posted_slot = params.oracle_posted_slot;
+
+        for i in 0..(batch.num_orders as usize) {
+            if batch.orders[i].status == OrderStatus::OPEN {
+                batch.orders[i].status = OrderStatus::EXPIRED;
+                batch.orders[i].filled_lots = 0;
+            }
+        }
+
+        market.next_batch_to_clear = batch_id + 1;
+        msg!(
+            "Batch {} marked VOID: late={}, wide_conf={}, stale={}, invalid_slot={}",
+            batch_id,
+            is_late,
+            is_wide_conf,
+            is_stale,
+            is_invalid_slot
+        );
+        return Ok(());
+    }
 
     // 4. Compute cumulative demand D[t] and supply S[t]
     let mut d = [0u64; K_TICKS + 1];
@@ -236,6 +302,8 @@ pub fn handle_clear_batch(
     batch.clearing_price = cl_price;
     batch.matched_lots = q_star;
     batch.oracle_price = oracle_price;
+    batch.oracle_conf = params.oracle_conf;
+    batch.oracle_posted_slot = params.oracle_posted_slot;
     batch.bid_marginal_tick = t_b as u16;
     batch.bid_marginal_alloc = m_b;
     batch.bid_marginal_total = total_b;

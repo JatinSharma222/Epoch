@@ -31,4 +31,11 @@ All notable changes to the Epoch codebase are documented here.
   - Added `update_market_params` admin instruction.
   - Measured CU consumption across 10, 32, 64, and 128 orders: `place_order` consumes 10,198 - 11,399 CU (Target $\le 60k$ CU); `clear_batch` consumes 16,174 - 31,092 CU (Target $\le 600k$ CU).
   - Passed Gate G1 with empirical measurements recorded in `evidence/cu.json`.
+- **Task T-08 (Program clear_batch Worked Example & VOID Handling):**
+  - Enhanced `clear_batch` with `ClearBatchParams` covering oracle price, confidence, timestamp, and posted slot.
+  - Implemented automatic VOID state transition for stale oracle (age > `max_oracle_age_secs`), wide confidence (conf / price > `max_conf_bps`), and delayed clearance (`current_slot > close_slot + max_clear_delay_slots`).
+  - Added VOID ring slot re-open lifecycle rule in `place_order`.
+  - Re-produced the reference worked example on-chain ($i^* = 51$, $Q^* = 30$, price $150.015) with bit-for-bit fill allocation matching `epoch-ref`.
+  - Verified 3 VOID edge-case integration tests on local validator.
+
 

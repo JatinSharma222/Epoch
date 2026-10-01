@@ -125,6 +125,7 @@ pub fn handle_place_order(ctx: Context<PlaceOrder>, args: PlaceOrderArgs) -> Res
     if batch.batch_id != target_batch {
         if batch.status == BatchStatus::EMPTY
             || batch.status == BatchStatus::SETTLED
+            || batch.status == BatchStatus::VOID
             || batch.num_orders == 0
         {
             // Re-open this ring slot for the new batch

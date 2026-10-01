@@ -58,6 +58,11 @@ describe("Epoch Program Integration Tests", () => {
   let userAta: anchor.web3.PublicKey;
   let unauthorizedAta: anchor.web3.PublicKey;
 
+  const NUM_USERS = 16;
+  const cuUsers: anchor.web3.Keypair[] = [];
+  const cuUserPdas: anchor.web3.PublicKey[] = [];
+  const cuUserAtas: anchor.web3.PublicKey[] = [];
+
   const defaultMarketArgs = {
     baseLot: new anchor.BN(1000),
     priceTick: new anchor.BN(1000),
@@ -722,10 +727,6 @@ describe("Epoch Program Integration Tests", () => {
   describe("T-07: Compute Unit (CU) Spike & Gate G1 Measurement", function () {
     this.timeout(180000); // 3 minutes timeout
 
-    const NUM_USERS = 16;
-    const cuUsers: anchor.web3.Keypair[] = [];
-    const cuUserPdas: anchor.web3.PublicKey[] = [];
-    const cuUserAtas: anchor.web3.PublicKey[] = [];
     const measurements: any[] = [];
 
     const advanceSlots = async (count: number) => {
@@ -856,7 +857,12 @@ describe("Epoch Program Integration Tests", () => {
 
       try {
         await program.methods
-          .clearBatch(testBatchId, ringIndex, new anchor.BN(150_000_000))
+          .clearBatch(testBatchId, ringIndex, {
+            oraclePrice: new anchor.BN(150_000_000),
+            oracleConf: new anchor.BN(0),
+            oraclePostedSlot: new anchor.BN(0),
+            oracleTimestamp: new anchor.BN(0),
+          })
           .accounts({
             market: marketPda,
             batch: batchPda,
@@ -964,11 +970,12 @@ describe("Epoch Program Integration Tests", () => {
 
         // Admin cranker can clear immediately for benchmark
         const clearTxSig = await program.methods
-          .clearBatch(
-            targetBatchId,
-            ringIndex,
-            new anchor.BN(150_000_000)
-          )
+          .clearBatch(targetBatchId, ringIndex, {
+            oraclePrice: new anchor.BN(150_000_000),
+            oracleConf: new anchor.BN(0),
+            oraclePostedSlot: new anchor.BN(0),
+            oracleTimestamp: new anchor.BN(0),
+          })
           .accounts({
             market: marketPda,
             batch: batchPda,
@@ -1025,6 +1032,418 @@ describe("Epoch Program Integration Tests", () => {
         JSON.stringify(cuReport, null, 2),
         "utf-8"
       );
+    });
+  });
+
+  describe("T-08: Program clear_batch On-Chain Worked Example & VOID Handling", () => {
+    let t8RingIndex: number = -1;
+
+    before(async () => {
+      // Configure market parameters for T-08 tests
+      await program.methods
+        .updateMarketParams({
+          ...defaultMarketArgs,
+          batchSlots: 500,
+          lookahead: 20,
+        })
+        .accounts({
+          market: marketPda,
+          admin: admin.publicKey,
+        })
+        .rpc();
+
+      // Find an unused ring slot with numOrders === 0
+      for (let r = 0; r < 8; r++) {
+        const b = await program.account.batch.fetch(getBatchPda(r));
+        if (b.numOrders === 0) {
+          t8RingIndex = r;
+          break;
+        }
+      }
+      expect(t8RingIndex).to.be.greaterThanOrEqual(0);
+    });
+
+    it("Reproduces worked example on-chain with exact clearing and fill allocation", async () => {
+      const market = await program.account.market.fetch(marketPda);
+      const slot = await provider.connection.getSlot();
+      const currentBatch = Math.floor(
+        (slot - market.startSlot.toNumber()) / market.params.batchSlots
+      );
+
+      let target = currentBatch + 1;
+      while (target % 8 !== t8RingIndex) {
+        target++;
+      }
+      const targetBatchId = new anchor.BN(target);
+      const batchPda = getBatchPda(t8RingIndex);
+
+      // Spec §6 Worked Example: 8 orders
+      // B1: BUY tick 55 (+5 bps), 10 lots
+      // B2: BUY tick 53 (+3 bps), 20 lots
+      // B3: BUY tick 50 (0 bps), 15 lots
+      // B4: BUY tick 48 (-2 bps), 30 lots
+      // A1: SELL tick 46 (-4 bps), 12 lots
+      // A2: SELL tick 50 (0 bps), 18 lots
+      // A3: SELL tick 53 (+3 bps), 25 lots
+      // A4: SELL tick 56 (+6 bps), 10 lots
+      const workedOrders = [
+        { side: 0, tick: 55, lots: 10 },
+        { side: 0, tick: 53, lots: 20 },
+        { side: 0, tick: 50, lots: 15 },
+        { side: 0, tick: 48, lots: 30 },
+        { side: 1, tick: 46, lots: 12 },
+        { side: 1, tick: 50, lots: 18 },
+        { side: 1, tick: 53, lots: 25 },
+        { side: 1, tick: 56, lots: 10 },
+      ];
+
+      for (let i = 0; i < workedOrders.length; i++) {
+        const o = workedOrders[i];
+        const u = cuUsers[i];
+        const pda = cuUserPdas[i];
+
+        await program.methods
+          .placeOrder({
+            targetBatch: targetBatchId,
+            ringIndex: t8RingIndex,
+            slotId: 0,
+            side: o.side,
+            tick: o.tick,
+            lots: new anchor.BN(o.lots),
+            flags: 0,
+          })
+          .accounts({
+            market: marketPda,
+            batch: batchPda,
+            user: pda,
+            owner: u.publicKey,
+          })
+          .signers([u])
+          .rpc({ skipPreflight: true });
+      }
+
+      const batchBefore = await program.account.batch.fetch(batchPda);
+      expect(batchBefore.numOrders).to.equal(8);
+
+      // Clear batch with oracle price $150.00
+      await program.methods
+        .clearBatch(targetBatchId, t8RingIndex, {
+          oraclePrice: new anchor.BN(150_000_000),
+          oracleConf: new anchor.BN(10_000), // 0.67 bps
+          oraclePostedSlot: new anchor.BN(slot),
+          oracleTimestamp: new anchor.BN(0), // fresh
+        })
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+          cranker: admin.publicKey,
+        })
+        .rpc({ skipPreflight: true });
+
+      const batchAfter = await program.account.batch.fetch(batchPda);
+      expect(batchAfter.status).to.equal(2); // CLEARED
+      expect(batchAfter.clearingTick).to.equal(51); // i* = tick 51 (+1 bp offset)
+      expect(batchAfter.clearingPrice.toNumber()).to.equal(150_015_000);
+      expect(batchAfter.matchedLots.toNumber()).to.equal(30); // Q* = 30
+      expect(batchAfter.bidMarginalTick).to.equal(53); // t_b = 53
+      expect(batchAfter.bidMarginalAlloc.toNumber()).to.equal(20);
+      expect(batchAfter.askMarginalTick).to.equal(50); // t_a = 50
+      expect(batchAfter.askMarginalAlloc.toNumber()).to.equal(18);
+
+      // Verify order-level fills
+      // B1: BUY tick 55 > 53 -> FILLED (10 lots)
+      expect(batchAfter.orders[0].filledLots.toNumber()).to.equal(10);
+      expect(batchAfter.orders[0].status).to.equal(1); // FILLED
+
+      // B2: BUY tick 53 == 53 -> FILLED (20 lots)
+      expect(batchAfter.orders[1].filledLots.toNumber()).to.equal(20);
+      expect(batchAfter.orders[1].status).to.equal(1); // FILLED
+
+      // B3: BUY tick 50 < 53 -> EXPIRED (0 lots)
+      expect(batchAfter.orders[2].filledLots.toNumber()).to.equal(0);
+      expect(batchAfter.orders[2].status).to.equal(4); // EXPIRED
+
+      // B4: BUY tick 48 < 53 -> EXPIRED (0 lots)
+      expect(batchAfter.orders[3].filledLots.toNumber()).to.equal(0);
+      expect(batchAfter.orders[3].status).to.equal(4); // EXPIRED
+
+      // A1: SELL tick 46 < 50 -> FILLED (12 lots)
+      expect(batchAfter.orders[4].filledLots.toNumber()).to.equal(12);
+      expect(batchAfter.orders[4].status).to.equal(1); // FILLED
+
+      // A2: SELL tick 50 == 50 -> FILLED (18 lots)
+      expect(batchAfter.orders[5].filledLots.toNumber()).to.equal(18);
+      expect(batchAfter.orders[5].status).to.equal(1); // FILLED
+
+      // A3: SELL tick 53 > 50 -> EXPIRED (0 lots)
+      expect(batchAfter.orders[6].filledLots.toNumber()).to.equal(0);
+      expect(batchAfter.orders[6].status).to.equal(4); // EXPIRED
+
+      // A4: SELL tick 56 > 50 -> EXPIRED (0 lots)
+      expect(batchAfter.orders[7].filledLots.toNumber()).to.equal(0);
+      expect(batchAfter.orders[7].status).to.equal(4); // EXPIRED
+    });
+
+    it("Marks batch VOID when oracle is stale (timestamp older than max_oracle_age_secs)", async () => {
+      // Find another available ring slot
+      let staleRing = -1;
+      for (let r = 0; r < 8; r++) {
+        if (r === t8RingIndex) continue;
+        const b = await program.account.batch.fetch(getBatchPda(r));
+        if (b.numOrders === 0) {
+          staleRing = r;
+          break;
+        }
+      }
+      expect(staleRing).to.be.greaterThanOrEqual(0);
+
+      const market = await program.account.market.fetch(marketPda);
+      const slot = await provider.connection.getSlot();
+      const currentBatch = Math.floor(
+        (slot - market.startSlot.toNumber()) / market.params.batchSlots
+      );
+
+      let target = currentBatch + 1;
+      while (target % 8 !== staleRing) {
+        target++;
+      }
+      const targetBatchId = new anchor.BN(target);
+      const batchPda = getBatchPda(staleRing);
+
+      // Place 2 crossing orders
+      await program.methods
+        .placeOrder({
+          targetBatch: targetBatchId,
+          ringIndex: staleRing,
+          slotId: 0,
+          side: 0, // BUY
+          tick: 55,
+          lots: new anchor.BN(10),
+          flags: 0,
+        })
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+          user: cuUserPdas[0],
+          owner: cuUsers[0].publicKey,
+        })
+        .signers([cuUsers[0]])
+        .rpc({ skipPreflight: true });
+
+      await program.methods
+        .placeOrder({
+          targetBatch: targetBatchId,
+          ringIndex: staleRing,
+          slotId: 0,
+          side: 1, // SELL
+          tick: 45,
+          lots: new anchor.BN(10),
+          flags: 0,
+        })
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+          user: cuUserPdas[1],
+          owner: cuUsers[1].publicKey,
+        })
+        .signers([cuUsers[1]])
+        .rpc({ skipPreflight: true });
+
+      // Clear with stale timestamp = 1 (1970)
+      await program.methods
+        .clearBatch(targetBatchId, staleRing, {
+          oraclePrice: new anchor.BN(150_000_000),
+          oracleConf: new anchor.BN(10_000),
+          oraclePostedSlot: new anchor.BN(slot),
+          oracleTimestamp: new anchor.BN(1), // Stale!
+        })
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+          cranker: admin.publicKey,
+        })
+        .rpc({ skipPreflight: true });
+
+      const batchAfter = await program.account.batch.fetch(batchPda);
+      expect(batchAfter.status).to.equal(3); // VOID
+      expect(batchAfter.matchedLots.toNumber()).to.equal(0);
+      expect(batchAfter.orders[0].status).to.equal(4); // EXPIRED
+      expect(batchAfter.orders[0].filledLots.toNumber()).to.equal(0);
+      expect(batchAfter.orders[1].status).to.equal(4); // EXPIRED
+      expect(batchAfter.orders[1].filledLots.toNumber()).to.equal(0);
+    });
+
+    it("Marks batch VOID when oracle confidence is too wide (> max_conf_bps)", async () => {
+      // We can reuse the VOID ring slot since VOID slots can be re-opened
+      const staleRing = (await program.account.market.fetch(marketPda)).nextBatchToClear.toNumber() - 1;
+      const ringIndex = staleRing % 8;
+      const batchPda = getBatchPda(ringIndex);
+
+      const market = await program.account.market.fetch(marketPda);
+      const slot = await provider.connection.getSlot();
+      const currentBatch = Math.floor(
+        (slot - market.startSlot.toNumber()) / market.params.batchSlots
+      );
+
+      const existingBatch = await program.account.batch.fetch(batchPda);
+      let target = Math.max(currentBatch + 1, existingBatch.batchId.toNumber() + 1);
+      while (target % 8 !== ringIndex) {
+        target++;
+      }
+      const targetBatchId = new anchor.BN(target);
+
+      // Place 2 crossing orders into this new batch in the re-opened ring slot
+      await program.methods
+        .placeOrder({
+          targetBatch: targetBatchId,
+          ringIndex,
+          slotId: 0,
+          side: 0,
+          tick: 55,
+          lots: new anchor.BN(10),
+          flags: 0,
+        })
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+          user: cuUserPdas[0],
+          owner: cuUsers[0].publicKey,
+        })
+        .signers([cuUsers[0]])
+        .rpc({ skipPreflight: true });
+
+      await program.methods
+        .placeOrder({
+          targetBatch: targetBatchId,
+          ringIndex,
+          slotId: 0,
+          side: 1,
+          tick: 45,
+          lots: new anchor.BN(10),
+          flags: 0,
+        })
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+          user: cuUserPdas[1],
+          owner: cuUsers[1].publicKey,
+        })
+        .signers([cuUsers[1]])
+        .rpc({ skipPreflight: true });
+
+      // max_conf_bps is 20 bps. $150.00 * 20 bps = $0.30 (300_000 micro-USDC).
+      // Pass conf = 5_000_000 ($5.00 = 333 bps > 20 bps!)
+      await program.methods
+        .clearBatch(targetBatchId, ringIndex, {
+          oraclePrice: new anchor.BN(150_000_000),
+          oracleConf: new anchor.BN(5_000_000), // Wide confidence!
+          oraclePostedSlot: new anchor.BN(slot),
+          oracleTimestamp: new anchor.BN(0),
+        })
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+          cranker: admin.publicKey,
+        })
+        .rpc({ skipPreflight: true });
+
+      const batchAfter = await program.account.batch.fetch(batchPda);
+      expect(batchAfter.status).to.equal(3); // VOID
+      expect(batchAfter.matchedLots.toNumber()).to.equal(0);
+      expect(batchAfter.orders[0].status).to.equal(4); // EXPIRED
+      expect(batchAfter.orders[0].filledLots.toNumber()).to.equal(0);
+      expect(batchAfter.orders[1].status).to.equal(4); // EXPIRED
+      expect(batchAfter.orders[1].filledLots.toNumber()).to.equal(0);
+    });
+
+    it("Marks batch VOID when clear delay exceeds max_clear_delay_slots", async () => {
+      // Re-open the VOID ring slot
+      const staleRing = (await program.account.market.fetch(marketPda)).nextBatchToClear.toNumber() - 1;
+      const ringIndex = staleRing % 8;
+      const batchPda = getBatchPda(ringIndex);
+
+      // Configure batch_slots: 5, max_clear_delay_slots: 2
+      await program.methods
+        .updateMarketParams({
+          ...defaultMarketArgs,
+          batchSlots: 5,
+          maxClearDelaySlots: 2,
+          lookahead: 20,
+        })
+        .accounts({
+          market: marketPda,
+          admin: admin.publicKey,
+        })
+        .rpc();
+
+      const market = await program.account.market.fetch(marketPda);
+      const slot = await provider.connection.getSlot();
+      const currentBatch = Math.floor(
+        (slot - market.startSlot.toNumber()) / market.params.batchSlots
+      );
+
+      let target = currentBatch + 1;
+      while (target % 8 !== ringIndex) {
+        target++;
+      }
+      const targetBatchId = new anchor.BN(target);
+
+      // Place 1 order while batch is open
+      await program.methods
+        .placeOrder({
+          targetBatch: targetBatchId,
+          ringIndex,
+          slotId: 0,
+          side: 0,
+          tick: 50,
+          lots: new anchor.BN(10),
+          flags: 0,
+        })
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+          user: cuUserPdas[0],
+          owner: cuUsers[0].publicKey,
+        })
+        .signers([cuUsers[0]])
+        .rpc({ skipPreflight: true });
+
+      // Advance slots past close_slot + max_clear_delay_slots
+      const closeSlot =
+        market.startSlot.toNumber() +
+        (targetBatchId.toNumber() + 1) * market.params.batchSlots;
+      const curSlot = await provider.connection.getSlot();
+      const delaySlots = Math.max(1, closeSlot + 3 - curSlot);
+      for (let i = 0; i < delaySlots; i++) {
+        const tx = new anchor.web3.Transaction().add(
+          anchor.web3.SystemProgram.transfer({
+            fromPubkey: admin.publicKey,
+            toPubkey: admin.publicKey,
+            lamports: 1,
+          })
+        );
+        await provider.sendAndConfirm(tx);
+      }
+
+      // Now clear_batch is called after the delay window
+      await program.methods
+        .clearBatch(targetBatchId, ringIndex, {
+          oraclePrice: new anchor.BN(150_000_000),
+          oracleConf: new anchor.BN(0),
+          oraclePostedSlot: new anchor.BN(0),
+          oracleTimestamp: new anchor.BN(0),
+        })
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+          cranker: admin.publicKey,
+        })
+        .rpc({ skipPreflight: true });
+
+      const batchAfter = await program.account.batch.fetch(batchPda);
+      expect(batchAfter.status).to.equal(3); // VOID
+      expect(batchAfter.matchedLots.toNumber()).to.equal(0);
+      expect(batchAfter.orders[0].status).to.equal(4); // EXPIRED
     });
   });
 });

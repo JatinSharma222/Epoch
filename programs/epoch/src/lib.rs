@@ -72,9 +72,9 @@ pub mod epoch {
         ctx: Context<ClearBatch>,
         batch_id: u64,
         ring_index: u8,
-        oracle_price: u64,
+        params: ClearBatchParams,
     ) -> Result<()> {
-        handle_clear_batch(ctx, batch_id, ring_index, oracle_price)
+        handle_clear_batch(ctx, batch_id, ring_index, params)
     }
 
     /// Admin updates tunable market parameters.
