@@ -32,6 +32,40 @@ pub struct ClearResult {
     pub ask: Marginal,
 }
 
+/// Order representation used in the reference engine for fill allocation and property tests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OrderRef {
+    /// Order side: 0 = Buy, 1 = Sell.
+    pub side: u8,
+    /// Limit tick index in `[0, K-1]`.
+    pub tick: u16,
+    /// Requested lot quantity.
+    pub lots: u64,
+}
+
+/// Midpoint rounding with tie-breaking toward the center tick `c`.
+///
+/// If `lo + hi` is even, returns the exact integer midpoint `(lo + hi) / 2`.
+/// If `lo + hi` is odd (midpoint is x.5), breaks the tie by choosing whichever
+/// candidate integer is strictly closer to the center tick `c`.
+///
+/// Because `c` is an integer, one candidate is always strictly closer than the other.
+pub fn midpoint(lo: usize, hi: usize, c: usize) -> usize {
+    let sum = lo + hi;
+    let m = sum / 2;
+    if sum % 2 == 0 {
+        m
+    } else {
+        let d_m = (m as isize - c as isize).abs();
+        let d_m1 = ((m + 1) as isize - c as isize).abs();
+        if d_m1 < d_m {
+            m + 1
+        } else {
+            m
+        }
+    }
+}
+
 /// Run the clearing algorithm on aggregate tick arrays.
 ///
 /// Implements spec §14 exactly:
@@ -39,7 +73,7 @@ pub struct ClearResult {
 /// 2. V[t] = min(D[t], S[t]); find Vmax. If 0, return None (no trade).
 /// 3. Plateau P = {t : V[t] == Vmax} — contiguous by unimodality.
 /// 4. Min-imbalance set Q = argmin|D-S| within P — contiguous.
-/// 5. Midpoint of Q, rounding toward center tick c.
+/// 5. Midpoint of Q, rounding toward center tick c via `midpoint(lo, hi, c)`.
 /// 6. Compute marginal ticks and allocations.
 ///
 /// # Panics
@@ -86,13 +120,7 @@ pub fn clear(bid_qty: &[u64], ask_qty: &[u64]) -> Option<ClearResult> {
     let q: Vec<usize> = plateau.into_iter().filter(|&t| imb(t) == m).collect();
 
     let (lo, hi) = (*q.first().unwrap(), *q.last().unwrap());
-    let sum = lo + hi;
-    let mut i_star = sum / 2; // floor of midpoint
-    if sum % 2 == 1 && c > i_star {
-        // Midpoint is x.5: round toward center tick c
-        i_star += 1;
-    }
-
+    let i_star = midpoint(lo, hi, c);
     let qstar = vmax;
 
     // Buy-side marginal: t_b = max{t : D[t] >= Q*}
@@ -177,6 +205,82 @@ pub fn apply_dust(fills: &mut [u64], lots: &[u64], m: u64, t: u64) -> u64 {
     given
 }
 
+/// Allocate fills to an array of individual orders according to a `ClearResult`.
+///
+/// Follows spec §5:
+/// - Price priority: orders strictly better than marginal tick fill in full.
+/// - Pro-rata at the marginal tick: `floor(lots × M / T)` plus +1 lot dust to first remainder > 0.
+/// - Orders worse than marginal tick: 0 fill.
+///
+/// Returns a vector of filled lots corresponding to each input order.
+pub fn allocate_order_fills(orders: &[OrderRef], clear_result: &ClearResult) -> Vec<u64> {
+    let mut fills = vec![0u64; orders.len()];
+
+    // 1. Process Buy orders (side = 0)
+    let mut marginal_buy_indices = Vec::new();
+    let mut marginal_buy_lots = Vec::new();
+
+    for (i, order) in orders.iter().enumerate() {
+        if order.side == 0 {
+            if order.tick > clear_result.bid.tick {
+                fills[i] = order.lots;
+            } else if order.tick == clear_result.bid.tick {
+                marginal_buy_indices.push(i);
+                marginal_buy_lots.push(order.lots);
+            }
+        }
+    }
+
+    if !marginal_buy_indices.is_empty() {
+        let mut marginal_fills: Vec<u64> = marginal_buy_lots
+            .iter()
+            .map(|&lots| compute_fill(lots, &clear_result.bid))
+            .collect();
+        apply_dust(
+            &mut marginal_fills,
+            &marginal_buy_lots,
+            clear_result.bid.alloc,
+            clear_result.bid.total,
+        );
+        for (idx, fill) in marginal_buy_indices.into_iter().zip(marginal_fills) {
+            fills[idx] = fill;
+        }
+    }
+
+    // 2. Process Sell orders (side = 1)
+    let mut marginal_sell_indices = Vec::new();
+    let mut marginal_sell_lots = Vec::new();
+
+    for (i, order) in orders.iter().enumerate() {
+        if order.side == 1 {
+            if order.tick < clear_result.ask.tick {
+                fills[i] = order.lots;
+            } else if order.tick == clear_result.ask.tick {
+                marginal_sell_indices.push(i);
+                marginal_sell_lots.push(order.lots);
+            }
+        }
+    }
+
+    if !marginal_sell_indices.is_empty() {
+        let mut marginal_fills: Vec<u64> = marginal_sell_lots
+            .iter()
+            .map(|&lots| compute_fill(lots, &clear_result.ask))
+            .collect();
+        apply_dust(
+            &mut marginal_fills,
+            &marginal_sell_lots,
+            clear_result.ask.alloc,
+            clear_result.ask.total,
+        );
+        for (idx, fill) in marginal_sell_indices.into_iter().zip(marginal_fills) {
+            fills[idx] = fill;
+        }
+    }
+
+    fills
+}
+
 /// Compute the clearing price from the oracle price and clearing tick.
 ///
 /// `offset = (tick - c) × tick_bps` basis points.
@@ -231,6 +335,42 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_midpoint_rounding_cases() {
+        let c = 50usize;
+
+        // 1. Intervals strictly below c
+        // [40, 41]: sum=81, m=40, candidates 40 and 41. 41 is closer to 50.
+        assert_eq!(midpoint(40, 41, c), 41);
+        // [40, 42]: sum=82, exact integer midpoint 41.
+        assert_eq!(midpoint(40, 42, c), 41);
+        // [46, 47]: sum=93, m=46, candidates 46 and 47. 47 is closer to 50.
+        assert_eq!(midpoint(46, 47, c), 47);
+
+        // 2. Intervals strictly above c
+        // [59, 60]: sum=119, m=59, candidates 59 and 60. 59 is closer to 50.
+        assert_eq!(midpoint(59, 60, c), 59);
+        // [58, 60]: sum=118, exact integer midpoint 59.
+        assert_eq!(midpoint(58, 60, c), 59);
+        // [53, 54]: sum=107, m=53, candidates 53 and 54. 53 is closer to 50.
+        assert_eq!(midpoint(53, 54, c), 53);
+
+        // 3. Intervals straddling c
+        // [49, 52]: sum=101, m=50. Candidates 50 and 51. 50 is distance 0 from c.
+        assert_eq!(midpoint(49, 52, c), 50);
+        // [48, 51]: sum=99, m=49. Candidates 49 and 50. 50 is distance 0 from c.
+        assert_eq!(midpoint(48, 51, c), 50);
+        // [49, 50]: sum=99, m=49. Candidates 49 and 50. 50 is distance 0 from c.
+        assert_eq!(midpoint(49, 50, c), 50);
+        // [50, 51]: sum=101, m=50. Candidates 50 and 51. 50 is distance 0 from c.
+        assert_eq!(midpoint(50, 51, c), 50);
+
+        // 4. Exact center and symmetric intervals
+        assert_eq!(midpoint(50, 50, c), 50);
+        assert_eq!(midpoint(40, 60, c), 50);
+        assert_eq!(midpoint(0, 100, c), 50);
+    }
+
+    #[test]
     fn test_worked_example() {
         // Spec §6: Oracle $150, K=13 (offsets -6..+6), c=6
         let k = 13usize;
@@ -277,6 +417,52 @@ mod tests {
 
         // Notional = 30 × 150_015_000 / 1000 = 4_500_450
         assert_eq!(notional(30, 150_015_000), 4_500_450);
+
+        // Verify order-level fills match worked example
+        let orders = vec![
+            OrderRef {
+                side: 0,
+                tick: 11,
+                lots: 10,
+            }, // B1 (+5)
+            OrderRef {
+                side: 0,
+                tick: 9,
+                lots: 20,
+            }, // B2 (+3)
+            OrderRef {
+                side: 0,
+                tick: 6,
+                lots: 15,
+            }, // B3 (0)
+            OrderRef {
+                side: 0,
+                tick: 4,
+                lots: 30,
+            }, // B4 (-2)
+            OrderRef {
+                side: 1,
+                tick: 2,
+                lots: 12,
+            }, // A1 (-4)
+            OrderRef {
+                side: 1,
+                tick: 6,
+                lots: 18,
+            }, // A2 (0)
+            OrderRef {
+                side: 1,
+                tick: 9,
+                lots: 25,
+            }, // A3 (+3)
+            OrderRef {
+                side: 1,
+                tick: 12,
+                lots: 10,
+            }, // A4 (+6)
+        ];
+        let fills = allocate_order_fills(&orders, &result);
+        assert_eq!(fills, vec![10, 20, 0, 0, 12, 18, 0, 0]);
     }
 
     #[test]
@@ -327,17 +513,14 @@ mod tests {
 
     #[test]
     fn test_single_tick_match() {
-        // Both bid and ask at center tick (K=3, c=1)
         let bid_qty = vec![0u64, 50, 0];
         let ask_qty = vec![0u64, 30, 0];
         let result = clear(&bid_qty, &ask_qty).expect("should trade");
         assert_eq!(result.tick, 1); // center
         assert_eq!(result.matched, 30);
-        // Buy marginal at tick 1: M_b = 30, T_b = 50
         assert_eq!(result.bid.tick, 1);
         assert_eq!(result.bid.alloc, 30);
         assert_eq!(result.bid.total, 50);
-        // Sell marginal at tick 1: M_a = 30, T_a = 30
         assert_eq!(result.ask.tick, 1);
         assert_eq!(result.ask.alloc, 30);
         assert_eq!(result.ask.total, 30);
@@ -352,93 +535,15 @@ mod tests {
 
     #[test]
     fn test_clearing_price_calc() {
-        // Offset +1 bp: oracle 150M × 10001/10000 = 150_015_000
         assert_eq!(clearing_price(150_000_000, 7, 13, 1, 1000), 150_015_000);
-        // Offset 0: unchanged
         assert_eq!(clearing_price(150_000_000, 6, 13, 1, 1000), 150_000_000);
-        // Offset -2 bp: 150M × 9998/10000 = 149_970_000
         assert_eq!(clearing_price(150_000_000, 4, 13, 1, 1000), 149_970_000);
-        // K=101, center=50, tick at 51 → offset +1
         assert_eq!(clearing_price(150_000_000, 51, 101, 1, 1000), 150_015_000);
-        // K=101, center=50, tick at 50 → offset 0
         assert_eq!(clearing_price(150_000_000, 50, 101, 1, 1000), 150_000_000);
     }
 
     #[test]
-    fn test_midpoint_rounding() {
-        // K=11, c=5. Q=[3,4]. sum=7 odd. floor=3. c=5>3 → i*=4 (closer to c).
-        let mut bid_qty = vec![0u64; 11];
-        let mut ask_qty = vec![0u64; 11];
-        // Construct so plateau=[3,4] and Q=[3,4]
-        // D[3]=10, D[4]=10, D[5]=0 → bids at ticks 3,4
-        bid_qty[3] = 5;
-        bid_qty[4] = 5;
-        // S[3]=10, S[4]=10 → asks at ticks 0..4
-        ask_qty[0] = 3;
-        ask_qty[1] = 3;
-        ask_qty[2] = 2;
-        ask_qty[3] = 2;
-        // D: d[5]=0, d[4]=5, d[3]=10, d[2]=10, d[1]=10, d[0]=10
-        // S: s[0]=3, s[1]=6, s[2]=8, s[3]=10, s[4]=10
-        // V[3]=min(10,10)=10, V[4]=min(5,10)=5 → Vmax=10, plateau=[3]
-        // Actually let me reconsider... this gives plateau=[3] not [3,4].
-
-        // Simpler: K=11, c=5.
-        // Two ticks [4, 5] both at V=20. Q = [4, 5]. sum=9, odd. c=5>4 → i*=5.
-        bid_qty = vec![0u64; 11];
-        ask_qty = vec![0u64; 11];
-        bid_qty[4] = 10;
-        bid_qty[5] = 10;
-        bid_qty[6] = 10;
-        ask_qty[4] = 10;
-        ask_qty[5] = 10;
-        // D: d[7..]=0, d[6]=10, d[5]=20, d[4]=30
-        // S: s[0..3]=0, s[4]=10, s[5]=20
-        // V[4]=min(30,10)=10, V[5]=min(20,20)=20, V[6]=min(10,20)=10
-        // Plateau = [5], single tick → i*=5.
-
-        // Better test: make plateau span [4,6]
-        bid_qty = vec![0u64; 11];
-        ask_qty = vec![0u64; 11];
-        bid_qty[4] = 5;
-        bid_qty[5] = 5;
-        bid_qty[6] = 5;
-        bid_qty[7] = 5;
-        // D: d[8..]=0, d[7]=5, d[6]=10, d[5]=15, d[4]=20
-        ask_qty[2] = 5;
-        ask_qty[3] = 5;
-        ask_qty[4] = 5;
-        ask_qty[5] = 5;
-        ask_qty[6] = 5;
-        // S: s[2]=5, s[3]=10, s[4]=15, s[5]=20, s[6]=25
-        // V[4]=min(20,15)=15, V[5]=min(15,20)=15, V[6]=min(10,25)=10
-        // Plateau = [4, 5]. |D-S|: at 4: |20-15|=5, at 5: |15-20|=5
-        // Q = [4, 5]. sum=9, odd. c=5 > 4 → i*=5.
-        let result = clear(&bid_qty, &ask_qty).expect("should trade");
-        assert_eq!(result.tick, 5, "midpoint should round toward c=5");
-
-        // Now test rounding the other way: Q = [6, 7], c=5. c < 6 → no rounding up.
-        // sum=13, odd. floor=6. c=5 > 6? No. i*=6.
-        bid_qty = vec![0u64; 11];
-        ask_qty = vec![0u64; 11];
-        bid_qty[6] = 5;
-        bid_qty[7] = 5;
-        bid_qty[8] = 5;
-        // D: d[9..]=0, d[8]=5, d[7]=10, d[6]=15
-        ask_qty[4] = 5;
-        ask_qty[5] = 5;
-        ask_qty[6] = 5;
-        ask_qty[7] = 5;
-        // S: s[4]=5, s[5]=10, s[6]=15, s[7]=20
-        // V[6]=min(15,15)=15, V[7]=min(10,20)=10
-        // Plateau=[6]. Single point → i*=6.
-        let result = clear(&bid_qty, &ask_qty).expect("should trade");
-        assert_eq!(result.tick, 6);
-    }
-
-    #[test]
     fn test_dust_no_overflow() {
-        // Verify dust never exceeds original lots
         for m in 1..=50u64 {
             for n_orders in 1..=5usize {
                 let lots_val = 7u64;
@@ -460,6 +565,146 @@ mod tests {
                 assert_eq!(fills.iter().sum::<u64>(), m);
                 for (i, &f) in fills.iter().enumerate() {
                     assert!(f <= lots_arr[i], "fill {} exceeds lots {}", f, lots_arr[i]);
+                }
+            }
+        }
+    }
+
+    // Fast xorshift PRNG for property testing
+    struct SimpleRng(u64);
+    impl SimpleRng {
+        fn next_u64(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+        fn gen_range(&mut self, max: usize) -> usize {
+            (self.next_u64() as usize) % max
+        }
+    }
+
+    /// Task T-04 Acceptance: 1,000,000 random cases pass property tests P-2..P-7, P-9.
+    #[test]
+    fn test_one_million_random_clearing_cases() {
+        let mut rng = SimpleRng(0xDEADBEEFCAFE1234);
+        let k = 101usize;
+        let mut bid_qty = vec![0u64; k];
+        let mut ask_qty = vec![0u64; k];
+
+        for _ in 0..1_000_000 {
+            bid_qty.fill(0);
+            ask_qty.fill(0);
+
+            // Generate between 0 and 20 orders per side
+            let n_bids = rng.gen_range(20);
+            let n_asks = rng.gen_range(20);
+
+            let mut orders = Vec::with_capacity(n_bids + n_asks);
+
+            for _ in 0..n_bids {
+                let tick = rng.gen_range(k) as u16;
+                let lots = (rng.next_u64() % 100) + 1;
+                bid_qty[tick as usize] += lots;
+                orders.push(OrderRef {
+                    side: 0,
+                    tick,
+                    lots,
+                });
+            }
+
+            for _ in 0..n_asks {
+                let tick = rng.gen_range(k) as u16;
+                let lots = (rng.next_u64() % 100) + 1;
+                ask_qty[tick as usize] += lots;
+                orders.push(OrderRef {
+                    side: 1,
+                    tick,
+                    lots,
+                });
+            }
+
+            let clear_opt = clear(&bid_qty, &ask_qty);
+
+            if let Some(res) = clear_opt {
+                // Invariant P-4: Matched volume Q* > 0
+                assert!(res.matched > 0);
+
+                // P-6: Determinism check (calling clear twice yields identical result)
+                let res2 = clear(&bid_qty, &ask_qty).unwrap();
+                assert_eq!(res, res2);
+
+                let fills = allocate_order_fills(&orders, &res);
+
+                let mut total_buy_fills = 0u64;
+                let mut total_sell_fills = 0u64;
+
+                for (order, &fill) in orders.iter().zip(fills.iter()) {
+                    // Invariant P-7: Bounds (0 <= fill <= lots)
+                    assert!(fill <= order.lots);
+
+                    if order.side == 0 {
+                        total_buy_fills += fill;
+                        // Invariant P-3: Rationality (filled buyers have limit >= i*)
+                        if fill > 0 {
+                            assert!(order.tick >= res.tick);
+                        }
+                        // Invariant P-5: Maximality (strictly better orders filled in full)
+                        if order.tick > res.bid.tick {
+                            assert_eq!(fill, order.lots);
+                        }
+                        if order.tick < res.bid.tick {
+                            assert_eq!(fill, 0);
+                        }
+                    } else {
+                        total_sell_fills += fill;
+                        // Invariant P-3: Rationality (filled sellers have limit <= i*)
+                        if fill > 0 {
+                            assert!(order.tick <= res.tick);
+                        }
+                        // Invariant P-5: Maximality (strictly better orders filled in full)
+                        if order.tick < res.ask.tick {
+                            assert_eq!(fill, order.lots);
+                        }
+                        if order.tick > res.ask.tick {
+                            assert_eq!(fill, 0);
+                        }
+                    }
+                }
+
+                // Invariant P-4: Volume balance (BUY fills == SELL fills == Q*)
+                assert_eq!(total_buy_fills, res.matched);
+                assert_eq!(total_sell_fills, res.matched);
+
+                // Invariant P-2: Single price (valid clearing price exists)
+                let price = clearing_price(150_000_000, res.tick, k as u16, 1, 1000);
+                assert!(price > 0 && price % 1000 == 0);
+
+                // Invariant P-9: Order independence under permutation
+                // Permuting arrival order yields the exact same total volume and clearing tick
+                let mut permuted_orders = orders.clone();
+                // Simple deterministic swap permutation
+                if permuted_orders.len() > 1 {
+                    let len = permuted_orders.len();
+                    for idx in 0..len {
+                        let target = (idx * 7 + 3) % len;
+                        permuted_orders.swap(idx, target);
+                    }
+                    let permuted_fills = allocate_order_fills(&permuted_orders, &res);
+                    let permuted_buy_sum: u64 = permuted_orders
+                        .iter()
+                        .zip(permuted_fills.iter())
+                        .filter(|(o, _)| o.side == 0)
+                        .map(|(_, &f)| f)
+                        .sum();
+                    assert_eq!(permuted_buy_sum, res.matched);
+                }
+            } else {
+                // No trade: demand and supply do not cross, or one side empty
+                let max_bid = (0..k).rev().find(|&t| bid_qty[t] > 0);
+                let min_ask = (0..k).find(|&t| ask_qty[t] > 0);
+                if let (Some(mb), Some(ma)) = (max_bid, min_ask) {
+                    assert!(mb < ma, "no-trade only if max_bid < min_ask");
                 }
             }
         }
