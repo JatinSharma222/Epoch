@@ -37,5 +37,11 @@ All notable changes to the Epoch codebase are documented here.
   - Added VOID ring slot re-open lifecycle rule in `place_order`.
   - Re-produced the reference worked example on-chain ($i^* = 51$, $Q^* = 30$, price $150.015) with bit-for-bit fill allocation matching `epoch-ref`.
   - Verified 3 VOID edge-case integration tests on local validator.
+- **Task T-09 (Differential Test Harness & Gate G2 Clearance):**
+  - Extracted core auction clearing logic in `programs/epoch` into pure function `execute_batch_auction`.
+  - Added `Default` implementations for `Order` and `Batch` for zero-allocation test harnesses.
+  - Implemented comprehensive differential test harness in `programs/epoch/tests/differential.rs` running against `crates/epoch-ref`.
+  - Evaluated 8 handwritten edge-case corpus batches and 10,000 randomized batches (2,000 adversarial edge cases + 8,000 broad distributions).
+  - Passed Gate G2 with 0 mismatches across 647,981 orders and 701,746,163 matched lots in 0.89s, recorded in `evidence/diff.json`.
 
 

@@ -23,7 +23,23 @@
 - **Analysis:**
   - Full auction clearance ($K=101$ cumulative supply/demand scan, plateau detection, midpoint tie-breaking, uniform clearing price rounding, two-pass pro-rata allocation with dust remainder rule, and funding rate accrual) takes only 31,092 CU at max batch capacity ($N=128$).
   - This is ~15.5% of the standard Solana 200,000 CU transaction limit and ~5.2% of the Gate G1 600,000 CU ceiling, leaving abundant headroom for Pyth price update CPI in the same transaction.
-- **Decision:** Gate G1 APPROVED. Proceed to Task T-08 (`settle_order` instruction).
+- **Decision:** Gate G1 APPROVED. Proceed to Task T-08 (Program clear_batch & VOID Handling).
+
+### Gate G2: Differential Test Parity (2026-10-02)
+- **Status:** PASSED [MEASURED]
+- **Evidence File:** `evidence/diff.json`
+- **Measured Results on Differential Harness:**
+  - Total Batches Tested: **10,000 batches** (2,000 adversarial edge cases + 8,000 broad distributions) `[MEASURED]`
+  - Total Orders Processed: **647,981 orders** `[MEASURED]`
+  - Total Lots Matched: **701,746,163 lots** `[MEASURED]`
+  - Crossing Trade Batches: **9,476** | Zero-Trade Batches: **524** `[MEASURED]`
+  - Mismatches: **0** across all batches, clearing parameters, and order-level fills `[MEASURED]`
+  - Harness Runtime: **0.89s** for 10,000 full auction executions `[MEASURED]`
+- **Analysis:**
+  - Bit-for-bit parity confirmed between on-chain contract code (`programs/epoch/src/instructions/clear_batch.rs::execute_batch_auction`) and the standalone Rust reference engine (`crates/epoch-ref`).
+  - All handwritten edge cases (Worked Example §6, single order, empty book, zero-trade disjoint books, single tick crossing, symmetric plateau midpoint, odd volume rounding, dust remainder allocations) pass identically.
+  - Across 10,000 randomized batches, uniform clearing price, volume maximization, and deterministic pro-rata allocations with remainder distribution are fully verified.
+- **Decision:** Gate G2 APPROVED. Proceed to Task T-10 (`settle_users` & Paged Ring Lifecycle).
 
 ## Architecture Decision Records (Summary from Design Review)
 

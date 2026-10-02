@@ -134,6 +134,18 @@ pub struct Batch {
     pub orders: [Order; MAX_ORDERS], // 8192
 }
 
+impl Default for Order {
+    fn default() -> Self {
+        bytemuck::Zeroable::zeroed()
+    }
+}
+
+impl Default for Batch {
+    fn default() -> Self {
+        bytemuck::Zeroable::zeroed()
+    }
+}
+
 // Compile-time layout assertions.
 const _: () = {
     assert!(std::mem::size_of::<Order>() == 64);

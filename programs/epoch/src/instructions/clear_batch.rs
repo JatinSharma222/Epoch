@@ -128,7 +128,6 @@ pub fn handle_clear_batch(
     };
     market.last_oracle_price = oracle_price;
 
-    let k = K_TICKS;
     let c = CENTER_TICK;
 
     // 4. Oracle & Timing VOID validation (spec §12)
@@ -188,7 +187,64 @@ pub fn handle_clear_batch(
         return Ok(());
     }
 
-    // 4. Compute cumulative demand D[t] and supply S[t]
+    let (i_star, cl_price, q_star) =
+        execute_batch_auction(&mut batch, oracle_price, market.params.tick_bps);
+
+    batch.oracle_conf = params.oracle_conf;
+    batch.oracle_posted_slot = params.oracle_posted_slot;
+
+    // 12. Update funding index (spec §8)
+    if q_star > 0 {
+        let offset_star = (i_star as i32 - c as i32) * market.params.tick_bps as i32;
+        let rate = offset_star.clamp(
+            -(market.params.funding_cap_bps as i32),
+            market.params.funding_cap_bps as i32,
+        );
+        let funding_period_slots = market.params.funding_period_slots as i128;
+        if funding_period_slots > 0 {
+            let accrual =
+                (rate as i128 * (oracle_price as i128 / 1000) * n_slots as i128 * F_SCALE)
+                    / (10_000 * funding_period_slots);
+            market.funding_index = market.funding_index.saturating_add(accrual);
+        }
+    }
+    market.next_batch_to_clear = batch_id + 1;
+
+    msg!(
+        "Batch {} cleared: tick={}, price={}, matched={}",
+        batch_id,
+        i_star,
+        cl_price,
+        q_star
+    );
+
+    Ok(())
+}
+
+/// Core auction execution algorithm on an in-memory or zero-copy `Batch`.
+///
+/// Implements spec §4, §5, §6, §14:
+/// 1. Cumulative demand D[t] and supply S[t]
+/// 2. Vmax scan
+/// 3. Plateau detection [p_lo, p_hi]
+/// 4. Min-imbalance interval [q_lo, q_hi]
+/// 5. Midpoint tie-breaking i* toward center tick c
+/// 6. Marginal tick & allocation calculations (t_b, M_b, T_b; t_a, M_a, T_a)
+/// 7. Clearing price calculation via compute_clearing_price
+/// 8. Two-pass pro-rata fill allocation with deterministic remainder dust rule
+/// 9. Order status updates (FILLED, PARTIAL, EXPIRED)
+///
+/// Returns (i_star, cl_price, q_star) if crossing volume exists, or (c, oracle_price, 0) if no trade.
+#[allow(clippy::needless_range_loop)]
+pub fn execute_batch_auction(
+    batch: &mut Batch,
+    oracle_price: u64,
+    tick_bps: u16,
+) -> (u16, u64, u64) {
+    let k = K_TICKS;
+    let c = CENTER_TICK;
+
+    // 1. Compute cumulative demand D[t] and supply S[t]
     let mut d = [0u64; K_TICKS + 1];
     for t in (0..k).rev() {
         d[t] = d[t + 1].saturating_add(batch.bid_qty[t]);
@@ -201,7 +257,7 @@ pub fn handle_clear_batch(
         s[t] = acc;
     }
 
-    // 5. Find maximum executable volume Vmax
+    // 2. Find maximum executable volume Vmax
     let mut vmax = 0u64;
     for t in 0..k {
         let v = d[t].min(s[t]);
@@ -224,11 +280,10 @@ pub fn handle_clear_batch(
             }
         }
 
-        msg!("Batch {} cleared with 0 volume (no trade)", batch_id);
-        return Ok(());
+        return (c as u16, oracle_price, 0);
     }
 
-    // 6. Find plateau interval [p_lo, p_hi]
+    // 3. Find plateau interval [p_lo, p_hi]
     let mut p_lo = usize::MAX;
     let mut p_hi = 0usize;
     for t in 0..k {
@@ -241,7 +296,7 @@ pub fn handle_clear_batch(
         }
     }
 
-    // 7. Find minimum imbalance interval [q_lo, q_hi] within plateau
+    // 4. Find minimum imbalance interval [q_lo, q_hi] within plateau
     let mut min_imb = u64::MAX;
     for t in p_lo..=p_hi {
         let imb = d[t].abs_diff(s[t]);
@@ -262,11 +317,11 @@ pub fn handle_clear_batch(
         }
     }
 
-    // 8. Midpoint rounding toward center tick c
+    // 5. Midpoint rounding toward center tick c
     let i_star = midpoint_c(q_lo, q_hi, c);
     let q_star = vmax;
 
-    // 9. Marginal tick and allocations (spec §5)
+    // 6. Marginal tick and allocations (spec §5)
     // Buy marginal: highest tick with D[t] >= Q*
     let mut t_b = 0usize;
     for t in (0..k).rev() {
@@ -289,21 +344,14 @@ pub fn handle_clear_batch(
     let m_a = q_star - if t_a == 0 { 0 } else { s[t_a - 1] };
     let total_a = batch.ask_qty[t_a];
 
-    // 10. Uniform clearing price
-    let cl_price = compute_clearing_price(
-        oracle_price,
-        i_star as u16,
-        k as u16,
-        market.params.tick_bps,
-        PRICE_TICK,
-    );
+    // 7. Uniform clearing price
+    let cl_price =
+        compute_clearing_price(oracle_price, i_star as u16, k as u16, tick_bps, PRICE_TICK);
 
     batch.clearing_tick = i_star as u16;
     batch.clearing_price = cl_price;
     batch.matched_lots = q_star;
     batch.oracle_price = oracle_price;
-    batch.oracle_conf = params.oracle_conf;
-    batch.oracle_posted_slot = params.oracle_posted_slot;
     batch.bid_marginal_tick = t_b as u16;
     batch.bid_marginal_alloc = m_b;
     batch.bid_marginal_total = total_b;
@@ -312,7 +360,7 @@ pub fn handle_clear_batch(
     batch.ask_marginal_total = total_a;
     batch.status = BatchStatus::CLEARED;
 
-    // 11. Allocate fills across order buffer (spec §5)
+    // 8. Allocate fills across order buffer (spec §5)
     // Pass 1: compute base fills (full fill for strictly better, floor pro-rata for marginal)
     let num_orders = batch.num_orders as usize;
     let mut marginal_buy_sum = 0u64;
@@ -409,27 +457,5 @@ pub fn handle_clear_batch(
         }
     }
 
-    // 12. Update funding index (spec §8)
-    let offset_star = (i_star as i32 - c as i32) * market.params.tick_bps as i32;
-    let rate = offset_star.clamp(
-        -(market.params.funding_cap_bps as i32),
-        market.params.funding_cap_bps as i32,
-    );
-    let funding_period_slots = market.params.funding_period_slots as i128;
-    if funding_period_slots > 0 {
-        let accrual = (rate as i128 * (oracle_price as i128 / 1000) * n_slots as i128 * F_SCALE)
-            / (10_000 * funding_period_slots);
-        market.funding_index = market.funding_index.saturating_add(accrual);
-    }
-    market.next_batch_to_clear = batch_id + 1;
-
-    msg!(
-        "Batch {} cleared: tick={}, price={}, matched={}",
-        batch_id,
-        i_star,
-        cl_price,
-        q_star
-    );
-
-    Ok(())
+    (i_star as u16, cl_price, q_star)
 }

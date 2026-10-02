@@ -1,6 +1,6 @@
 {
   "description": "Gate G1 Compute Unit Spike Measurements",
-  "timestamp": "2026-10-01T17:04:23.891Z",
+  "timestamp": "2026-10-02T07:23:09.263Z",
   "network": "localnet",
   "toolchain": {
     "solana": "3.0.15",
@@ -15,7 +15,7 @@
     {
       "instruction": "place_order",
       "condition": "empty_batch",
-      "cu_consumed": 11701,
+      "cu_consumed": 14701,
       "target_max_cu": 60000,
       "passed": true,
       "label": "MEASURED"
@@ -27,7 +27,7 @@
       "matched_lots": 60,
       "clearing_tick": 50,
       "clearing_price": 150000000,
-      "cu_consumed": 16454,
+      "cu_consumed": 16314,
       "target_max_cu": 600000,
       "passed": true,
       "label": "MEASURED"
@@ -39,7 +39,7 @@
       "matched_lots": 190,
       "clearing_tick": 50,
       "clearing_price": 150000000,
-      "cu_consumed": 22035,
+      "cu_consumed": 21839,
       "target_max_cu": 600000,
       "passed": true,
       "label": "MEASURED"
@@ -51,7 +51,7 @@
       "matched_lots": 382,
       "clearing_tick": 50,
       "clearing_price": 150000000,
-      "cu_consumed": 22954,
+      "cu_consumed": 22675,
       "target_max_cu": 600000,
       "passed": true,
       "label": "MEASURED"
@@ -59,7 +59,7 @@
     {
       "instruction": "place_order",
       "condition": "near_full_batch_128",
-      "cu_consumed": 11399,
+      "cu_consumed": 12899,
       "target_max_cu": 60000,
       "passed": true,
       "label": "MEASURED"
@@ -71,7 +71,7 @@
       "matched_lots": 766,
       "clearing_tick": 50,
       "clearing_price": 150000000,
-      "cu_consumed": 31796,
+      "cu_consumed": 31307,
       "target_max_cu": 600000,
       "passed": true,
       "label": "MEASURED"

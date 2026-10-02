@@ -658,6 +658,8 @@ dependencies = [
  "anchor-lang",
  "anchor-spl",
  "bytemuck",
+ "epoch-ref",
+ "rand 0.8.8",
 ]
 
 [[package]]
