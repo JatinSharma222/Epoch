@@ -9,6 +9,8 @@ import {
   getAccount,
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
+import { EpochKeeper } from "../keeper/src/keeper";
+import { KeeperConfig } from "../keeper/src/types";
 
 describe("Epoch Program Integration Tests", () => {
   const provider = anchor.AnchorProvider.env();
@@ -69,6 +71,7 @@ describe("Epoch Program Integration Tests", () => {
   let voidRingIndex: number = -1;
   let reusedBatchId: anchor.BN;
   let reusedRingIndex: number = -1;
+  let fundingRingIndex: number = -1;
 
   const defaultMarketArgs = {
     baseLot: new anchor.BN(1000),
@@ -1924,7 +1927,6 @@ describe("Epoch Program Integration Tests", () => {
     }
 
     let fundingBatchId: anchor.BN;
-    let fundingRingIndex: number = -1;
     let preSettleLongQuote: anchor.BN;
     let preSettleShortQuote: anchor.BN;
     let preSettleFeePool: anchor.BN;
@@ -2520,6 +2522,295 @@ describe("Epoch Program Integration Tests", () => {
           marketFinal.feePool.toNumber() +
           marketFinal.insuranceFund.toNumber()
       ).to.equal(Number(vaultAccFinal.amount));
+    });
+  });
+
+  describe("T-12: Permissionless Keeper v1 & Dual-Keeper Idempotency", () => {
+    let keeper1: EpochKeeper;
+    let keeper2: EpochKeeper;
+    const keeper2Keypair = anchor.web3.Keypair.generate();
+    const logFilePath = "keeper/logs/test_tx_log.jsonl";
+
+    async function advanceSlots(n: number) {
+      for (let i = 0; i < n; i++) {
+        const tx = new anchor.web3.Transaction().add(
+          anchor.web3.SystemProgram.transfer({
+            fromPubkey: admin.publicKey,
+            toPubkey: admin.publicKey,
+            lamports: 1000,
+          })
+        );
+        await provider.sendAndConfirm(tx, []);
+      }
+    }
+
+    before(async () => {
+      // Clean previous test log file
+      if (fs.existsSync(logFilePath)) {
+        try {
+          fs.unlinkSync(logFilePath);
+        } catch {}
+      }
+
+      // Fund keeper2 keypair with 2 SOL
+      const fundTx = new anchor.web3.Transaction().add(
+        anchor.web3.SystemProgram.transfer({
+          fromPubkey: admin.publicKey,
+          toPubkey: keeper2Keypair.publicKey,
+          lamports: 2 * anchor.web3.LAMPORTS_PER_SOL,
+        })
+      );
+      await provider.sendAndConfirm(fundTx);
+
+      // Configure market parameters for T-12 keeper tests
+      await program.methods
+        .updateMarketParams({
+          ...defaultMarketArgs,
+          batchSlots: 5,
+          lookahead: 20,
+          maxClearDelaySlots: 50,
+        })
+        .accounts({
+          market: marketPda,
+          admin: admin.publicKey,
+        })
+        .rpc();
+
+      const keeperConfig: KeeperConfig = {
+        rpcUrl: provider.connection.rpcEndpoint,
+        programId: program.programId,
+        commitment: "confirmed",
+        logFilePath,
+        pageSize: 10,
+        network: "localnet",
+      };
+
+      keeper1 = new EpochKeeper(keeperConfig, (admin as any).payer);
+      keeper2 = new EpochKeeper(keeperConfig, keeper2Keypair);
+    });
+
+    it("Initializes keeper instance, scans ring buffer, and retrieves batch summaries", async () => {
+      const summaries = await keeper1.getBatchSummaries();
+      expect(summaries.length).to.equal(8);
+      for (let r = 0; r < 8; r++) {
+        expect(summaries[r].ringIndex).to.equal(r);
+        expect(summaries[r].status).to.be.within(0, 4);
+      }
+    });
+
+    it("Keeper autonomously clears a closed batch and records structured logs with measured CU", async () => {
+      // Reuse the known SETTLED ring slot fundingRingIndex
+      const ringIndex = fundingRingIndex;
+      const prevBatch = await program.account.batch.fetch(getBatchPda(ringIndex));
+      expect(prevBatch.status).to.equal(4); // SETTLED
+
+      const market = await program.account.market.fetch(marketPda);
+      const slot = await provider.connection.getSlot();
+      const currentBatch = Math.floor(
+        (slot - market.startSlot.toNumber()) / market.params.batchSlots
+      );
+      let target = Math.max(currentBatch + 1, prevBatch.batchId.toNumber() + 1);
+      while (target % 8 !== ringIndex) {
+        target++;
+      }
+      const targetBatchId = new anchor.BN(target);
+      const batchPda = getBatchPda(ringIndex);
+
+      // Place 2 orders: cuUsers[0] BUY 10 lots, cuUsers[1] SELL 10 lots at tick 50
+      await program.methods
+        .placeOrder({
+          targetBatch: targetBatchId,
+          ringIndex,
+          slotId: 3,
+          side: 0, // BUY
+          tick: 50,
+          lots: new anchor.BN(10),
+          oraclePrice: new anchor.BN(150_000_000),
+          flags: 0,
+        })
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+          user: cuUserPdas[0],
+          owner: cuUsers[0].publicKey,
+        })
+        .signers([cuUsers[0]])
+        .rpc({ skipPreflight: true });
+
+      await program.methods
+        .placeOrder({
+          targetBatch: targetBatchId,
+          ringIndex,
+          slotId: 3,
+          side: 1, // SELL
+          tick: 50,
+          lots: new anchor.BN(10),
+          oraclePrice: new anchor.BN(150_000_000),
+          flags: 0,
+        })
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+          user: cuUserPdas[1],
+          owner: cuUsers[1].publicKey,
+        })
+        .signers([cuUsers[1]])
+        .rpc({ skipPreflight: true });
+
+      // Advance slot past close_slot
+      const closeSlot =
+        market.startSlot.toNumber() +
+        (targetBatchId.toNumber() + 1) * market.params.batchSlots;
+      const curSlot = await provider.connection.getSlot();
+      if (curSlot < closeSlot + 1) {
+        await advanceSlots(closeSlot + 1 - curSlot);
+      }
+
+      // Keeper ticks to clear the batch
+      const tickRes = await keeper1.tick();
+      expect(tickRes.clearedCount).to.be.greaterThanOrEqual(1);
+
+      const batchAfter = await program.account.batch.fetch(batchPda);
+      expect(batchAfter.status).to.equal(2); // CLEARED
+      expect(batchAfter.matchedLots.toNumber()).to.equal(10);
+
+      // Verify structured logs in log file
+      expect(fs.existsSync(logFilePath)).to.be.true;
+      const logContent = fs.readFileSync(logFilePath, "utf-8");
+      const lines = logContent.trim().split("\n").map((l) => JSON.parse(l));
+      const clearLog = lines.find(
+        (e: any) => e.kind === "clear_batch" && e.batch_id === targetBatchId.toNumber()
+      );
+      expect(clearLog).to.not.be.undefined;
+      expect(clearLog.success).to.be.true;
+      expect(clearLog.cu_consumed).to.be.greaterThan(0);
+      expect(clearLog.cu_consumed).to.be.lessThanOrEqual(600_000);
+      expect(clearLog.source).to.equal("keeper");
+      expect(clearLog.submit_slot).to.be.greaterThan(0);
+      expect(clearLog.landed_slot).to.be.greaterThanOrEqual(clearLog.submit_slot);
+    });
+
+    it("Keeper autonomously settles cleared batch in pages and transitions batch to SETTLED", async () => {
+      const ringIndex = fundingRingIndex;
+      const batchPda = getBatchPda(ringIndex);
+      const batchPre = await program.account.batch.fetch(batchPda);
+      expect(batchPre.status).to.equal(2); // CLEARED
+      expect(batchPre.settledOrders).to.equal(0);
+
+      // Keeper ticks to settle the batch
+      const tickRes = await keeper1.tick();
+      expect(tickRes.settledCount).to.be.greaterThanOrEqual(1);
+
+      const batchSettled = await program.account.batch.fetch(batchPda);
+      expect(batchSettled.status).to.equal(4); // SETTLED
+      expect(batchSettled.settledOrders).to.equal(batchSettled.numOrders);
+
+      // Verify settle_users log entry
+      const logContent = fs.readFileSync(logFilePath, "utf-8");
+      const lines = logContent.trim().split("\n").map((l) => JSON.parse(l));
+      const settleLog = lines.find(
+        (e: any) => e.kind === "settle_users" && e.batch_id === batchPre.batchId.toNumber()
+      );
+      expect(settleLog).to.not.be.undefined;
+      expect(settleLog.success).to.be.true;
+      expect(settleLog.cu_consumed).to.be.greaterThan(0);
+      expect(settleLog.cu_consumed).to.be.lessThanOrEqual(200_000);
+    });
+
+    it("Verifies strict idempotency when two independent keepers race to clear and settle", async () => {
+      const ringIndex = fundingRingIndex;
+      const prevBatch = await program.account.batch.fetch(getBatchPda(ringIndex));
+      expect(prevBatch.status).to.equal(4); // SETTLED
+
+      const market = await program.account.market.fetch(marketPda);
+      const slot = await provider.connection.getSlot();
+      const currentBatch = Math.floor(
+        (slot - market.startSlot.toNumber()) / market.params.batchSlots
+      );
+      let target = Math.max(currentBatch + 1, prevBatch.batchId.toNumber() + 1);
+      while (target % 8 !== ringIndex) {
+        target++;
+      }
+      const targetBatchId = new anchor.BN(target);
+      const batchPda = getBatchPda(ringIndex);
+
+      // Place 2 orders: cuUsers[2] BUY 10 lots, cuUsers[3] SELL 10 lots
+      await program.methods
+        .placeOrder({
+          targetBatch: targetBatchId,
+          ringIndex,
+          slotId: 4,
+          side: 0, // BUY
+          tick: 50,
+          lots: new anchor.BN(10),
+          oraclePrice: new anchor.BN(150_000_000),
+          flags: 0,
+        })
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+          user: cuUserPdas[2],
+          owner: cuUsers[2].publicKey,
+        })
+        .signers([cuUsers[2]])
+        .rpc({ skipPreflight: true });
+
+      await program.methods
+        .placeOrder({
+          targetBatch: targetBatchId,
+          ringIndex,
+          slotId: 4,
+          side: 1, // SELL
+          tick: 50,
+          lots: new anchor.BN(10),
+          oraclePrice: new anchor.BN(150_000_000),
+          flags: 0,
+        })
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+          user: cuUserPdas[3],
+          owner: cuUsers[3].publicKey,
+        })
+        .signers([cuUsers[3]])
+        .rpc({ skipPreflight: true });
+
+      // Advance slot past close_slot
+      const closeSlot =
+        market.startSlot.toNumber() +
+        (targetBatchId.toNumber() + 1) * market.params.batchSlots;
+      const curSlot = await provider.connection.getSlot();
+      if (curSlot < closeSlot + 1) {
+        await advanceSlots(closeSlot + 1 - curSlot);
+      }
+
+      // Race 1: Concurrent clear_batch calls from keeper1 and keeper2
+      const [clearRes1, clearRes2] = await Promise.all([
+        keeper1.clearBatch(targetBatchId.toNumber(), ringIndex),
+        keeper2.clearBatch(targetBatchId.toNumber(), ringIndex),
+      ]);
+      expect(clearRes1.success).to.be.true;
+      expect(clearRes2.success).to.be.true;
+
+      const batchCleared = await program.account.batch.fetch(batchPda);
+      expect(batchCleared.status).to.equal(2); // CLEARED
+
+      // Race 2: Concurrent settle_users calls from keeper1 and keeper2
+      const [settleRes1, settleRes2] = await Promise.all([
+        keeper1.settleUsers(targetBatchId.toNumber(), ringIndex, 10),
+        keeper2.settleUsers(targetBatchId.toNumber(), ringIndex, 10),
+      ]);
+      expect(settleRes1.settledPages + settleRes2.settledPages).to.be.greaterThanOrEqual(1);
+
+      const batchSettled = await program.account.batch.fetch(batchPda);
+      expect(batchSettled.status).to.equal(4); // SETTLED
+      expect(batchSettled.settledOrders).to.equal(batchSettled.numOrders);
+
+      // Verify calling tick() on settled batch is completely idempotent
+      const tick1 = await keeper1.tick();
+      const tick2 = await keeper2.tick();
+      expect(tick1.clearedCount).to.equal(0);
+      expect(tick2.clearedCount).to.equal(0);
     });
   });
 });

@@ -40,3 +40,7 @@ keys/
 
 # OS
 Thumbs.db
+
+# Keeper runtime logs
+keeper/logs/
+*.jsonl

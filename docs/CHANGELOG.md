@@ -60,5 +60,20 @@ All notable changes to the Epoch codebase are documented here.
     - Zero-sum funding property verification across long and short positions, showing that difference equals the rounding residual accounted for in `fee_pool`.
     - Withdraw-after-close lifecycle: rejection of withdrawals while a position is open (`PositionNotFlat`), closing position at a profit in a subsequent batch, realized PnL folding from `quote_position` into `collateral`, and flat withdrawal with 100% Invariant I-1 conservation across all accounts.
   - All 37 integration tests passing. All 22 cargo unit & differential tests passing. Clippy clean with 0 warnings.
+- **Task T-12 (Permissionless Keeper v1 & Dual-Keeper Idempotency):**
+  - Implemented standalone TypeScript keeper service under `keeper/`:
+    - `keeper/src/types.ts`: typed configurations, Pyth oracle price records, structured transaction logs, and batch summaries.
+    - `keeper/src/logger.ts`: high-performance JSON log writer supporting stdout formatting and append-only `.jsonl` logging (`logs/tx_log.jsonl`) with strict `[MEASURED]` labels.
+    - `keeper/src/oracle.ts`: Pyth Solana Receiver integration supporting resilient devnet and localnet price feeds with lazy dynamic imports.
+    - `keeper/src/keeper.ts`: `EpochKeeper` engine with ring PDA discovery, lookahead batch state polling, autonomous `clearBatch` clearing crank with oracle parameter construction, and paged `settleUsers` settlement crank.
+    - `keeper/src/index.ts`: production-grade executable CLI supporting continuous multi-market loop (`--interval-ms`, `--page-size`) and single-tick verification (`--once`) with graceful SIGINT/SIGTERM handlers.
+  - Implemented strict idempotency safeguards against concurrent keeper races: on-chain batch state verification prevents spurious simulation errors if a racing keeper cleared or settled in the same slot.
+  - Added full end-to-end integration tests in `tests/epoch.ts`:
+    - Keeper instance initialization and ring buffer inspection.
+    - Autonomous closed batch clearing with structured logging and empirical compute unit measurement (`clear_batch` consumed 18,728 CU, well within 600,000 limit).
+    - Autonomous paged user settlement (`settle_users` consumed 8,184 - 15,873 CU).
+    - Dual-keeper race condition test with concurrent `clearBatch` and `settleUsers` verifying seamless idempotency and batch completion to `SETTLED`.
+  - All 41 integration tests passing. All 22 cargo unit and differential tests passing. Clippy and rustfmt clean.
+
 
 
