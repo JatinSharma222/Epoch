@@ -60,6 +60,10 @@ pub fn handle_deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
         .checked_add(amount as i64)
         .ok_or(EpochError::MathOverflow)?;
 
+    if user.base_position == 0 {
+        user.funding_snapshot = ctx.accounts.market.load()?.funding_index;
+    }
+
     msg!(
         "Deposit: user={}, amount={}, total_collateral={}",
         user.owner,

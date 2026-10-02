@@ -67,6 +67,8 @@ describe("Epoch Program Integration Tests", () => {
   let workedRingIndex: number = -1;
   let voidBatchId: anchor.BN;
   let voidRingIndex: number = -1;
+  let reusedBatchId: anchor.BN;
+  let reusedRingIndex: number = -1;
 
   const defaultMarketArgs = {
     baseLot: new anchor.BN(1000),
@@ -1873,6 +1875,8 @@ describe("Epoch Program Integration Tests", () => {
         target++;
       }
       const targetBatchId = new anchor.BN(target);
+      reusedBatchId = targetBatchId;
+      reusedRingIndex = ringIndex;
 
       // Place a new order into the reused ring slot
       await program.methods
@@ -1902,6 +1906,620 @@ describe("Epoch Program Integration Tests", () => {
       expect(newBatch.settledOrders).to.equal(0);
       expect(newBatch.orders[0].lots.toNumber()).to.equal(10);
       expect(newBatch.orders[0].status).to.equal(0); // OPEN
+    });
+  });
+
+  describe("T-11: Fees, Funding, & Realized PnL Folding", () => {
+    async function advanceSlots(n: number) {
+      for (let i = 0; i < n; i++) {
+        const tx = new anchor.web3.Transaction().add(
+          anchor.web3.SystemProgram.transfer({
+            fromPubkey: admin.publicKey,
+            toPubkey: admin.publicKey,
+            lamports: 1000,
+          })
+        );
+        await provider.sendAndConfirm(tx, []);
+      }
+    }
+
+    let fundingBatchId: anchor.BN;
+    let fundingRingIndex: number = -1;
+    let preSettleLongQuote: anchor.BN;
+    let preSettleShortQuote: anchor.BN;
+    let preSettleFeePool: anchor.BN;
+
+    it("Clears batch with clearing offset, advances funding index, and settles with Invariant I-1 conservation", async () => {
+      // Configure market parameters: 5 slots per batch, lookahead 20, funding_period_slots = 72000
+      await program.methods
+        .updateMarketParams({
+          ...defaultMarketArgs,
+          batchSlots: 5,
+          lookahead: 20,
+          fundingPeriodSlots: 72000,
+        })
+        .accounts({
+          market: marketPda,
+          admin: admin.publicKey,
+        })
+        .rpc();
+
+      fundingRingIndex = reusedRingIndex;
+      fundingBatchId = reusedBatchId;
+      const batchPda = getBatchPda(fundingRingIndex);
+
+      // In T-10, cuUsers[0] placed BUY 10 lots at tick 50 (slot_id 4) in reusedRingIndex
+      // Replace with BUY 10 lots at tick 54 (+4 bps)
+      await program.methods
+        .placeOrder({
+          targetBatch: fundingBatchId,
+          ringIndex: fundingRingIndex,
+          slotId: 4,
+          side: 0, // BUY
+          tick: 54,
+          lots: new anchor.BN(10),
+          oraclePrice: new anchor.BN(150_000_000),
+          flags: 0,
+        })
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+          user: cuUserPdas[0],
+          owner: cuUsers[0].publicKey,
+        })
+        .signers([cuUsers[0]])
+        .rpc({ skipPreflight: true });
+
+      // cuUsers[9] places SELL 10 lots at tick 52 (+2 bps) (slot_id 4)
+      await program.methods
+        .placeOrder({
+          targetBatch: fundingBatchId,
+          ringIndex: fundingRingIndex,
+          slotId: 4,
+          side: 1, // SELL
+          tick: 52,
+          lots: new anchor.BN(10),
+          oraclePrice: new anchor.BN(150_000_000),
+          flags: 0,
+        })
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+          user: cuUserPdas[9],
+          owner: cuUsers[9].publicKey,
+        })
+        .signers([cuUsers[9]])
+        .rpc({ skipPreflight: true });
+
+      // Advance slot past close_slot
+      const marketBefore = await program.account.market.fetch(marketPda);
+      const closeSlot =
+        marketBefore.startSlot.toNumber() +
+        (fundingBatchId.toNumber() + 1) * marketBefore.params.batchSlots;
+      const curSlot = await provider.connection.getSlot();
+      if (curSlot < closeSlot + 1) {
+        await advanceSlots(closeSlot + 1 - curSlot);
+      }
+
+      // Record pre-clearing funding index
+      const fundingIndexBefore = new anchor.BN(
+        marketBefore.fundingIndex.toString()
+      );
+
+      // Clear batch at oracle price 150_000_000 ($150.00)
+      // BUY tick 54, SELL tick 52 -> midpoint tick 53 (+3 bps offset)
+      // Clearing price = 150_000_000 * 1.0003 = 150_045_000 micro-USDC ($150.045)
+      // Matched lots = 10
+      await program.methods
+        .clearBatch(fundingBatchId, fundingRingIndex, {
+          oraclePrice: new anchor.BN(150_000_000),
+          oracleConf: new anchor.BN(0),
+          oraclePostedSlot: new anchor.BN(closeSlot),
+          oracleTimestamp: new anchor.BN(Math.floor(Date.now() / 1000)),
+        })
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+          cranker: admin.publicKey,
+        })
+        .rpc({ skipPreflight: true });
+
+      const batchCleared = await program.account.batch.fetch(batchPda);
+      expect(batchCleared.status).to.equal(2); // CLEARED
+      expect(batchCleared.clearingTick).to.equal(53);
+      expect(batchCleared.clearingPrice.toNumber()).to.equal(150_045_000);
+      expect(batchCleared.matchedLots.toNumber()).to.equal(10);
+
+      // Verify that market.fundingIndex has increased
+      const marketCleared = await program.account.market.fetch(marketPda);
+      const fundingIndexCleared = new anchor.BN(
+        marketCleared.fundingIndex.toString()
+      );
+      expect(fundingIndexCleared.gt(fundingIndexBefore)).to.be.true;
+
+      // Accrual check: rate = 3 bps, m = 150_000_000, n = 5, F_SCALE = 10^9, period = 72000
+      // accrual = (3 * 150_000 * 5 * 10^9) / (10_000 * 72_000) = 3,125,000
+      const expectedAccrual = new anchor.BN(3)
+        .mul(new anchor.BN(150_000))
+        .mul(new anchor.BN(5))
+        .mul(new anchor.BN(1_000_000_000))
+        .div(new anchor.BN(10_000 * 72000));
+      expect(fundingIndexCleared.sub(fundingIndexBefore).toString()).to.equal(
+        expectedAccrual.toString()
+      );
+
+      // Fetch users before settlement to track funding payment deltas
+      const u0Pre = await program.account.userAccount.fetch(cuUserPdas[0]);
+      const u9Pre = await program.account.userAccount.fetch(cuUserPdas[9]);
+      preSettleLongQuote = new anchor.BN(u0Pre.quotePosition.toString());
+      preSettleShortQuote = new anchor.BN(u9Pre.quotePosition.toString());
+      preSettleFeePool = marketCleared.feePool;
+
+      // Settle users 0 and 9
+      await program.methods
+        .settleUsers(fundingBatchId, fundingRingIndex)
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+        })
+        .remainingAccounts([
+          { pubkey: cuUserPdas[0], isWritable: true, isSigner: false },
+          { pubkey: cuUserPdas[9], isWritable: true, isSigner: false },
+        ])
+        .rpc({ skipPreflight: true });
+
+      const batchSettled = await program.account.batch.fetch(batchPda);
+      expect(batchSettled.status).to.equal(4); // SETTLED
+
+      // Invariant I-1: Conservation with funding active
+      const marketAfter = await program.account.market.fetch(marketPda);
+      const vaultAcc = await getAccount(provider.connection, collateralVaultPda);
+      const testUserAcc = await program.account.userAccount.fetch(userPda);
+      let sumCollateralQuote =
+        testUserAcc.collateral.toNumber() +
+        Number(testUserAcc.quotePosition.toString());
+      let sumBasePositions = testUserAcc.basePosition.toNumber();
+      for (let i = 0; i < NUM_USERS; i++) {
+        const u = await program.account.userAccount.fetch(cuUserPdas[i]);
+        sumCollateralQuote +=
+          u.collateral.toNumber() + Number(u.quotePosition.toString());
+        sumBasePositions += u.basePosition.toNumber();
+      }
+      expect(sumBasePositions).to.equal(0);
+      expect(
+        sumCollateralQuote +
+          marketAfter.feePool.toNumber() +
+          marketAfter.insuranceFund.toNumber()
+      ).to.equal(Number(vaultAcc.amount));
+    });
+
+    it("Verifies funding zero-sum balance and rounding residual accounting in fee_pool", async () => {
+      // In the previous batch:
+      // User 0 had long position of 20 lots before fill, funding snapshot 0.
+      // Delta = fundingIndexCleared - 0 = expectedAccrual.
+      // prod_long = 20 * delta > 0.
+      // payment_long = ceil(20 * delta / 10^9).
+      // User 9 had short position of -10 lots before fill, funding snapshot 0.
+      // prod_short = -10 * delta < 0.
+      // payment_short = floor(-10 * delta / 10^9) = -floor(10 * delta / 10^9).
+      // received_short = floor(10 * delta / 10^9).
+      //
+      // Total trade notional was: 10 lots * 150,045 micro-USDC = 1,500,450 micro-USDC.
+      // Trading fee for each side: ceil(1,500,450 * 5 / 10000) = 751 micro-USDC.
+      // Total trading fees = 751 + 751 = 1502 micro-USDC.
+      const u0Post = await program.account.userAccount.fetch(cuUserPdas[0]);
+      const u9Post = await program.account.userAccount.fetch(cuUserPdas[9]);
+      const marketPost = await program.account.market.fetch(marketPda);
+
+      // Verify User 0 (Long) paid funding:
+      // u0Post.quotePosition = preSettleLongQuote - notional - payment_long
+      // notional = 1,500,450
+      const notional = new anchor.BN(1_500_450);
+      const feePerUser = new anchor.BN(751);
+      const totalTradingFees = feePerUser.muln(2);
+
+      const actualLongQuoteDelta = preSettleLongQuote.sub(
+        new anchor.BN(u0Post.quotePosition.toString())
+      );
+      // actualLongQuoteDelta = notional + funding_payment_long
+      const fundingPaidLong = actualLongQuoteDelta.sub(notional);
+      expect(fundingPaidLong.toNumber()).to.be.greaterThanOrEqual(0);
+
+      // Verify User 9 (Short) received funding:
+      // u9Post.quotePosition = preSettleShortQuote + notional - payment_short (where payment_short <= 0)
+      const actualShortQuoteDelta = new anchor.BN(
+        u9Post.quotePosition.toString()
+      ).sub(preSettleShortQuote);
+      // actualShortQuoteDelta = notional + funding_received_short
+      const fundingReceivedShort = actualShortQuoteDelta.sub(notional);
+      expect(fundingReceivedShort.toNumber()).to.be.greaterThanOrEqual(0);
+
+      // Zero-sum condition: fundingPaidLong >= fundingReceivedShort
+      const fundingResidual = fundingPaidLong.sub(fundingReceivedShort);
+      expect(fundingResidual.toNumber()).to.be.greaterThanOrEqual(0);
+
+      // fee_pool must have received: totalTradingFees + fundingResidual
+      const actualFeePoolDelta = marketPost.feePool.sub(preSettleFeePool);
+      expect(actualFeePoolDelta.toString()).to.equal(
+        totalTradingFees.add(fundingResidual).toString()
+      );
+
+      // Net conservation across quote positions and fee pool:
+      // delta_long_quote + delta_short_quote + fee_pool_delta_from_funding == 0
+      // where delta_long = -notional - fundingPaidLong
+      //       delta_short = +notional + fundingReceivedShort
+      // delta_long + delta_short = -(fundingPaidLong - fundingReceivedShort) = -fundingResidual
+      // -fundingResidual + fundingResidual == 0!
+      const totalUserQuoteShift = new anchor.BN(u0Post.quotePosition.toString())
+        .sub(preSettleLongQuote)
+        .add(
+          new anchor.BN(u9Post.quotePosition.toString()).sub(preSettleShortQuote)
+        );
+      expect(totalUserQuoteShift.add(fundingResidual).toNumber()).to.equal(0);
+    });
+
+    it("Rejects withdrawal with open position and folds realized PnL into collateral upon flat exit", async () => {
+      // Create dedicated clean user flatUser
+      const flatUser = anchor.web3.Keypair.generate();
+      const [flatUserPda] = anchor.web3.PublicKey.findProgramAddressSync(
+        [Buffer.from("user"), flatUser.publicKey.toBuffer()],
+        program.programId
+      );
+      const flatUserAta = getAssociatedTokenAddressSync(
+        quoteMintPda,
+        flatUser.publicKey
+      );
+
+      // Fund flatUser with SOL and create ATA
+      const fundTx = new anchor.web3.Transaction().add(
+        anchor.web3.SystemProgram.transfer({
+          fromPubkey: admin.publicKey,
+          toPubkey: flatUser.publicKey,
+          lamports: 1 * anchor.web3.LAMPORTS_PER_SOL,
+        }),
+        createAssociatedTokenAccountInstruction(
+          admin.publicKey,
+          flatUserAta,
+          flatUser.publicKey,
+          quoteMintPda
+        )
+      );
+      await provider.sendAndConfirm(fundTx);
+
+      // Mint 1000 USDC to flatUser
+      await program.methods
+        .faucet(new anchor.BN(1000_000_000))
+        .accounts({
+          quoteMint: quoteMintPda,
+          mintAuthority: mintAuthorityPda,
+          recipientTokenAccount: flatUserAta,
+          recipient: flatUser.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([flatUser])
+        .rpc();
+
+      // Create User Account
+      await program.methods
+        .createUser()
+        .accounts({
+          user: flatUserPda,
+          owner: flatUser.publicKey,
+          systemProgram: anchor.web3.SystemProgram.programId,
+        })
+        .signers([flatUser])
+        .rpc();
+
+      // Deposit 300 USDC collateral
+      await program.methods
+        .deposit(new anchor.BN(300_000_000))
+        .accounts({
+          market: marketPda,
+          user: flatUserPda,
+          userTokenAccount: flatUserAta,
+          collateralVault: collateralVaultPda,
+          owner: flatUser.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([flatUser])
+        .rpc();
+
+      // Step 1: flatUser (currently flat, $300 collateral) opens a 10-lot long position in a new batch
+      const flatUserAccInit = await program.account.userAccount.fetch(flatUserPda);
+      expect(flatUserAccInit.basePosition.toNumber()).to.equal(0);
+      expect(flatUserAccInit.pendingBuyLots.toNumber()).to.equal(0);
+      expect(flatUserAccInit.pendingSellLots.toNumber()).to.equal(0);
+      expect(flatUserAccInit.activeOrders).to.equal(0);
+
+      // Reuse the known SETTLED ring slot fundingRingIndex for open batch
+      let openRingIndex = fundingRingIndex;
+      const prevBatch = await program.account.batch.fetch(getBatchPda(openRingIndex));
+      expect(prevBatch.status).to.equal(4); // SETTLED
+
+      const market = await program.account.market.fetch(marketPda);
+      const slot = await provider.connection.getSlot();
+      const currentBatch = Math.floor(
+        (slot - market.startSlot.toNumber()) / market.params.batchSlots
+      );
+      let targetOpen = Math.max(currentBatch + 1, prevBatch.batchId.toNumber() + 1);
+      while (targetOpen % 8 !== openRingIndex) {
+        targetOpen++;
+      }
+      const openBatchId = new anchor.BN(targetOpen);
+      const openBatchPda = getBatchPda(openRingIndex);
+
+      // flatUser places BUY 10 lots at tick 50 (0 bps)
+      await program.methods
+        .placeOrder({
+          targetBatch: openBatchId,
+          ringIndex: openRingIndex,
+          slotId: 1,
+          side: 0, // BUY
+          tick: 50,
+          lots: new anchor.BN(10),
+          oraclePrice: new anchor.BN(150_000_000),
+          flags: 0,
+        })
+        .accounts({
+          market: marketPda,
+          batch: openBatchPda,
+          user: flatUserPda,
+          owner: flatUser.publicKey,
+        })
+        .signers([flatUser])
+        .rpc({ skipPreflight: true });
+
+      // cuUsers[10] places SELL 10 lots at tick 50 (counterparty)
+      await program.methods
+        .placeOrder({
+          targetBatch: openBatchId,
+          ringIndex: openRingIndex,
+          slotId: 1,
+          side: 1, // SELL
+          tick: 50,
+          lots: new anchor.BN(10),
+          oraclePrice: new anchor.BN(150_000_000),
+          flags: 0,
+        })
+        .accounts({
+          market: marketPda,
+          batch: openBatchPda,
+          user: cuUserPdas[10],
+          owner: cuUsers[10].publicKey,
+        })
+        .signers([cuUsers[10]])
+        .rpc({ skipPreflight: true });
+
+      // Advance slot past close_slot
+      const closeSlotOpen =
+        market.startSlot.toNumber() +
+        (openBatchId.toNumber() + 1) * market.params.batchSlots;
+      const curSlotOpen = await provider.connection.getSlot();
+      if (curSlotOpen < closeSlotOpen + 1) {
+        await advanceSlots(closeSlotOpen + 1 - curSlotOpen);
+      }
+
+      // Clear batch at $150.00
+      await program.methods
+        .clearBatch(openBatchId, openRingIndex, {
+          oraclePrice: new anchor.BN(150_000_000),
+          oracleConf: new anchor.BN(0),
+          oraclePostedSlot: new anchor.BN(closeSlotOpen),
+          oracleTimestamp: new anchor.BN(Math.floor(Date.now() / 1000)),
+        })
+        .accounts({
+          market: marketPda,
+          batch: openBatchPda,
+          cranker: admin.publicKey,
+        })
+        .rpc({ skipPreflight: true });
+
+      // Settle batch for flatUser and cuUsers[10]
+      await program.methods
+        .settleUsers(openBatchId, openRingIndex)
+        .accounts({
+          market: marketPda,
+          batch: openBatchPda,
+        })
+        .remainingAccounts([
+          { pubkey: flatUserPda, isWritable: true, isSigner: false },
+          { pubkey: cuUserPdas[10], isWritable: true, isSigner: false },
+        ])
+        .rpc({ skipPreflight: true });
+
+      const flatUserAccOpen = await program.account.userAccount.fetch(flatUserPda);
+      expect(flatUserAccOpen.basePosition.toNumber()).to.equal(10);
+      expect(flatUserAccOpen.quotePosition.toString()).to.equal("-1500000"); // 10 * 150_000
+
+      // Step 2: Attempt withdrawal while position is open -> MUST FAIL with PositionNotFlat
+      let withdrawOpenFailed = false;
+      try {
+        await program.methods
+          .withdraw(new anchor.BN(10_000_000))
+          .accounts({
+            market: marketPda,
+            user: flatUserPda,
+            userTokenAccount: flatUserAta,
+            collateralVault: collateralVaultPda,
+            owner: flatUser.publicKey,
+            tokenProgram: TOKEN_PROGRAM_ID,
+          })
+          .signers([flatUser])
+          .rpc({ skipPreflight: false });
+      } catch (err: any) {
+        withdrawOpenFailed = true;
+        expect(err.toString()).to.include("PositionNotFlat");
+      }
+      expect(withdrawOpenFailed).to.be.true;
+
+      // Step 3: Close position at a profit in a subsequent batch (reuse SETTLED openRingIndex)
+      let closeRingIndex = openRingIndex;
+      const prevOpenBatch = await program.account.batch.fetch(getBatchPda(closeRingIndex));
+      expect(prevOpenBatch.status).to.equal(4); // SETTLED
+
+      const market2 = await program.account.market.fetch(marketPda);
+      const slot2 = await provider.connection.getSlot();
+      const currentBatch2 = Math.floor(
+        (slot2 - market2.startSlot.toNumber()) / market2.params.batchSlots
+      );
+      let targetClose = Math.max(currentBatch2 + 1, openBatchId.toNumber() + 1);
+      while (targetClose % 8 !== closeRingIndex) {
+        targetClose++;
+      }
+      const closeBatchId = new anchor.BN(targetClose);
+      const closeBatchPda = getBatchPda(closeRingIndex);
+
+      // flatUser places SELL 10 lots at tick 52 (+2 bps)
+      await program.methods
+        .placeOrder({
+          targetBatch: closeBatchId,
+          ringIndex: closeRingIndex,
+          slotId: 2,
+          side: 1, // SELL
+          tick: 52,
+          lots: new anchor.BN(10),
+          oraclePrice: new anchor.BN(160_000_000), // Mark moved to $160.00
+          flags: 0,
+        })
+        .accounts({
+          market: marketPda,
+          batch: closeBatchPda,
+          user: flatUserPda,
+          owner: flatUser.publicKey,
+        })
+        .signers([flatUser])
+        .rpc({ skipPreflight: true });
+
+      // cuUsers[11] places BUY 10 lots at tick 52 (+2 bps)
+      await program.methods
+        .placeOrder({
+          targetBatch: closeBatchId,
+          ringIndex: closeRingIndex,
+          slotId: 2,
+          side: 0, // BUY
+          tick: 52,
+          lots: new anchor.BN(10),
+          oraclePrice: new anchor.BN(160_000_000),
+          flags: 0,
+        })
+        .accounts({
+          market: marketPda,
+          batch: closeBatchPda,
+          user: cuUserPdas[11],
+          owner: cuUsers[11].publicKey,
+        })
+        .signers([cuUsers[11]])
+        .rpc({ skipPreflight: true });
+
+      // Advance slot past close_slot
+      const closeSlotClose =
+        market2.startSlot.toNumber() +
+        (closeBatchId.toNumber() + 1) * market2.params.batchSlots;
+      const curSlotClose = await provider.connection.getSlot();
+      if (curSlotClose < closeSlotClose + 1) {
+        await advanceSlots(closeSlotClose + 1 - curSlotClose);
+      }
+
+      // Clear batch at oracle price 160_000_000 ($160.00)
+      // Clearing tick 52 (+2 bps): clearing price = 160_000_000 * 1.0002 = 160_032_000 micro-USDC ($160.032)
+      // Notional = 10 * 160_032 = 1,600,320 micro-USDC
+      await program.methods
+        .clearBatch(closeBatchId, closeRingIndex, {
+          oraclePrice: new anchor.BN(160_000_000),
+          oracleConf: new anchor.BN(0),
+          oraclePostedSlot: new anchor.BN(closeSlotClose),
+          oracleTimestamp: new anchor.BN(Math.floor(Date.now() / 1000)),
+        })
+        .accounts({
+          market: marketPda,
+          batch: closeBatchPda,
+          cranker: admin.publicKey,
+        })
+        .rpc({ skipPreflight: true });
+
+      // Settle batch for flatUser and cuUsers[11]
+      await program.methods
+        .settleUsers(closeBatchId, closeRingIndex)
+        .accounts({
+          market: marketPda,
+          batch: closeBatchPda,
+        })
+        .remainingAccounts([
+          { pubkey: flatUserPda, isWritable: true, isSigner: false },
+          { pubkey: cuUserPdas[11], isWritable: true, isSigner: false },
+        ])
+        .rpc({ skipPreflight: true });
+
+      const flatUserAccClosed = await program.account.userAccount.fetch(
+        flatUserPda
+      );
+      // Position is now flat: 10 - 10 = 0
+      expect(flatUserAccClosed.basePosition.toNumber()).to.equal(0);
+      // Realized trading profit = 1,600,320 (sell) - 1,500,000 (buy) = +100,320 micro-USDC (minus small funding payment)
+      const realizedQuotePnl = Number(
+        flatUserAccClosed.quotePosition.toString()
+      );
+      expect(realizedQuotePnl).to.be.greaterThan(90_000); // Net positive profit (~$0.10)
+
+      // Step 4: flatUser withdraws $50 USDC (50_000_000 micro-USDC)
+      const ataBefore = await getAccount(provider.connection, flatUserAta);
+      const withdrawAmount = new anchor.BN(50_000_000);
+      const preWithdrawCollateral = flatUserAccClosed.collateral.toNumber();
+
+      await program.methods
+        .withdraw(withdrawAmount)
+        .accounts({
+          market: marketPda,
+          user: flatUserPda,
+          userTokenAccount: flatUserAta,
+          collateralVault: collateralVaultPda,
+          owner: flatUser.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([flatUser])
+        .rpc({ skipPreflight: true });
+
+      const ataAfter = await getAccount(provider.connection, flatUserAta);
+      expect(Number(ataAfter.amount)).to.equal(
+        Number(ataBefore.amount) + withdrawAmount.toNumber()
+      );
+
+      const flatUserAccFinal = await program.account.userAccount.fetch(flatUserPda);
+      // Quote position folded to 0
+      expect(flatUserAccFinal.quotePosition.toString()).to.equal("0");
+      expect(flatUserAccFinal.basePosition.toNumber()).to.equal(0);
+      // Collateral = preWithdrawCollateral + realizedQuotePnl - withdrawAmount
+      expect(flatUserAccFinal.collateral.toNumber()).to.equal(
+        preWithdrawCollateral + realizedQuotePnl - withdrawAmount.toNumber()
+      );
+
+      // Verify Invariant I-1 across the entire system (including flatUser)
+      const marketFinal = await program.account.market.fetch(marketPda);
+      const vaultAccFinal = await getAccount(
+        provider.connection,
+        collateralVaultPda
+      );
+      const testUserAcc = await program.account.userAccount.fetch(userPda);
+      let sumCollateralQuote =
+        flatUserAccFinal.collateral.toNumber() +
+        Number(flatUserAccFinal.quotePosition.toString()) +
+        testUserAcc.collateral.toNumber() +
+        Number(testUserAcc.quotePosition.toString());
+      let sumBasePositions =
+        flatUserAccFinal.basePosition.toNumber() +
+        testUserAcc.basePosition.toNumber();
+      for (let i = 0; i < NUM_USERS; i++) {
+        const u = await program.account.userAccount.fetch(cuUserPdas[i]);
+        sumCollateralQuote +=
+          u.collateral.toNumber() + Number(u.quotePosition.toString());
+        sumBasePositions += u.basePosition.toNumber();
+      }
+      expect(sumBasePositions).to.equal(0);
+      expect(
+        sumCollateralQuote +
+          marketFinal.feePool.toNumber() +
+          marketFinal.insuranceFund.toNumber()
+      ).to.equal(Number(vaultAccFinal.amount));
     });
   });
 });

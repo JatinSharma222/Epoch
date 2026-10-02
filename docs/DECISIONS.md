@@ -61,3 +61,4 @@
 | ADR-14 | Postgres + Indexer + Read-only API | DECIDED | Non-authoritative history store; trading functions without it. |
 | ADR-15 | Docker `epoch` prefix everywhere | DECIDED | Prevents resource collisions on local and test environments. |
 | ADR-16 | Native toolchain with Docker services | DECIDED | High performance on Apple Silicon; Docker for off-chain services. |
+| ADR-17 | Funding residual routing to fee_pool and flat PnL folding | DECIDED | Spec §8 requires payers round up and receivers round down, routing the non-negative residual to `market.fee_pool`. Realized PnL is folded into collateral only when position is flat (`base_position == 0`), guaranteeing Invariant I-1 conservation at all times. |

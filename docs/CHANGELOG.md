@@ -52,5 +52,13 @@ All notable changes to the Epoch codebase are documented here.
   - Added `BatchStatus::SETTLED` state transition when `settled_orders == num_orders`, enabling ring slot reuse.
   - Added program events: `UserSettled`, `BatchCleared`, and `BatchVoided`.
   - Verified Invariants I-1 (Conservation), I-4 (Volume balance), and I-12 (Completeness), paged settlement across multiple transactions, VOID batch settlement, and ring reuse across 34 passing integration tests.
+- **Task T-11 (Fees, Funding, & Realized PnL Folding):**
+  - Updated `settle_users` to track cumulative funding payments and credit the rounding residual (payers' round-ups minus receivers' round-downs) directly into `market.fee_pool` per spec §8.
+  - Aligned `user.funding_snapshot = market.funding_index` on `withdraw` and on `deposit` when flat.
+  - Added comprehensive integration tests covering:
+    - Active funding index accrual from clearing price offsets (`offset* != 0`) and settlement with exact Invariant I-1 conservation.
+    - Zero-sum funding property verification across long and short positions, showing that difference equals the rounding residual accounted for in `fee_pool`.
+    - Withdraw-after-close lifecycle: rejection of withdrawals while a position is open (`PositionNotFlat`), closing position at a profit in a subsequent batch, realized PnL folding from `quote_position` into `collateral`, and flat withdrawal with 100% Invariant I-1 conservation across all accounts.
+  - All 37 integration tests passing. All 22 cargo unit & differential tests passing. Clippy clean with 0 warnings.
 
 

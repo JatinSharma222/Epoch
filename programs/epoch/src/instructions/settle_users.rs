@@ -52,6 +52,8 @@ pub fn handle_settle_users<'info>(
     let fee_bps = market.params.fee_bps as u128;
     let funding_index = market.funding_index;
 
+    let mut total_funding_residual: i128 = 0;
+
     // 3. Duplicate check across remaining_accounts
     let mut seen_users = BTreeSet::new();
 
@@ -87,6 +89,9 @@ pub fn handle_settle_users<'info>(
             user.quote_position = user
                 .quote_position
                 .checked_sub(payment)
+                .ok_or(EpochError::MathOverflow)?;
+            total_funding_residual = total_funding_residual
+                .checked_add(payment)
                 .ok_or(EpochError::MathOverflow)?;
         }
         user.funding_snapshot = funding_index;
@@ -200,6 +205,20 @@ pub fn handle_settle_users<'info>(
             fill_lots: user_fill_lots,
             fee: user_fees,
         });
+    }
+
+    // Spec §8: Funding residual (payers' round-ups minus receivers' round-downs) goes to fee_pool
+    if total_funding_residual > 0 {
+        market.fee_pool = market
+            .fee_pool
+            .checked_add(total_funding_residual as u64)
+            .ok_or(EpochError::MathOverflow)?;
+    } else if total_funding_residual < 0 {
+        let neg = (-total_funding_residual) as u64;
+        market.fee_pool = market
+            .fee_pool
+            .checked_sub(neg)
+            .ok_or(EpochError::MathOverflow)?;
     }
 
     // 5. Check if all orders in batch are settled

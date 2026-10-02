@@ -63,6 +63,7 @@ pub fn handle_withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
             .ok_or(EpochError::MathOverflow)?;
         user.quote_position = 0;
     }
+    user.funding_snapshot = ctx.accounts.market.load()?.funding_index;
 
     // Check available collateral
     require!(
