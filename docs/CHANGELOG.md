@@ -74,6 +74,27 @@ All notable changes to the Epoch codebase are documented here.
     - Autonomous paged user settlement (`settle_users` consumed 8,184 - 15,873 CU).
     - Dual-keeper race condition test with concurrent `clearBatch` and `settleUsers` verifying seamless idempotency and batch completion to `SETTLED`.
   - All 41 integration tests passing. All 22 cargo unit and differential tests passing. Clippy and rustfmt clean.
+- **Task T-13 (Backstop Vault Automated Quoting, Inventory Skew, Guards, & Keeper Hook):**
+  - Designed and implemented on-chain Backstop Vault automated liquidity engine (spec §9, architecture §9):
+    - `programs/epoch/src/state/market.rs`: defined `VaultParams` (48 bytes, 8-byte aligned) embedded directly into `Market`'s reserved space, preserving 384-byte size and 16-byte alignment.
+    - `programs/epoch/src/instructions/initialize_vault_user.rs`: `initialize_vault_user` creates `UserAccount` PDA owned by `vault_authority` PDA (`[b"vault"]`).
+    - `programs/epoch/src/instructions/fund_vault.rs`: `fund_vault` allows permissionless mock USDC deposits into `collateral_vault`, crediting `vault_user.collateral` with strict Invariant I-1 conservation.
+    - `programs/epoch/src/instructions/vault_quote.rs`: permissionless `vault_quote` instruction generates 6-order symmetric ladder (3 bids, 3 asks) across configurable tick offsets (`quote_offset_bps = [3, 6, 10]`) and lot sizes (`quote_lots = [10, 20, 30]`).
+    - Built-in inventory skew: shifts ladder offsets by `shift_bps = (inventory * skew_bps) / max_inventory`, encouraging position rebalancing (Avellaneda-Stoikov style).
+    - Built-in guards: skips quoting with structured events (`VaultQuoteSkipped`) when oracle is stale, confidence exceeds threshold (`max_conf_bps`), or inventory exceeds `max_inventory_lots`.
+    - `programs/epoch/src/instructions/update_vault_params.rs`: admin instruction for updating vault parameters.
+  - Enhanced TypeScript keeper service (`keeper/src/keeper.ts`):
+    - Added `vaultQuote(targetBatch, ringIndex)` method with resilient price queries and transaction logging.
+    - Added `getVaultStatus()` method returning real-time vault inventory, collateral, quote position, and active orders.
+    - Hooked into keeper `tick()` loop to quote for future open batches and log vault telemetry (`[vault] inventory=... [MEASURED]`).
+  - Added full end-to-end integration tests in `tests/epoch.ts`:
+    - Backstop vault initialization and collateral deposit ($5,000 USDC) with Invariant I-1 verification.
+    - 6-order quoting ladder placement and tick aggregate verification.
+    - Idempotency and configuration update verification.
+    - Confidence guard verification (skips quoting when confidence is wide).
+    - Autonomous keeper clearing and trade matching against backstop liquidity with paged settlement and position verification.
+  - All 46 integration tests passing. All 22 cargo unit & differential tests passing. Clippy and rustfmt clean.
+
 
 
 

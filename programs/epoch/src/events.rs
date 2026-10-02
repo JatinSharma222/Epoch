@@ -26,3 +26,32 @@ pub struct BatchVoided {
     pub batch_id: u64,
     pub reason: u8,
 }
+
+/// Emitted when the Backstop Vault successfully quotes into a batch.
+#[event]
+pub struct VaultQuoted {
+    pub target_batch: u64,
+    pub ring_index: u8,
+    pub inventory: i64,
+    pub shift_bps: i64,
+    pub orders_placed: u8,
+}
+
+/// Emitted when the Backstop Vault skips quoting due to an on-chain guard.
+#[event]
+pub struct VaultQuoteSkipped {
+    pub target_batch: u64,
+    pub ring_index: u8,
+    pub reason: u8,
+}
+
+/// Skip reason codes for VaultQuoteSkipped.
+#[allow(non_snake_case)]
+pub mod VaultSkipReason {
+    pub const NOT_ACTIVE: u8 = 1;
+    pub const ORACLE_STALE: u8 = 2;
+    pub const CONFIDENCE_TOO_WIDE: u8 = 3;
+    pub const MAX_INVENTORY_EXCEEDED: u8 = 4;
+    pub const INSUFFICIENT_MARGIN: u8 = 5;
+    pub const BATCH_FULL: u8 = 6;
+}

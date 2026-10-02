@@ -7,7 +7,7 @@ import {
 } from "@solana/web3.js";
 import * as anchor from "@coral-xyz/anchor";
 import * as fs from "fs";
-import { KeeperConfig, BatchSummary, TxLogEntry } from "./types";
+import { KeeperConfig, BatchSummary, TxLogEntry, VaultStatus } from "./types";
 import { KeeperLogger } from "./logger";
 import { PythOracleService } from "./oracle";
 import idl from "../../target/idl/epoch.json";
@@ -23,6 +23,8 @@ export class EpochKeeper {
 
   public marketPda: PublicKey;
   public marketBump: number;
+  public vaultAuthority: PublicKey;
+  public vaultUser: PublicKey;
 
   private isRunning: boolean = false;
   private loopTimeout: NodeJS.Timeout | null = null;
@@ -72,6 +74,18 @@ export class EpochKeeper {
     );
     this.marketPda = marketPda;
     this.marketBump = marketBump;
+
+    const [vaultAuthority] = PublicKey.findProgramAddressSync(
+      [Buffer.from("vault")],
+      config.programId
+    );
+    this.vaultAuthority = vaultAuthority;
+
+    const [vaultUser] = PublicKey.findProgramAddressSync(
+      [Buffer.from("user"), vaultAuthority.toBuffer()],
+      config.programId
+    );
+    this.vaultUser = vaultUser;
   }
 
   public getBatchPda(ringIndex: number): PublicKey {
@@ -86,6 +100,35 @@ export class EpochKeeper {
    */
   public async getMarket(): Promise<any> {
     return (this.program.account as any).market.fetch(this.marketPda);
+  }
+
+  public getVaultAuthority(): PublicKey {
+    return this.vaultAuthority;
+  }
+
+  public getVaultUser(): PublicKey {
+    return this.vaultUser;
+  }
+
+  /**
+   * Queries on-chain Backstop Vault UserAccount state.
+   */
+  public async getVaultStatus(): Promise<VaultStatus | null> {
+    try {
+      const user = await (this.program.account as any).userAccount.fetch(
+        this.vaultUser
+      );
+      return {
+        vaultAuthority: this.vaultAuthority,
+        vaultUser: this.vaultUser,
+        inventoryLots: user.basePosition.toNumber(),
+        collateralMicroUsdc: user.collateral.toNumber(),
+        quotePositionMicroUsdc: user.quotePosition.toString(),
+        activeOrders: user.activeOrders,
+      };
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -360,11 +403,86 @@ export class EpochKeeper {
   }
 
   /**
-   * One execution tick: inspects all batches, clears closed ones, and settles cleared ones.
+   * Permissionlessly places Backstop Vault automated quotes into a target batch.
+   */
+  public async vaultQuote(
+    targetBatch: number,
+    ringIndex: number
+  ): Promise<{ success: boolean; signature?: string; cu?: number; error?: string }> {
+    const submitSlot = await this.connection.getSlot();
+    const batchPda = this.getBatchPda(ringIndex);
+
+    try {
+      const oracleData = await this.oracle.getLatestPrice();
+
+      const txSig = await (this.program.methods as any)
+        .vaultQuote({
+          targetBatch: new anchor.BN(targetBatch),
+          ringIndex,
+          oraclePrice: oracleData.price,
+          oracleConf: oracleData.conf,
+          oracleTimestamp: oracleData.publishTime,
+        })
+        .accounts({
+          market: this.marketPda,
+          batch: batchPda,
+          vaultAuthority: this.vaultAuthority,
+          vaultUser: this.vaultUser,
+          cranker: this.wallet.publicKey,
+        })
+        .rpc({ skipPreflight: true });
+
+      const txInfo = await this.connection.getTransaction(txSig, {
+        commitment: "confirmed",
+        maxSupportedTransactionVersion: 0,
+      });
+
+      const landedSlot = txInfo?.slot || (await this.connection.getSlot());
+      const cuConsumed = txInfo?.meta?.computeUnitsConsumed || 0;
+
+      this.logger.logTx({
+        signature: txSig,
+        kind: "vault_quote",
+        source: "keeper",
+        network: this.config.network || "devnet",
+        submit_slot: submitSlot,
+        landed_slot: landedSlot,
+        cu_consumed: cuConsumed,
+        success: true,
+        error: null,
+        created_at: new Date().toISOString(),
+        batch_id: targetBatch,
+        ring_index: ringIndex,
+      });
+
+      return { success: true, signature: txSig, cu: cuConsumed };
+    } catch (err: any) {
+      const errStr = err.toString();
+      if (
+        errStr.includes("BatchClosed") ||
+        errStr.includes("RingSlotBusy") ||
+        errStr.includes("BatchTooFarAhead") ||
+        errStr.includes("BatchInPast")
+      ) {
+        return { success: true };
+      }
+
+      this.logger.warn(
+        `[keeper] vault_quote error for batch ${targetBatch}:`,
+        errStr
+      );
+      return { success: false, error: errStr };
+    }
+  }
+
+  /**
+   * One execution tick: inspects all batches, clears closed ones, settles cleared ones,
+   * and places Backstop Vault quotes into future batches.
    */
   public async tick(): Promise<{
     clearedCount: number;
     settledCount: number;
+    vaultQuotesCount: number;
     currentSlot: number;
   }> {
     const currentSlot = await this.connection.getSlot();
@@ -372,6 +490,7 @@ export class EpochKeeper {
 
     let clearedCount = 0;
     let settledCount = 0;
+    let vaultQuotesCount = 0;
 
     for (const b of summaries) {
       // 1. Check for clearing
@@ -391,7 +510,29 @@ export class EpochKeeper {
       }
     }
 
-    return { clearedCount, settledCount, currentSlot };
+    // 3. Backstop vault quoting in future open batch
+    try {
+      const vaultStatus = await this.getVaultStatus();
+      if (vaultStatus && vaultStatus.collateralMicroUsdc > 0) {
+        const market = await this.getMarket();
+        const batchSlots = market.params.batchSlots;
+        const currentBatch = Math.floor(
+          (currentSlot - market.startSlot.toNumber()) / batchSlots
+        );
+        const targetBatch = currentBatch + 1;
+        const ringIndex = targetBatch % 8;
+        const quoteRes = await this.vaultQuote(targetBatch, ringIndex);
+        if (quoteRes.success) vaultQuotesCount++;
+
+        this.logger.info(
+          `[vault] inventory=${vaultStatus.inventoryLots} lots, collateral=${vaultStatus.collateralMicroUsdc} micro-USDC, quote_pos=${vaultStatus.quotePositionMicroUsdc} [MEASURED]`
+        );
+      }
+    } catch (err: any) {
+      this.logger.warn("[keeper] vault tick error:", err.toString());
+    }
+
+    return { clearedCount, settledCount, vaultQuotesCount, currentSlot };
   }
 
   /**

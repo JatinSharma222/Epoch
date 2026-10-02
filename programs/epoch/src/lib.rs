@@ -95,6 +95,29 @@ pub mod epoch {
     ) -> Result<()> {
         handle_settle_users(ctx, batch_id, ring_index)
     }
+
+    /// Initialize the Backstop Vault UserAccount PDA owned by the vault authority PDA.
+    pub fn initialize_vault_user(ctx: Context<InitializeVaultUser>) -> Result<()> {
+        handle_initialize_vault_user(ctx)
+    }
+
+    /// Fund the Backstop Vault with mock USDC collateral.
+    pub fn fund_vault(ctx: Context<FundVault>, amount: u64) -> Result<()> {
+        handle_fund_vault(ctx, amount)
+    }
+
+    /// Permissionlessly place the Backstop Vault ladder quotes for a future batch.
+    pub fn vault_quote(ctx: Context<VaultQuote>, params: VaultQuoteParams) -> Result<()> {
+        handle_vault_quote(ctx, params)
+    }
+
+    /// Admin updates Backstop Vault parameters.
+    pub fn update_vault_params(
+        ctx: Context<UpdateVaultParams>,
+        new_params: UpdateVaultParamsArgs,
+    ) -> Result<()> {
+        handle_update_vault_params(ctx, new_params)
+    }
 }
 
 #[cfg(test)]

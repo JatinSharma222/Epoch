@@ -50,3 +50,13 @@ export interface BatchSummary {
   matchedLots: number;
   clearingPrice: number;
 }
+
+export interface VaultStatus {
+  vaultAuthority: PublicKey;
+  vaultUser: PublicKey;
+  inventoryLots: number;
+  collateralMicroUsdc: number;
+  quotePositionMicroUsdc: string;
+  activeOrders: number;
+}
+

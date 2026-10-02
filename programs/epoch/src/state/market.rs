@@ -72,6 +72,44 @@ impl Default for MarketParams {
     }
 }
 
+/// On-chain parameters for the Backstop Vault demo liquidity engine (architecture §9).
+#[zero_copy]
+#[derive(Debug, PartialEq, Eq)]
+#[repr(C)]
+pub struct VaultParams {
+    /// Rung offsets in basis points relative to oracle (default [3, 6, 10]).
+    pub quote_offset_bps: [u16; 3],
+    /// Padding for 8-byte alignment.
+    pub _pad0: [u8; 2],
+    /// Lot sizes for each rung (default [10, 20, 30]).
+    pub quote_lots: [u64; 3],
+    /// Maximum allowed position in lots before quoting stops (default 1000).
+    pub max_inventory_lots: u64,
+    /// Max inventory skew in basis points (default 5).
+    pub skew_bps: u16,
+    /// Max oracle confidence in bps before quoting halts (default 15).
+    pub max_conf_bps: u16,
+    /// Active flag (1 = active, 0 = paused).
+    pub is_active: u8,
+    /// Padding to 8-byte boundary.
+    pub _pad1: [u8; 3],
+}
+
+impl Default for VaultParams {
+    fn default() -> Self {
+        Self {
+            quote_offset_bps: [3, 6, 10],
+            _pad0: [0; 2],
+            quote_lots: [10, 20, 30],
+            max_inventory_lots: 1000,
+            skew_bps: 5,
+            max_conf_bps: 15,
+            is_active: 1,
+            _pad1: [0; 3],
+        }
+    }
+}
+
 /// Global market configuration account (PDA seed `[b"market"]`).
 ///
 /// One per market. Contains admin keys, oracle config, funding state,
@@ -107,17 +145,21 @@ pub struct Market {
     pub fee_pool: u64,
     /// Accrued insurance fund in micro-USDC.
     pub insurance_fund: u64,
+    /// Backstop vault parameters (inline struct, 48 bytes).
+    pub vault_params: VaultParams,
     /// PDA bump for the market account.
     pub bump: u8,
     /// Padding to align to 8-byte boundary.
     pub _pad_bump: [u8; 7],
     /// Reserved space for future fields without reallocation.
-    pub _reserved: [u8; 120],
+    pub _reserved: [u8; 72],
 }
 
 const _: () = {
     assert!(std::mem::size_of::<MarketParams>() % 8 == 0);
     assert!(std::mem::size_of::<MarketParams>() == 64);
+    assert!(std::mem::size_of::<VaultParams>() % 8 == 0);
+    assert!(std::mem::size_of::<VaultParams>() == 48);
     assert!(std::mem::size_of::<Market>() == 384);
     assert!(std::mem::size_of::<Market>() % 16 == 0);
 };

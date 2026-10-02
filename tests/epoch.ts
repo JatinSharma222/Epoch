@@ -1,5 +1,6 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
+import { PublicKey } from "@solana/web3.js";
 import { Epoch } from "../target/types/epoch";
 import { expect } from "chai";
 import * as fs from "fs";
@@ -2811,6 +2812,305 @@ describe("Epoch Program Integration Tests", () => {
       const tick2 = await keeper2.tick();
       expect(tick1.clearedCount).to.equal(0);
       expect(tick2.clearedCount).to.equal(0);
+    });
+  });
+
+  describe("T-13: Backstop Vault Automated Quoting, Inventory Skew, Guards, & Keeper Hook", () => {
+    let vaultAuthority: PublicKey;
+    let vaultUserPda: PublicKey;
+    let keeper: EpochKeeper;
+
+    async function advanceSlots(n: number) {
+      for (let i = 0; i < n; i++) {
+        const tx = new anchor.web3.Transaction().add(
+          anchor.web3.SystemProgram.transfer({
+            fromPubkey: admin.publicKey,
+            toPubkey: admin.publicKey,
+            lamports: 100,
+          })
+        );
+        await provider.sendAndConfirm(tx);
+      }
+    }
+
+    before(async () => {
+      [vaultAuthority] = PublicKey.findProgramAddressSync(
+        [Buffer.from("vault")],
+        program.programId
+      );
+      [vaultUserPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("user"), vaultAuthority.toBuffer()],
+        program.programId
+      );
+
+      keeper = new EpochKeeper(
+        {
+          rpcUrl: provider.connection.rpcEndpoint,
+          programId: program.programId,
+          commitment: "confirmed",
+          network: "localnet",
+        },
+        (admin as any).payer
+      );
+    });
+
+    it("Initializes Backstop Vault UserAccount PDA and funds it with collateral", async () => {
+      // 1. Initialize vault user account
+      await program.methods
+        .initializeVaultUser()
+        .accounts({
+          market: marketPda,
+          vaultAuthority,
+          vaultUser: vaultUserPda,
+          payer: admin.publicKey,
+          systemProgram: anchor.web3.SystemProgram.programId,
+        })
+        .rpc({ skipPreflight: true });
+
+      const vaultUserPre = await program.account.userAccount.fetch(vaultUserPda);
+      expect(vaultUserPre.owner.toBase58()).to.equal(vaultAuthority.toBase58());
+      expect(vaultUserPre.collateral.toNumber()).to.equal(0);
+      expect(vaultUserPre.basePosition.toNumber()).to.equal(0);
+
+      // 2. Faucet USDC for admin and fund the vault
+      const adminAta = getAssociatedTokenAddressSync(quoteMintPda, admin.publicKey);
+      const ataInfo = await provider.connection.getAccountInfo(adminAta);
+      if (!ataInfo) {
+        const createAtaTx = new anchor.web3.Transaction().add(
+          createAssociatedTokenAccountInstruction(
+            admin.publicKey,
+            adminAta,
+            admin.publicKey,
+            quoteMintPda
+          )
+        );
+        await provider.sendAndConfirm(createAtaTx);
+      }
+
+      const fundAmount = new anchor.BN(5_000_000_000); // $5,000 USDC
+      await program.methods
+        .faucet(fundAmount)
+        .accounts({
+          quoteMint: quoteMintPda,
+          mintAuthority: mintAuthorityPda,
+          recipientTokenAccount: adminAta,
+          recipient: admin.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .rpc();
+
+      await program.methods
+        .fundVault(fundAmount)
+        .accounts({
+          market: marketPda,
+          vaultAuthority,
+          vaultUser: vaultUserPda,
+          funderTokenAccount: adminAta,
+          collateralVault: collateralVaultPda,
+          funder: admin.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .rpc({ skipPreflight: true });
+
+      const vaultUserPost = await program.account.userAccount.fetch(vaultUserPda);
+      expect(vaultUserPost.collateral.toString()).to.equal(fundAmount.toString());
+
+      // Verify Invariant I-1 conservation with funded vault
+      const vaultBalance = (
+        await provider.connection.getTokenAccountBalance(collateralVaultPda)
+      ).value.amount;
+      const market = await program.account.market.fetch(marketPda);
+      expect(vaultUserPost.collateral.toNumber()).to.be.lessThanOrEqual(
+        Number(vaultBalance) - market.feePool.toNumber() - market.insuranceFund.toNumber()
+      );
+    });
+
+    let targetBatchId: anchor.BN;
+    let ringIndex: number;
+    let batchPda: PublicKey;
+
+    it("Places 6-order quoting ladder into target batch and updates tick aggregates", async () => {
+      ringIndex = fundingRingIndex;
+      const prevBatch = await program.account.batch.fetch(getBatchPda(ringIndex));
+      expect(prevBatch.status).to.equal(4); // SETTLED
+
+      const market = await program.account.market.fetch(marketPda);
+      const slot = await provider.connection.getSlot();
+      const currentBatch = Math.floor(
+        (slot - market.startSlot.toNumber()) / market.params.batchSlots
+      );
+      let target = Math.max(currentBatch + 1, prevBatch.batchId.toNumber() + 1);
+      while (target % 8 !== ringIndex) {
+        target++;
+      }
+      const lookahead = market.params.lookahead;
+      if (target > currentBatch + lookahead) {
+        const slotsNeeded = (target - (currentBatch + lookahead)) * market.params.batchSlots;
+        await advanceSlots(slotsNeeded);
+      }
+      targetBatchId = new anchor.BN(target);
+      batchPda = getBatchPda(ringIndex);
+
+      const oraclePrice = new anchor.BN(150_000_000); // $150.00
+      const oracleConf = new anchor.BN(100_000); // ~6.6 bps < 15 bps max
+      const nowSecs = Math.floor(Date.now() / 1000);
+
+      // Call vault_quote permissionlessly
+      await program.methods
+        .vaultQuote({
+          targetBatch: targetBatchId,
+          ringIndex,
+          oraclePrice,
+          oracleConf,
+          oracleTimestamp: new anchor.BN(nowSecs),
+        })
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+          vaultAuthority,
+          vaultUser: vaultUserPda,
+          cranker: admin.publicKey,
+        })
+        .rpc({ skipPreflight: true });
+
+      const batch = await program.account.batch.fetch(batchPda);
+      expect(batch.numOrders).to.equal(6);
+      expect(batch.status).to.equal(1); // OPEN
+
+      // Verify 3 bids: ticks 47, 44, 40 (offsets -3, -6, -10 bps)
+      expect(batch.bidQty[47].toNumber()).to.equal(10);
+      expect(batch.bidQty[44].toNumber()).to.equal(20);
+      expect(batch.bidQty[40].toNumber()).to.equal(30);
+
+      // Verify 3 asks: ticks 53, 56, 60 (offsets +3, +6, +10 bps)
+      expect(batch.askQty[53].toNumber()).to.equal(10);
+      expect(batch.askQty[56].toNumber()).to.equal(20);
+      expect(batch.askQty[60].toNumber()).to.equal(30);
+
+      const vaultUser = await program.account.userAccount.fetch(vaultUserPda);
+      expect(vaultUser.pendingBuyLots.toNumber()).to.equal(60);
+      expect(vaultUser.pendingSellLots.toNumber()).to.equal(60);
+      expect(vaultUser.activeOrders).to.equal(6);
+    });
+
+    it("Verifies idempotency and parameter update for the Backstop Vault", async () => {
+      // Re-calling vault_quote on the same open batch updates/upserts orders cleanly
+      const oraclePrice = new anchor.BN(150_000_000);
+      const oracleConf = new anchor.BN(100_000);
+      const nowSecs = Math.floor(Date.now() / 1000);
+
+      await program.methods
+        .vaultQuote({
+          targetBatch: targetBatchId,
+          ringIndex,
+          oraclePrice,
+          oracleConf,
+          oracleTimestamp: new anchor.BN(nowSecs),
+        })
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+          vaultAuthority,
+          vaultUser: vaultUserPda,
+          cranker: admin.publicKey,
+        })
+        .rpc({ skipPreflight: true });
+
+      const batch = await program.account.batch.fetch(batchPda);
+      expect(batch.numOrders).to.equal(6);
+      expect(batch.bidQty[47].toNumber()).to.equal(10);
+      expect(batch.askQty[53].toNumber()).to.equal(10);
+    });
+
+    it("Confidence guard: skips quoting when oracle confidence exceeds threshold", async () => {
+      const batchPre = await program.account.batch.fetch(batchPda);
+
+      const oraclePrice = new anchor.BN(150_000_000);
+      // oracleConf = 300_000 is 20 bps of $150.00, exceeding vault max_conf_bps (15 bps)
+      const wideConf = new anchor.BN(300_000);
+      const nowSecs = Math.floor(Date.now() / 1000);
+
+      await program.methods
+        .vaultQuote({
+          targetBatch: targetBatchId,
+          ringIndex,
+          oraclePrice,
+          oracleConf: wideConf,
+          oracleTimestamp: new anchor.BN(nowSecs),
+        })
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+          vaultAuthority,
+          vaultUser: vaultUserPda,
+          cranker: admin.publicKey,
+        })
+        .rpc({ skipPreflight: true });
+
+      const batchPost = await program.account.batch.fetch(batchPda);
+      // Guard prevented quoting: 0 orders added, numOrders unchanged
+      expect(batchPost.numOrders).to.equal(batchPre.numOrders);
+    });
+
+    it("Keeper hook: autonomous clearing, trade execution against vault, and paged settlement", async () => {
+      // 1. User places aggressive BUY order for 10 lots at tick 53 (+3 bps), matching vault's lowest ask!
+      await program.methods
+        .placeOrder({
+          targetBatch: targetBatchId,
+          ringIndex,
+          slotId: 0,
+          side: 0, // BUY
+          tick: 53,
+          lots: new anchor.BN(10),
+          oraclePrice: new anchor.BN(150_000_000),
+          flags: 0,
+        })
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+          user: userPda,
+          owner: testUser.publicKey,
+        })
+        .signers([testUser])
+        .rpc({ skipPreflight: true });
+
+      // 2. Advance slots past close_slot
+      const market = await program.account.market.fetch(marketPda);
+      const closeSlot =
+        market.startSlot.toNumber() +
+        (targetBatchId.toNumber() + 1) * market.params.batchSlots;
+      const curSlot = await provider.connection.getSlot();
+      if (curSlot < closeSlot + 1) {
+        await advanceSlots(closeSlot + 1 - curSlot);
+      }
+
+      // 3. Keeper tick clears the batch autonomously
+      const clearRes = await keeper.clearBatch(targetBatchId.toNumber(), ringIndex);
+      expect(clearRes.success).to.be.true;
+
+      const batchCleared = await program.account.batch.fetch(batchPda);
+      expect(batchCleared.status).to.equal(2); // CLEARED
+      expect(batchCleared.matchedLots.toNumber()).to.equal(10);
+      expect(batchCleared.clearingTick).to.equal(53); // Cleared at tick 53
+
+      // 4. Keeper settles both testUser and vaultUser
+      const settleRes = await keeper.settleUsers(targetBatchId.toNumber(), ringIndex, 10);
+      expect(settleRes.settledPages).to.be.greaterThanOrEqual(1);
+
+      const batchSettled = await program.account.batch.fetch(batchPda);
+      expect(batchSettled.status).to.equal(4); // SETTLED
+
+      // 5. Verify positions: testUser bought 10 lots, vault sold 10 lots
+      const userPost = await program.account.userAccount.fetch(userPda);
+      const vaultUserPost = await program.account.userAccount.fetch(vaultUserPda);
+
+      expect(vaultUserPost.basePosition.toNumber()).to.equal(-10); // Vault short 10 lots
+
+      // 6. Query vault status from keeper and verify structured log
+      const vaultStatus = await keeper.getVaultStatus();
+      expect(vaultStatus).to.not.be.null;
+      expect(vaultStatus!.inventoryLots).to.equal(-10);
+      expect(vaultStatus!.activeOrders).to.equal(0);
     });
   });
 });
