@@ -6,6 +6,7 @@ pub mod faucet;
 pub mod initialize_batch;
 pub mod initialize_market;
 pub mod place_order;
+pub mod settle_users;
 pub mod update_market_params;
 pub mod withdraw;
 
@@ -17,5 +18,6 @@ pub use faucet::*;
 pub use initialize_batch::*;
 pub use initialize_market::*;
 pub use place_order::*;
+pub use settle_users::*;
 pub use update_market_params::*;
 pub use withdraw::*;

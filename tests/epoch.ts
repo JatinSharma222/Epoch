@@ -63,6 +63,11 @@ describe("Epoch Program Integration Tests", () => {
   const cuUserPdas: anchor.web3.PublicKey[] = [];
   const cuUserAtas: anchor.web3.PublicKey[] = [];
 
+  let workedBatchId: anchor.BN;
+  let workedRingIndex: number = -1;
+  let voidBatchId: anchor.BN;
+  let voidRingIndex: number = -1;
+
   const defaultMarketArgs = {
     baseLot: new anchor.BN(1000),
     priceTick: new anchor.BN(1000),
@@ -1076,6 +1081,8 @@ describe("Epoch Program Integration Tests", () => {
       }
       const targetBatchId = new anchor.BN(target);
       const batchPda = getBatchPda(t8RingIndex);
+      workedBatchId = targetBatchId;
+      workedRingIndex = t8RingIndex;
 
       // Spec §6 Worked Example: 8 orders
       // B1: BUY tick 55 (+5 bps), 10 lots
@@ -1387,6 +1394,8 @@ describe("Epoch Program Integration Tests", () => {
         target++;
       }
       const targetBatchId = new anchor.BN(target);
+      voidBatchId = targetBatchId;
+      voidRingIndex = ringIndex;
 
       // Place 1 order while batch is open
       await program.methods
@@ -1446,4 +1455,455 @@ describe("Epoch Program Integration Tests", () => {
       expect(batchAfter.orders[0].status).to.equal(4); // EXPIRED
     });
   });
+
+  describe("T-10: Paged Settlement and Ring Lifecycle", () => {
+    async function advanceSlots(n: number) {
+      for (let i = 0; i < n; i++) {
+        const tx = new anchor.web3.Transaction().add(
+          anchor.web3.SystemProgram.transfer({
+            fromPubkey: admin.publicKey,
+            toPubkey: admin.publicKey,
+            lamports: 1,
+          })
+        );
+        await provider.sendAndConfirm(tx);
+      }
+    }
+
+    it("Settles the worked example batch and verifies Invariants I-1, I-4, and I-12", async () => {
+      expect(workedRingIndex).to.be.greaterThanOrEqual(0);
+      const batchPda = getBatchPda(workedRingIndex);
+      const batchBefore = await program.account.batch.fetch(batchPda);
+      expect(batchBefore.status).to.equal(2); // CLEARED from T-08
+      expect(batchBefore.matchedLots.toNumber()).to.equal(30);
+      expect(batchBefore.clearingPrice.toNumber()).to.equal(150_015_000);
+
+      const marketBefore = await program.account.market.fetch(marketPda);
+      const feePoolBefore = marketBefore.feePool.toNumber();
+
+      // Record pre-settlement states
+      const u0Pre = await program.account.userAccount.fetch(cuUserPdas[0]);
+      const u1Pre = await program.account.userAccount.fetch(cuUserPdas[1]);
+      const u2Pre = await program.account.userAccount.fetch(cuUserPdas[2]);
+      const u3Pre = await program.account.userAccount.fetch(cuUserPdas[3]);
+      const u4Pre = await program.account.userAccount.fetch(cuUserPdas[4]);
+      const u5Pre = await program.account.userAccount.fetch(cuUserPdas[5]);
+      const u6Pre = await program.account.userAccount.fetch(cuUserPdas[6]);
+      const u7Pre = await program.account.userAccount.fetch(cuUserPdas[7]);
+
+      // Settle users 0..7
+      await program.methods
+        .settleUsers(workedBatchId, workedRingIndex)
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+        })
+        .remainingAccounts(
+          [0, 1, 2, 3, 4, 5, 6, 7].map((i) => ({
+            pubkey: cuUserPdas[i],
+            isWritable: true,
+            isSigner: false,
+          }))
+        )
+        .rpc({ skipPreflight: true });
+
+      const batchSettled = await program.account.batch.fetch(batchPda);
+      // Invariant I-12: batch becomes SETTLED iff every non-empty order was settled exactly once
+      expect(batchSettled.status).to.equal(4); // SETTLED
+      expect(batchSettled.settledOrders).to.equal(8);
+
+      for (let i = 0; i < 8; i++) {
+        expect(batchSettled.orders[i].status).to.equal(5); // SETTLED
+      }
+
+      // Check user balances and quote ledgers:
+      // Clearing price = $150.015 = 150,015 micro-USDC / lot
+      // B1 (user 0): 10 lots -> base +10, quote -1,500,150, fee = ceil(1500150 * 5 / 10000) = 751
+      const u0 = await program.account.userAccount.fetch(cuUserPdas[0]);
+      expect(u0.basePosition.toNumber()).to.equal(10);
+      expect(u0.quotePosition.toString()).to.equal("-1500150");
+      expect(u0.collateral.toNumber()).to.equal(u0Pre.collateral.toNumber() - 751);
+      expect(u0.pendingBuyLots.toNumber()).to.equal(u0Pre.pendingBuyLots.toNumber() - 10);
+      expect(u0.activeOrders).to.equal(u0Pre.activeOrders - 1);
+
+      // B2 (user 1): 20 lots -> base +20, quote -3,000,300, fee = ceil(3000300 * 5 / 10000) = 1501
+      const u1 = await program.account.userAccount.fetch(cuUserPdas[1]);
+      expect(u1.basePosition.toNumber()).to.equal(20);
+      expect(u1.quotePosition.toString()).to.equal("-3000300");
+      expect(u1.collateral.toNumber()).to.equal(u1Pre.collateral.toNumber() - 1501);
+      expect(u1.pendingBuyLots.toNumber()).to.equal(u1Pre.pendingBuyLots.toNumber() - 20);
+      expect(u1.activeOrders).to.equal(u1Pre.activeOrders - 1);
+
+      // B3 & B4: expired (0 fills)
+      const u2 = await program.account.userAccount.fetch(cuUserPdas[2]);
+      expect(u2.basePosition.toNumber()).to.equal(0);
+      expect(u2.quotePosition.toString()).to.equal("0");
+      expect(u2.pendingBuyLots.toNumber()).to.equal(u2Pre.pendingBuyLots.toNumber() - 15);
+      expect(u2.activeOrders).to.equal(u2Pre.activeOrders - 1);
+
+      const u3 = await program.account.userAccount.fetch(cuUserPdas[3]);
+      expect(u3.basePosition.toNumber()).to.equal(0);
+      expect(u3.quotePosition.toString()).to.equal("0");
+      expect(u3.pendingBuyLots.toNumber()).to.equal(u3Pre.pendingBuyLots.toNumber() - 30);
+      expect(u3.activeOrders).to.equal(u3Pre.activeOrders - 1);
+
+      // A1 (user 4): 12 lots -> base -12, quote +1,800,180, fee = ceil(1800180 * 5 / 10000) = 901
+      const u4 = await program.account.userAccount.fetch(cuUserPdas[4]);
+      expect(u4.basePosition.toNumber()).to.equal(-12);
+      expect(u4.quotePosition.toString()).to.equal("1800180");
+      expect(u4.collateral.toNumber()).to.equal(u4Pre.collateral.toNumber() - 901);
+      expect(u4.pendingSellLots.toNumber()).to.equal(u4Pre.pendingSellLots.toNumber() - 12);
+      expect(u4.activeOrders).to.equal(u4Pre.activeOrders - 1);
+
+      // A2 (user 5): 18 lots -> base -18, quote +2,700,270, fee = ceil(2700270 * 5 / 10000) = 1351
+      const u5 = await program.account.userAccount.fetch(cuUserPdas[5]);
+      expect(u5.basePosition.toNumber()).to.equal(-18);
+      expect(u5.quotePosition.toString()).to.equal("2700270");
+      expect(u5.collateral.toNumber()).to.equal(u5Pre.collateral.toNumber() - 1351);
+      expect(u5.pendingSellLots.toNumber()).to.equal(u5Pre.pendingSellLots.toNumber() - 18);
+      expect(u5.activeOrders).to.equal(u5Pre.activeOrders - 1);
+
+      // A3 & A4: expired (0 fills)
+      const u6 = await program.account.userAccount.fetch(cuUserPdas[6]);
+      expect(u6.basePosition.toNumber()).to.equal(0);
+      expect(u6.quotePosition.toString()).to.equal("0");
+      expect(u6.pendingSellLots.toNumber()).to.equal(u6Pre.pendingSellLots.toNumber() - 25);
+      expect(u6.activeOrders).to.equal(u6Pre.activeOrders - 1);
+
+      const u7 = await program.account.userAccount.fetch(cuUserPdas[7]);
+      expect(u7.basePosition.toNumber()).to.equal(0);
+      expect(u7.quotePosition.toString()).to.equal("0");
+      expect(u7.pendingSellLots.toNumber()).to.equal(u7Pre.pendingSellLots.toNumber() - 10);
+      expect(u7.activeOrders).to.equal(u7Pre.activeOrders - 1);
+
+      // Invariant I-4: Volume balance (BUY fills == SELL fills == Q*)
+      const totalBuyFills = u0.basePosition.toNumber() + u1.basePosition.toNumber();
+      const totalSellFills = -(u4.basePosition.toNumber() + u5.basePosition.toNumber());
+      expect(totalBuyFills).to.equal(30);
+      expect(totalSellFills).to.equal(30);
+      expect(totalBuyFills).to.equal(batchSettled.matchedLots.toNumber());
+
+      // Market state
+      const marketAfter = await program.account.market.fetch(marketPda);
+      const totalFees = 751 + 1501 + 901 + 1351;
+      expect(marketAfter.feePool.toNumber()).to.equal(feePoolBefore + totalFees);
+      expect(marketAfter.openInterestLots.toNumber()).to.equal(30);
+
+      // Invariant I-1: Conservation
+      const vaultAcc = await getAccount(provider.connection, collateralVaultPda);
+      const testUserAcc = await program.account.userAccount.fetch(userPda);
+      let sumCollateralQuote =
+        testUserAcc.collateral.toNumber() +
+        Number(testUserAcc.quotePosition.toString());
+      let sumBasePositions = testUserAcc.basePosition.toNumber();
+      for (let i = 0; i < NUM_USERS; i++) {
+        const u = await program.account.userAccount.fetch(cuUserPdas[i]);
+        sumCollateralQuote +=
+          u.collateral.toNumber() + Number(u.quotePosition.toString());
+        sumBasePositions += u.basePosition.toNumber();
+      }
+      expect(sumBasePositions).to.equal(0);
+      expect(
+        sumCollateralQuote +
+          marketAfter.feePool.toNumber() +
+          marketAfter.insuranceFund.toNumber()
+      ).to.equal(Number(vaultAcc.amount));
+    });
+
+    it("Settles a VOID batch releasing all pending lots without fees or position shifts", async () => {
+      expect(voidRingIndex).to.be.greaterThanOrEqual(0);
+      const batchPda = getBatchPda(voidRingIndex);
+      const batchVoid = await program.account.batch.fetch(batchPda);
+      expect(batchVoid.status).to.equal(3); // VOID from T-08
+
+      const u0Before = await program.account.userAccount.fetch(cuUserPdas[0]);
+      expect(u0Before.pendingBuyLots.toNumber()).to.be.greaterThan(0);
+
+      // Settle the void batch for user 0
+      await program.methods
+        .settleUsers(voidBatchId, voidRingIndex)
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+        })
+        .remainingAccounts([
+          { pubkey: cuUserPdas[0], isWritable: true, isSigner: false },
+        ])
+        .rpc({ skipPreflight: true });
+
+      const batchSettled = await program.account.batch.fetch(batchPda);
+      expect(batchSettled.status).to.equal(4); // SETTLED
+      expect(batchSettled.settledOrders).to.equal(batchSettled.numOrders);
+
+      const u0After = await program.account.userAccount.fetch(cuUserPdas[0]);
+      // Pending lots must be freed by 10
+      expect(u0After.pendingBuyLots.toNumber()).to.equal(
+        u0Before.pendingBuyLots.toNumber() - 10
+      );
+      expect(u0After.activeOrders).to.equal(u0Before.activeOrders - 1);
+      // Base positions and collateral remain identical (0 fills, 0 fees)
+      expect(u0After.basePosition.toNumber()).to.equal(
+        u0Before.basePosition.toNumber()
+      );
+      expect(u0After.collateral.toNumber()).to.equal(
+        u0Before.collateral.toNumber()
+      );
+    });
+
+    it("Executes paged settlement across multiple transactions and verifies completeness", async () => {
+      // Re-configure market parameters: 5 slots per batch, lookahead 20
+      await program.methods
+        .updateMarketParams({
+          ...defaultMarketArgs,
+          batchSlots: 5,
+          lookahead: 20,
+        })
+        .accounts({
+          market: marketPda,
+          admin: admin.publicKey,
+        })
+        .rpc();
+
+      // We can reuse workedRingIndex since it is now SETTLED
+      const ringIndex = workedRingIndex;
+      const batchPda = getBatchPda(ringIndex);
+      const prevBatch = await program.account.batch.fetch(batchPda);
+      expect(prevBatch.status).to.equal(4); // SETTLED
+
+      const market = await program.account.market.fetch(marketPda);
+      const slot = await provider.connection.getSlot();
+      const currentBatch = Math.floor(
+        (slot - market.startSlot.toNumber()) / market.params.batchSlots
+      );
+
+      let target = Math.max(currentBatch + 1, prevBatch.batchId.toNumber() + 1);
+      while (target % 8 !== ringIndex) {
+        target++;
+      }
+      const targetBatchId = new anchor.BN(target);
+
+      // Place 10 orders across 10 distinct users (cuUsers[0..9])
+      // 5 BUY orders (users 0..4, 10 lots each at tick 51, slot 1)
+      // 5 SELL orders (users 5..9, 10 lots each at tick 49, slot 1)
+      for (let i = 0; i < 5; i++) {
+        await program.methods
+          .placeOrder({
+            targetBatch: targetBatchId,
+            ringIndex,
+            slotId: 1,
+            side: 0, // BUY
+            tick: 51,
+            lots: new anchor.BN(10),
+            oraclePrice: new anchor.BN(150_000_000),
+            flags: 0,
+          })
+          .accounts({
+            market: marketPda,
+            batch: batchPda,
+            user: cuUserPdas[i],
+            owner: cuUsers[i].publicKey,
+          })
+          .signers([cuUsers[i]])
+          .rpc({ skipPreflight: true });
+      }
+
+      for (let i = 5; i < 10; i++) {
+        await program.methods
+          .placeOrder({
+            targetBatch: targetBatchId,
+            ringIndex,
+            slotId: 1,
+            side: 1, // SELL
+            tick: 49,
+            lots: new anchor.BN(10),
+            oraclePrice: new anchor.BN(150_000_000),
+            flags: 0,
+          })
+          .accounts({
+            market: marketPda,
+            batch: batchPda,
+            user: cuUserPdas[i],
+            owner: cuUsers[i].publicKey,
+          })
+          .signers([cuUsers[i]])
+          .rpc({ skipPreflight: true });
+      }
+
+      // Advance slot past close_slot
+      const closeSlot =
+        market.startSlot.toNumber() +
+        (targetBatchId.toNumber() + 1) * market.params.batchSlots;
+      const curSlot = await provider.connection.getSlot();
+      if (curSlot < closeSlot + 1) {
+        await advanceSlots(closeSlot + 1 - curSlot);
+      }
+
+      // Clear batch (matched lots = 50)
+      await program.methods
+        .clearBatch(targetBatchId, ringIndex, {
+          oraclePrice: new anchor.BN(150_000_000),
+          oracleConf: new anchor.BN(0),
+          oraclePostedSlot: new anchor.BN(closeSlot),
+          oracleTimestamp: new anchor.BN(Math.floor(Date.now() / 1000)),
+        })
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+          cranker: admin.publicKey,
+        })
+        .rpc({ skipPreflight: true });
+
+      const batchCleared = await program.account.batch.fetch(batchPda);
+      expect(batchCleared.status).to.equal(2); // CLEARED
+      expect(batchCleared.matchedLots.toNumber()).to.equal(50);
+      expect(batchCleared.numOrders).to.equal(10);
+      expect(batchCleared.settledOrders).to.equal(0);
+
+      // Duplicate-account attack on CLEARED batch: pass cuUserPdas[0] twice in remainingAccounts
+      let dupFailed = false;
+      try {
+        await program.methods
+          .settleUsers(targetBatchId, ringIndex)
+          .accounts({
+            market: marketPda,
+            batch: batchPda,
+          })
+          .remainingAccounts([
+            { pubkey: cuUserPdas[0], isWritable: true, isSigner: false },
+            { pubkey: cuUserPdas[0], isWritable: true, isSigner: false },
+          ])
+          .rpc({ skipPreflight: false });
+      } catch (err: any) {
+        dupFailed = true;
+        expect(err.toString()).to.include("DuplicateUserAccount");
+      }
+      expect(dupFailed).to.be.true;
+
+      // Page 1: Settle first 5 users (users 0..4)
+      await program.methods
+        .settleUsers(targetBatchId, ringIndex)
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+        })
+        .remainingAccounts(
+          [0, 1, 2, 3, 4].map((i) => ({
+            pubkey: cuUserPdas[i],
+            isWritable: true,
+            isSigner: false,
+          }))
+        )
+        .rpc({ skipPreflight: true });
+
+      const batchPage1 = await program.account.batch.fetch(batchPda);
+      expect(batchPage1.status).to.equal(2); // Still CLEARED (not yet all settled)
+      expect(batchPage1.settledOrders).to.equal(5);
+
+      // Page 2: Settle remaining 5 users (users 5..9)
+      await program.methods
+        .settleUsers(targetBatchId, ringIndex)
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+        })
+        .remainingAccounts(
+          [5, 6, 7, 8, 9].map((i) => ({
+            pubkey: cuUserPdas[i],
+            isWritable: true,
+            isSigner: false,
+          }))
+        )
+        .rpc({ skipPreflight: true });
+
+      const batchPage2 = await program.account.batch.fetch(batchPda);
+      expect(batchPage2.status).to.equal(4); // Now SETTLED
+      expect(batchPage2.settledOrders).to.equal(10);
+
+      // Calling settleUsers again on an already settled batch is idempotent
+      await program.methods
+        .settleUsers(targetBatchId, ringIndex)
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+        })
+        .remainingAccounts([
+          { pubkey: cuUserPdas[0], isWritable: true, isSigner: false },
+        ])
+        .rpc({ skipPreflight: true });
+
+      const batchAfterIdempotent = await program.account.batch.fetch(batchPda);
+      expect(batchAfterIdempotent.status).to.equal(4); // Still SETTLED
+
+      // Verify Invariant I-1 conservation
+      const marketAfter = await program.account.market.fetch(marketPda);
+      const vaultAcc = await getAccount(provider.connection, collateralVaultPda);
+      const testUserAcc = await program.account.userAccount.fetch(userPda);
+      let sumCollateralQuote =
+        testUserAcc.collateral.toNumber() +
+        Number(testUserAcc.quotePosition.toString());
+      let sumBasePositions = testUserAcc.basePosition.toNumber();
+      for (let i = 0; i < NUM_USERS; i++) {
+        const u = await program.account.userAccount.fetch(cuUserPdas[i]);
+        sumCollateralQuote +=
+          u.collateral.toNumber() + Number(u.quotePosition.toString());
+        sumBasePositions += u.basePosition.toNumber();
+      }
+      expect(sumBasePositions).to.equal(0);
+      expect(
+        sumCollateralQuote +
+          marketAfter.feePool.toNumber() +
+          marketAfter.insuranceFund.toNumber()
+      ).to.equal(Number(vaultAcc.amount));
+    });
+
+    it("Reuses a SETTLED ring slot for a future batch cycle", async () => {
+      const ringIndex = workedRingIndex;
+      const batchPda = getBatchPda(ringIndex);
+      const prevBatch = await program.account.batch.fetch(batchPda);
+      expect(prevBatch.status).to.equal(4); // SETTLED
+
+      const market = await program.account.market.fetch(marketPda);
+      const slot = await provider.connection.getSlot();
+      const currentBatch = Math.floor(
+        (slot - market.startSlot.toNumber()) / market.params.batchSlots
+      );
+
+      let target = Math.max(currentBatch + 1, prevBatch.batchId.toNumber() + 1);
+      while (target % 8 !== ringIndex) {
+        target++;
+      }
+      const targetBatchId = new anchor.BN(target);
+
+      // Place a new order into the reused ring slot
+      await program.methods
+        .placeOrder({
+          targetBatch: targetBatchId,
+          ringIndex,
+          slotId: 4,
+          side: 0, // BUY
+          tick: 50,
+          lots: new anchor.BN(10),
+          oraclePrice: new anchor.BN(150_000_000),
+          flags: 0,
+        })
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+          user: cuUserPdas[0],
+          owner: cuUsers[0].publicKey,
+        })
+        .signers([cuUsers[0]])
+        .rpc({ skipPreflight: true });
+
+      const newBatch = await program.account.batch.fetch(batchPda);
+      expect(newBatch.batchId.toString()).to.equal(targetBatchId.toString());
+      expect(newBatch.status).to.equal(1); // OPEN
+      expect(newBatch.numOrders).to.equal(1);
+      expect(newBatch.settledOrders).to.equal(0);
+      expect(newBatch.orders[0].lots.toNumber()).to.equal(10);
+      expect(newBatch.orders[0].status).to.equal(0); // OPEN
+    });
+  });
 });
+
+

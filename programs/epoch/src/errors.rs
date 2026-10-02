@@ -82,4 +82,20 @@ pub enum EpochError {
     /// Insufficient equity for margin requirement and slippage reserve.
     #[msg("Insufficient margin")]
     InsufficientMargin,
+
+    /// Batch is not cleared or void yet.
+    #[msg("Batch is not cleared or void")]
+    BatchNotCleared,
+
+    /// Batch is already fully settled.
+    #[msg("Batch is already settled")]
+    BatchAlreadySettled,
+
+    /// Batch ID does not match target batch.
+    #[msg("Batch ID mismatch")]
+    BatchIdMismatch,
+
+    /// Duplicate user account provided in settlement page.
+    #[msg("Duplicate user account in settlement")]
+    DuplicateUserAccount,
 }

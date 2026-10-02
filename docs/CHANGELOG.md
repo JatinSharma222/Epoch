@@ -43,5 +43,14 @@ All notable changes to the Epoch codebase are documented here.
   - Implemented comprehensive differential test harness in `programs/epoch/tests/differential.rs` running against `crates/epoch-ref`.
   - Evaluated 8 handwritten edge-case corpus batches and 10,000 randomized batches (2,000 adversarial edge cases + 8,000 broad distributions).
   - Passed Gate G2 with 0 mismatches across 647,981 orders and 701,746,163 matched lots in 0.89s, recorded in `evidence/diff.json`.
+- **Task T-10 (Program settle_users and Ring Lifecycle):**
+  - Implemented `settle_users` permissionless crank instruction with paged settlement across `remaining_accounts`.
+  - Implemented quote-ledger updates: `base_position += f`, `quote_position -= notional` for BUY (or vice versa for SELL), and trading fee deduction `fee = ceil(notional * fee_bps / 10000)` into `market.fee_pool`.
+  - Applied funding index changes on existing `base_position` before position adjustments per spec §8.
+  - Released pending lots and decremented active order counts on settlement.
+  - Added duplicate user account rejection (`DuplicateUserAccount`) to prevent double-settlement attacks.
+  - Added `BatchStatus::SETTLED` state transition when `settled_orders == num_orders`, enabling ring slot reuse.
+  - Added program events: `UserSettled`, `BatchCleared`, and `BatchVoided`.
+  - Verified Invariants I-1 (Conservation), I-4 (Volume balance), and I-12 (Completeness), paged settlement across multiple transactions, VOID batch settlement, and ring reuse across 34 passing integration tests.
 
 

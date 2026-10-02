@@ -90,6 +90,7 @@ pub fn handle_cancel_order(
     // 6. Mark order as cancelled and zero lots
     batch.orders[idx].status = OrderStatus::CANCELLED;
     batch.orders[idx].lots = 0;
+    batch.settled_orders = batch.settled_orders.saturating_add(1);
 
     msg!(
         "Order cancelled: batch={}, slot={}, old_lots={}",

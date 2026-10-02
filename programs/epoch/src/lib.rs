@@ -1,10 +1,12 @@
 use anchor_lang::prelude::*;
 
 pub mod errors;
+pub mod events;
 pub mod instructions;
 pub mod state;
 
 pub use errors::*;
+pub use events::*;
 pub use instructions::*;
 pub use state::*;
 
@@ -83,6 +85,15 @@ pub mod epoch {
         new_params: InitializeMarketArgs,
     ) -> Result<()> {
         handle_update_market_params(ctx, new_params)
+    }
+
+    /// Settle users for a cleared or void batch in pages.
+    pub fn settle_users<'info>(
+        ctx: Context<'_, '_, 'info, 'info, SettleUsers<'info>>,
+        batch_id: u64,
+        ring_index: u8,
+    ) -> Result<()> {
+        handle_settle_users(ctx, batch_id, ring_index)
     }
 }
 

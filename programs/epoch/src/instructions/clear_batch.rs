@@ -1,4 +1,5 @@
 use crate::errors::EpochError;
+use crate::events::{BatchCleared, BatchVoided};
 use crate::state::constants::{CENTER_TICK, F_SCALE, K_TICKS, PRICE_TICK, RING_SIZE};
 use crate::state::{Batch, BatchStatus, Market, OrderSide, OrderStatus};
 use anchor_lang::prelude::*;
@@ -175,6 +176,18 @@ pub fn handle_clear_batch(
             }
         }
 
+        let reason = if is_late {
+            1
+        } else if is_wide_conf {
+            2
+        } else if is_stale {
+            3
+        } else {
+            4
+        };
+
+        emit!(BatchVoided { batch_id, reason });
+
         market.next_batch_to_clear = batch_id + 1;
         msg!(
             "Batch {} marked VOID: late={}, wide_conf={}, stale={}, invalid_slot={}",
@@ -194,8 +207,8 @@ pub fn handle_clear_batch(
     batch.oracle_posted_slot = params.oracle_posted_slot;
 
     // 12. Update funding index (spec §8)
+    let offset_star = (i_star as i32 - c as i32) * market.params.tick_bps as i32;
     if q_star > 0 {
-        let offset_star = (i_star as i32 - c as i32) * market.params.tick_bps as i32;
         let rate = offset_star.clamp(
             -(market.params.funding_cap_bps as i32),
             market.params.funding_cap_bps as i32,
@@ -209,6 +222,15 @@ pub fn handle_clear_batch(
         }
     }
     market.next_batch_to_clear = batch_id + 1;
+
+    emit!(BatchCleared {
+        batch_id,
+        clearing_price: cl_price,
+        offset_bps: offset_star,
+        matched_lots: q_star,
+        oracle_price,
+        oracle_conf: params.oracle_conf,
+    });
 
     msg!(
         "Batch {} cleared: tick={}, price={}, matched={}",
