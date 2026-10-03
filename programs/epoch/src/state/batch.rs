@@ -146,6 +146,38 @@ impl Default for Batch {
     }
 }
 
+impl Batch {
+    /// Reset this ring slot for a new batch, clearing all header fields,
+    /// tick aggregates, and stale order data from the previous occupant.
+    ///
+    /// Zeroing the used order slots prevents data leakage across batch cycles
+    /// and ensures defensive safety even if iteration guards are bypassed.
+    pub fn reset_for_batch(&mut self, target_batch: u64) {
+        let old_count = (self.num_orders as usize).min(MAX_ORDERS);
+        self.batch_id = target_batch;
+        self.status = BatchStatus::OPEN;
+        self.num_orders = 0;
+        self.settled_orders = 0;
+        self.clearing_tick = 0;
+        self.oracle_price = 0;
+        self.oracle_conf = 0;
+        self.oracle_posted_slot = 0;
+        self.clearing_price = 0;
+        self.matched_lots = 0;
+        self.bid_marginal_tick = 0;
+        self.bid_marginal_alloc = 0;
+        self.bid_marginal_total = 0;
+        self.ask_marginal_tick = 0;
+        self.ask_marginal_alloc = 0;
+        self.ask_marginal_total = 0;
+        self.bid_qty.fill(0);
+        self.ask_qty.fill(0);
+        for i in 0..old_count {
+            self.orders[i] = Order::default();
+        }
+    }
+}
+
 // Compile-time layout assertions.
 const _: () = {
     assert!(std::mem::size_of::<Order>() == 64);

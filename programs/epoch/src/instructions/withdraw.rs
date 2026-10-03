@@ -37,8 +37,13 @@ pub struct Withdraw<'info> {
 
 pub fn handle_withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
     require!(amount > 0, EpochError::ZeroAmount);
+    require!(amount <= i64::MAX as u64, EpochError::MathOverflow);
 
-    let market_bump = ctx.accounts.market.load()?.bump;
+    let market = ctx.accounts.market.load()?;
+    let market_bump = market.bump;
+    let market_funding_index = market.funding_index;
+    drop(market);
+
     let mut user = ctx.accounts.user.load_mut()?;
     require_keys_eq!(
         user.owner,
@@ -63,7 +68,7 @@ pub fn handle_withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
             .ok_or(EpochError::MathOverflow)?;
         user.quote_position = 0;
     }
-    user.funding_snapshot = ctx.accounts.market.load()?.funding_index;
+    user.funding_snapshot = market_funding_index;
 
     // Check available collateral
     require!(

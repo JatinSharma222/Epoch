@@ -63,7 +63,7 @@ pub fn check_margin_requirement(
     let pending_funding = (base_position as i128 * delta) / F_SCALE;
 
     // 2. Mark-to-market position value in micro-USDC
-    let pos_val = base_position as i128 * (oracle_price as i128 / 1000);
+    let pos_val = (base_position as i128 * oracle_price as i128) / 1000;
 
     // 3. User equity
     let equity = collateral as i128 + quote_position + pos_val - pending_funding;
@@ -128,25 +128,7 @@ pub fn handle_place_order(ctx: Context<PlaceOrder>, args: PlaceOrderArgs) -> Res
             || batch.status == BatchStatus::VOID
             || batch.num_orders == 0
         {
-            // Re-open this ring slot for the new batch
-            batch.batch_id = target_batch;
-            batch.status = BatchStatus::OPEN;
-            batch.num_orders = 0;
-            batch.settled_orders = 0;
-            batch.clearing_tick = 0;
-            batch.oracle_price = 0;
-            batch.oracle_conf = 0;
-            batch.oracle_posted_slot = 0;
-            batch.clearing_price = 0;
-            batch.matched_lots = 0;
-            batch.bid_marginal_tick = 0;
-            batch.bid_marginal_alloc = 0;
-            batch.bid_marginal_total = 0;
-            batch.ask_marginal_tick = 0;
-            batch.ask_marginal_alloc = 0;
-            batch.ask_marginal_total = 0;
-            batch.bid_qty.fill(0);
-            batch.ask_qty.fill(0);
+            batch.reset_for_batch(target_batch);
         } else {
             return err!(EpochError::RingSlotBusy);
         }
@@ -166,12 +148,9 @@ pub fn handle_place_order(ctx: Context<PlaceOrder>, args: PlaceOrderArgs) -> Res
         EpochError::OrderTooSmall
     );
 
-    let oracle_price = if market.last_oracle_price > 0 {
-        market.last_oracle_price
-    } else {
-        150_000_000 // default $150.00
-    };
-    let notional = lots * (oracle_price / 1000);
+    let oracle_price = market.last_oracle_price;
+    require!(oracle_price > 0, EpochError::OracleStale);
+    let notional = ((lots as u128 * oracle_price as u128) / 1000) as u64;
     require!(
         notional >= market.params.min_order_notional,
         EpochError::OrderNotionalTooSmall

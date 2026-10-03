@@ -27,3 +27,6 @@ pub const RING_SIZE: u8 = 8;
 
 /// Maximum mock USDC allowed per faucet request: $10,000 (in micro-USDC).
 pub const MAX_FAUCET_AMOUNT: u64 = 10_000_000_000;
+
+/// Initial oracle price on market initialization (micro-USDC: $150.00).
+pub const INITIAL_ORACLE_PRICE: u64 = 150_000_000;

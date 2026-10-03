@@ -103,8 +103,9 @@ pub fn handle_vault_quote(ctx: Context<VaultQuote>, params: VaultQuoteParams) ->
     let oracle_price = if params.oracle_price > 0 {
         params.oracle_price
     } else {
-        150_000_000
+        market.last_oracle_price
     };
+    require!(oracle_price > 0, EpochError::OracleStale);
     let conf_bps = (params.oracle_conf as u128 * 10_000) / oracle_price as u128;
     if conf_bps > market.vault_params.max_conf_bps as u128 {
         emit!(VaultQuoteSkipped {
@@ -136,24 +137,7 @@ pub fn handle_vault_quote(ctx: Context<VaultQuote>, params: VaultQuoteParams) ->
             || batch.status == BatchStatus::VOID
             || batch.num_orders == 0
         {
-            batch.batch_id = target_batch;
-            batch.status = BatchStatus::OPEN;
-            batch.num_orders = 0;
-            batch.settled_orders = 0;
-            batch.clearing_tick = 0;
-            batch.oracle_price = 0;
-            batch.oracle_conf = 0;
-            batch.oracle_posted_slot = 0;
-            batch.clearing_price = 0;
-            batch.matched_lots = 0;
-            batch.bid_marginal_tick = 0;
-            batch.bid_marginal_alloc = 0;
-            batch.bid_marginal_total = 0;
-            batch.ask_marginal_tick = 0;
-            batch.ask_marginal_alloc = 0;
-            batch.ask_marginal_total = 0;
-            batch.bid_qty.fill(0);
-            batch.ask_qty.fill(0);
+            batch.reset_for_batch(target_batch);
         } else {
             return err!(EpochError::RingSlotBusy);
         }

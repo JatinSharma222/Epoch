@@ -37,6 +37,7 @@ pub struct Deposit<'info> {
 
 pub fn handle_deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
     require!(amount > 0, EpochError::ZeroAmount);
+    require!(amount <= i64::MAX as u64, EpochError::MathOverflow);
 
     let mut user = ctx.accounts.user.load_mut()?;
     require_keys_eq!(

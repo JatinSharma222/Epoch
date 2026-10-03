@@ -99,12 +99,10 @@ pub fn handle_liquidate(ctx: Context<Liquidate>, params: LiquidateParams) -> Res
     // 5. Oracle price resolution and safety guards
     let oracle_price = if params.oracle_price > 0 {
         params.oracle_price
-    } else if market.last_oracle_price > 0 {
-        market.last_oracle_price
     } else {
-        150_000_000 // default $150.00
+        market.last_oracle_price
     };
-    require!(oracle_price > 0, EpochError::MathOverflow);
+    require!(oracle_price > 0, EpochError::OracleStale);
 
     let clock = Clock::get()?;
     if params.oracle_timestamp > 0 {
@@ -128,7 +126,7 @@ pub fn handle_liquidate(ctx: Context<Liquidate>, params: LiquidateParams) -> Res
     let user_pending_funding = (user.base_position as i128 * user_delta) / F_SCALE;
 
     // Equity = collateral + quote_position + base_position * (oracle_price / 1000) - pending_funding
-    let pos_val = user.base_position as i128 * (oracle_price as i128 / 1000);
+    let pos_val = (user.base_position as i128 * oracle_price as i128) / 1000;
     let user_equity =
         user.collateral as i128 + user.quote_position + pos_val - user_pending_funding;
 
@@ -351,7 +349,7 @@ mod tests {
         // Equity check
         let user_delta = funding_index.saturating_sub(user_funding_snapshot);
         let user_pending_funding = (user_base as i128 * user_delta) / F_SCALE;
-        let pos_val = user_base as i128 * (oracle_price as i128 / 1000);
+        let pos_val = (user_base as i128 * oracle_price as i128) / 1000;
         let user_equity = user_collateral as i128 + user_quote + pos_val - user_pending_funding;
 
         let abs_base = user_base.unsigned_abs() as u128;

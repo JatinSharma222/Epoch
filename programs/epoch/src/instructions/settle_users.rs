@@ -125,8 +125,9 @@ pub fn handle_settle_users<'info>(
             if filled_lots > 0 {
                 // notional = filled_lots * (clearing_price / 1000)
                 let notional = (filled_lots as u128)
-                    .checked_mul(clearing_price as u128 / 1000)
-                    .ok_or(EpochError::MathOverflow)?;
+                    .checked_mul(clearing_price as u128)
+                    .ok_or(EpochError::MathOverflow)?
+                    / 1000;
 
                 if side == OrderSide::BUY {
                     user.base_position = user

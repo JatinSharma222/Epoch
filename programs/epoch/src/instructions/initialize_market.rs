@@ -1,3 +1,5 @@
+use crate::errors::EpochError;
+use crate::state::constants::INITIAL_ORACLE_PRICE;
 use crate::state::{Market, MarketParams};
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, Token, TokenAccount};
@@ -105,6 +107,12 @@ pub fn handle_initialize_market(
     args: InitializeMarketArgs,
     oracle_feed_id: [u8; 32],
 ) -> Result<()> {
+    require!(args.batch_slots > 0, EpochError::MathOverflow);
+    require!(
+        args.k_ticks > 0 && args.k_ticks % 2 == 1,
+        EpochError::InvalidTick
+    );
+
     let mut market = ctx.accounts.market.load_init()?;
     let clock = Clock::get()?;
 
@@ -116,7 +124,7 @@ pub fn handle_initialize_market(
     market.params = args.into();
     market.next_batch_to_clear = 0;
     market.funding_index = 0;
-    market.last_oracle_price = 0;
+    market.last_oracle_price = INITIAL_ORACLE_PRICE;
     market.open_interest_lots = 0;
     market.fee_pool = 0;
     market.insurance_fund = 0;

@@ -122,11 +122,10 @@ pub fn handle_clear_batch(
     // Oracle price resolution
     let oracle_price = if params.oracle_price > 0 {
         params.oracle_price
-    } else if market.last_oracle_price > 0 {
-        market.last_oracle_price
     } else {
-        150_000_000 // default $150.00
+        market.last_oracle_price
     };
+    require!(oracle_price > 0, EpochError::OracleStale);
     market.last_oracle_price = oracle_price;
 
     let c = CENTER_TICK;
@@ -216,7 +215,7 @@ pub fn handle_clear_batch(
         let funding_period_slots = market.params.funding_period_slots as i128;
         if funding_period_slots > 0 {
             let accrual =
-                (rate as i128 * (oracle_price as i128 / 1000) * n_slots as i128 * F_SCALE)
+                (rate as i128 * oracle_price as i128 * n_slots as i128 * (F_SCALE / 1000))
                     / (10_000 * funding_period_slots);
             market.funding_index = market.funding_index.saturating_add(accrual);
         }

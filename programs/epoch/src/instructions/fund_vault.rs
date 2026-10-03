@@ -44,6 +44,7 @@ pub struct FundVault<'info> {
 
 pub fn handle_fund_vault(ctx: Context<FundVault>, amount: u64) -> Result<()> {
     require!(amount > 0, EpochError::ZeroAmount);
+    require!(amount <= i64::MAX as u64, EpochError::MathOverflow);
 
     let cpi_accounts = Transfer {
         from: ctx.accounts.funder_token_account.to_account_info(),
