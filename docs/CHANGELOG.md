@@ -94,7 +94,16 @@ All notable changes to the Epoch codebase are documented here.
     - Confidence guard verification (skips quoting when confidence is wide).
     - Autonomous keeper clearing and trade matching against backstop liquidity with paged settlement and position verification.
   - All 46 integration tests passing. All 22 cargo unit & differential tests passing. Clippy and rustfmt clean.
-
-
-
-
+- **Task T-14 (Liquidation & Fallback Close-Out):**
+  - Implemented on-chain liquidation engine against Backstop Vault (`programs/epoch/src/instructions/liquidate.rs`):
+    - Maintenance margin requirement check (MMR = 500 bps = 5%).
+    - Automatic mark-to-market position transfer directly to the Backstop Vault at verified oracle price.
+    - Realized PnL folded into collateral upon flat exit.
+    - Liquidation penalty (`liq_penalty_bps = 100`) routed to `market.insurance_fund` on positive equity exits.
+    - Deficit absorption by `market.insurance_fund`, with any remaining deficit recorded as `market.bad_debt` (Invariant I-11).
+    - Added `bad_debt: u64` field to zero-copy `Market` struct (384B, 16B aligned).
+    - Emitted `PositionLiquidated` event.
+  - Added TypeScript keeper integration (`keeper/src/keeper.ts`):
+    - Added `liquidateUser(userPda, liquidateeOwner)` method with off-chain position checks and transaction logging.
+  - Added 6 integration tests in `tests/epoch.ts` covering healthy rejection, flat rejection, self-liquidation rejection, positive equity penalty, negative equity bad debt, and keeper automation.
+  - All 52 integration tests passing. All 27 cargo unit & differential tests passing. Clippy clean with 0 warnings.

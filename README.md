@@ -22,7 +22,7 @@ Epoch restructures execution into discrete time intervals:
 
 ## Honest Claims & Boundary Conditions
 
-Per the project threat model (`context/03-THREAT_MODEL.md`):
+Per the project threat model (`docs/THREAT_MODEL.md`):
 
 - **What Epoch provides:** Eliminates intra-batch transaction ordering advantage. Eliminates ordering-based sandwich attacks. Fills are deterministic and verified against an independent Rust reference engine. No trusted off-chain solver is required.
 - **What Epoch does not eliminate:** Oracle lag remains an open risk for market makers when external venues move faster than the oracle update cadence. Visible orders allow late participants to evaluate visible liquidity before batch closure (bounded by an oracle collar). Censorship by block leaders remains possible.

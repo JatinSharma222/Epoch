@@ -3,6 +3,7 @@ name = "epoch"
 version = "0.1.0"
 description = "Epoch - Frequent Batch Auction perpetual-futures exchange on Solana"
 edition = "2021"
+license = "ISC"
 
 [lib]
 crate-type = ["cdylib", "lib"]
