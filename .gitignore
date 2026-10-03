@@ -3,6 +3,7 @@
 # Local-only development materials (never commit)
 /context/
 /research/
+/design/
 
 # Environment files
 .env
