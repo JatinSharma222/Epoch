@@ -1,32 +1,32 @@
 "use client";
 
-import React from "react";
-
-interface TickerItem {
-  symbol: string;
-  price: string;
-  change: string;
-  isPositive: boolean;
-}
-
-const TICKERS: TickerItem[] = [
-  { symbol: "SOL-PERP", price: "$150.04", change: "+2.45%", isPositive: true },
-  { symbol: "BTC-PERP", price: "$64,280.50", change: "+1.82%", isPositive: true },
-  { symbol: "ETH-PERP", price: "$2,642.10", change: "-0.41%", isPositive: false },
-  { symbol: "JUP-PERP", price: "$0.884", change: "+5.22%", isPositive: true },
-  { symbol: "PYTH-PERP", price: "$0.342", change: "+0.93%", isPositive: true },
-  { symbol: "JTO-PERP", price: "$2.41", change: "-1.27%", isPositive: false },
-  { symbol: "TIA-PERP", price: "$5.84", change: "-2.11%", isPositive: false },
-  { symbol: "SUI-PERP", price: "$1.92", change: "+6.38%", isPositive: true },
-  { symbol: "INJ-PERP", price: "$21.15", change: "+1.18%", isPositive: true },
-  { symbol: "NEAR-PERP", price: "$4.95", change: "-0.82%", isPositive: false },
-  { symbol: "RENDER-PERP", price: "$5.62", change: "+3.14%", isPositive: true },
-  { symbol: "WIF-PERP", price: "$2.14", change: "+4.81%", isPositive: true },
-];
+import React, { useState, useEffect } from "react";
+import { fetchLiveTickers, MarketTicker } from "../lib/marketData";
 
 export const MarketTickerBanner: React.FC = () => {
-  // Double the list for seamless infinite loop
-  const doubledTickers = [...TICKERS, ...TICKERS];
+  const [tickers, setTickers] = useState<MarketTicker[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadTickers = async () => {
+      const data = await fetchLiveTickers();
+      if (mounted && data.length > 0) {
+        setTickers(data);
+      }
+    };
+
+    loadTickers();
+    const interval = setInterval(loadTickers, 8000); // Poll live prices every 8s
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const displayList = tickers.length > 0 ? tickers : [];
+  const doubledTickers = [...displayList, ...displayList];
 
   return (
     <div

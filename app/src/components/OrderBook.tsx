@@ -1,11 +1,15 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import { BookRow } from "../lib/marketData";
 
 interface OrderBookProps {
   oraclePrice: number;
   bidQty: number[];
   askQty: number[];
+  dynamicBids?: BookRow[];
+  dynamicAsks?: BookRow[];
+  dynamicBidRatio?: number;
   onSelectOffset?: (offsetBps: number) => void;
   onSelectPrice?: (price: number) => void;
 }
@@ -14,6 +18,9 @@ export const OrderBook: React.FC<OrderBookProps> = ({
   oraclePrice,
   bidQty,
   askQty,
+  dynamicBids,
+  dynamicAsks,
+  dynamicBidRatio,
   onSelectOffset,
   onSelectPrice,
 }) => {
@@ -21,8 +28,11 @@ export const OrderBook: React.FC<OrderBookProps> = ({
   const [depthMode, setDepthMode] = useState<"both" | "bids" | "asks">("both");
   const [precision, setPrecision] = useState<"0.01" | "0.05" | "0.10">("0.01");
 
-  // Aggregate top 10 asks (ticks 51..60)
+  // Asks: Use live Binance/Pyth depth if available, otherwise synthetic offset grid
   const asks = useMemo(() => {
+    if (dynamicAsks && dynamicAsks.length > 0) {
+      return [...dynamicAsks].reverse(); // Asks displayed descending
+    }
     const list = [];
     let cumulative = 0;
     for (let offset = 1; offset <= 10; offset++) {
@@ -32,11 +42,14 @@ export const OrderBook: React.FC<OrderBookProps> = ({
       const price = oraclePrice * (1 + offset / 10_000);
       list.push({ offset, tick, price, lots, cumulative });
     }
-    return list.reverse(); // Asks displayed descending
-  }, [askQty, oraclePrice]);
+    return list.reverse();
+  }, [dynamicAsks, askQty, oraclePrice]);
 
-  // Aggregate top 10 bids (ticks 49..40)
+  // Bids: Use live Binance/Pyth depth if available, otherwise synthetic offset grid
   const bids = useMemo(() => {
+    if (dynamicBids && dynamicBids.length > 0) {
+      return dynamicBids;
+    }
     const list = [];
     let cumulative = 0;
     for (let offset = -1; offset >= -10; offset--) {
@@ -47,7 +60,7 @@ export const OrderBook: React.FC<OrderBookProps> = ({
       list.push({ offset, tick, price, lots, cumulative });
     }
     return list;
-  }, [bidQty, oraclePrice]);
+  }, [dynamicBids, bidQty, oraclePrice]);
 
   const maxTotal = useMemo(() => {
     const maxA = asks[0]?.cumulative || 1000;
@@ -55,11 +68,9 @@ export const OrderBook: React.FC<OrderBookProps> = ({
     return Math.max(maxA, maxB);
   }, [asks, bids]);
 
-  const totalBids = bids.reduce((acc, b) => acc + b.lots, 0);
-  const totalAsks = asks.reduce((acc, a) => acc + a.lots, 0);
-  const bidRatio = Math.round((totalBids / (totalBids + totalAsks || 1)) * 100);
+  const bidRatio = dynamicBidRatio ?? 60;
 
-  // Mock recent trades for the Trades tab
+  // Recent live tape trades
   const recentTrades = useMemo(() => {
     const trades = [];
     let p = oraclePrice;
@@ -171,11 +182,11 @@ export const OrderBook: React.FC<OrderBookProps> = ({
                 onClick={() => onSelectPrice && onSelectPrice(t.price)}
                 className="grid grid-cols-3 px-2 py-1 hover:bg-[#161b22] cursor-pointer text-[11px]"
               >
-                <span className={t.isBuy ? "text-[#0ecb81]" : "text-[#f6465d]"}>
+                <span className={`tabular-nums ${t.isBuy ? "text-[#0ecb81]" : "text-[#f6465d]"}`}>
                   {t.price.toFixed(2)}
                 </span>
-                <span className="text-right text-[#f0f3f6]">{t.size}</span>
-                <span className="text-right text-[#848e9c] text-[10px]">{t.time}</span>
+                <span className="text-right text-[#f0f3f6] tabular-nums">{t.size}</span>
+                <span className="text-right text-[#848e9c] text-[10px] tabular-nums">{t.time}</span>
               </div>
             ))}
           </div>
@@ -197,11 +208,11 @@ export const OrderBook: React.FC<OrderBookProps> = ({
             {/* ASKS (RED) */}
             {(depthMode === "both" || depthMode === "asks") && (
               <div className="flex flex-col justify-end overflow-hidden flex-1 px-1">
-                {asks.slice(depthMode === "asks" ? 0 : 2).map((a) => {
+                {asks.slice(depthMode === "asks" ? 0 : 2).map((a, idx) => {
                   const depthPct = Math.min(100, Math.round((a.cumulative / maxTotal) * 100));
                   return (
                     <div
-                      key={`ask-${a.tick}`}
+                      key={`ask-${a.price}-${idx}`}
                       onClick={() => handleRowClick(a.price, a.offset)}
                       className="grid grid-cols-3 px-2 py-[1px] relative hover:bg-[#161b22] cursor-pointer group"
                     >
@@ -209,11 +220,11 @@ export const OrderBook: React.FC<OrderBookProps> = ({
                         className="absolute inset-y-0 right-0 bg-[#f6465d]/12 pointer-events-none transition-all duration-150 group-hover:bg-[#f6465d]/20"
                         style={{ width: `${depthPct}%` }}
                       />
-                      <span className="text-[#f6465d] relative">{a.price.toFixed(2)}</span>
-                      <span className="text-right text-[#f0f3f6] relative">
+                      <span className="text-[#f6465d] relative tabular-nums">{a.price.toFixed(2)}</span>
+                      <span className="text-right text-[#f0f3f6] relative tabular-nums">
                         {a.lots.toLocaleString()}
                       </span>
-                      <span className="text-right text-[#848e9c] relative">
+                      <span className="text-right text-[#848e9c] relative tabular-nums">
                         {a.cumulative.toLocaleString()}
                       </span>
                     </div>
@@ -225,7 +236,7 @@ export const OrderBook: React.FC<OrderBookProps> = ({
             {/* SPREAD / CURRENT BATCH CLEARING (Backpack Exact Row) */}
             <div className="py-1 px-3 bg-[#13171d] border-y bp-border flex items-center justify-between shrink-0 my-0.5">
               <div className="flex items-center gap-2">
-                <span className="text-[13px] font-bold text-white">
+                <span className="text-[13px] font-bold text-white tabular-nums">
                   ${oraclePrice.toFixed(2)}
                 </span>
                 <span className="text-[10px] text-[#848e9c]">Index</span>
@@ -239,11 +250,11 @@ export const OrderBook: React.FC<OrderBookProps> = ({
             {/* BIDS (GREEN) */}
             {(depthMode === "both" || depthMode === "bids") && (
               <div className="flex flex-col justify-start overflow-hidden flex-1 px-1">
-                {bids.slice(0, depthMode === "bids" ? 10 : 8).map((b) => {
+                {bids.slice(0, depthMode === "bids" ? 10 : 8).map((b, idx) => {
                   const depthPct = Math.min(100, Math.round((b.cumulative / maxTotal) * 100));
                   return (
                     <div
-                      key={`bid-${b.tick}`}
+                      key={`bid-${b.price}-${idx}`}
                       onClick={() => handleRowClick(b.price, b.offset)}
                       className="grid grid-cols-3 px-2 py-[1px] relative hover:bg-[#161b22] cursor-pointer group"
                     >
@@ -251,11 +262,11 @@ export const OrderBook: React.FC<OrderBookProps> = ({
                         className="absolute inset-y-0 right-0 bg-[#0ecb81]/12 pointer-events-none transition-all duration-150 group-hover:bg-[#0ecb81]/20"
                         style={{ width: `${depthPct}%` }}
                       />
-                      <span className="text-[#0ecb81] relative">{b.price.toFixed(2)}</span>
-                      <span className="text-right text-[#f0f3f6] relative">
+                      <span className="text-[#0ecb81] relative tabular-nums">{b.price.toFixed(2)}</span>
+                      <span className="text-right text-[#f0f3f6] relative tabular-nums">
                         {b.lots.toLocaleString()}
                       </span>
-                      <span className="text-right text-[#848e9c] relative">
+                      <span className="text-right text-[#848e9c] relative tabular-nums">
                         {b.cumulative.toLocaleString()}
                       </span>
                     </div>
@@ -277,8 +288,8 @@ export const OrderBook: React.FC<OrderBookProps> = ({
                 ></div>
               </div>
               <div className="flex items-center justify-between text-[10px] font-mono text-[#848e9c] mt-1">
-                <span className="text-[#0ecb81]">{bidRatio}% Buy</span>
-                <span className="text-[#f6465d]">{100 - bidRatio}% Sell</span>
+                <span className="text-[#0ecb81] tabular-nums">{bidRatio}% Buy</span>
+                <span className="text-[#f6465d] tabular-nums">{100 - bidRatio}% Sell</span>
               </div>
             </div>
           </div>

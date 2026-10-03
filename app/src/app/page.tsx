@@ -14,6 +14,7 @@ import { BatchLogView } from "../components/BatchLogView";
 import { EvidenceView } from "../components/EvidenceView";
 import { FaucetModal } from "../components/FaucetModal";
 import { DepositWithdrawModal } from "../components/DepositWithdrawModal";
+import { fetchSolStats, fetchLiveDepth, MarketStats, BookRow } from "../lib/marketData";
 
 export default function Home() {
   const { connection } = useConnection();
@@ -29,16 +30,23 @@ export default function Home() {
     mode: "deposit" | "withdraw";
   }>({ isOpen: false, mode: "deposit" });
 
-  // On-Chain State / Simulation
-  const [currentSlot, setCurrentSlot] = useState<number>(2841924);
-  const [currentBatchId, setCurrentBatchId] = useState<number>(142);
-  const [slotsRemaining, setSlotsRemaining] = useState<number>(2);
-  const [markPrice, setMarkPrice] = useState<number>(150.04);
-  const [selectedPrice, setSelectedPrice] = useState<number>(150.04);
-  const [selectedOffsetBps, setSelectedOffsetBps] = useState<number>(3);
+  // Live Market State
+  const [markPrice, setMarkPrice] = useState<number>(119.60);
+  const [marketStats, setMarketStats] = useState<MarketStats | null>(null);
+  const [dynamicBids, setDynamicBids] = useState<BookRow[]>([]);
+  const [dynamicAsks, setDynamicAsks] = useState<BookRow[]>([]);
+  const [dynamicBidRatio, setDynamicBidRatio] = useState<number>(60);
+  const [selectedPrice, setSelectedPrice] = useState<number>(119.60);
+  const [selectedOffsetBps, setSelectedOffsetBps] = useState<number>(0);
   const [isPlacingOrder, setIsPlacingOrder] = useState<boolean>(false);
 
-  // User Balances & Position
+  // On-Chain Slot & Batch Tracking
+  const [currentSlot, setCurrentSlot] = useState<number>(331940280);
+  const [currentBatchId, setCurrentBatchId] = useState<number>(165970140);
+  const [slotsRemaining, setSlotsRemaining] = useState<number>(2);
+  const [solBalance, setSolBalance] = useState<number | null>(null);
+
+  // User Balances & Margin Account
   const [collateral, setCollateral] = useState<number>(2500);
   const [quotePosition, setQuotePosition] = useState<number>(0);
   const [position, setPosition] = useState<{
@@ -52,11 +60,11 @@ export default function Home() {
   } | null>({
     market: "SOL-PERP",
     sizeLots: 50,
-    entryPrice: 148.20,
-    markPrice: 150.04,
-    unrealizedPnl: 92.00,
+    entryPrice: 118.20,
+    markPrice: 119.60,
+    unrealizedPnl: 70.00,
     marginRatio: 0.12,
-    liqPrice: 112.40,
+    liqPrice: 95.40,
   });
 
   const [activeOrders, setActiveOrders] = useState<
@@ -68,11 +76,10 @@ export default function Home() {
       lots: number;
     }>
   >([
-    { batchId: 143, slotId: 0, side: "BUY", tickOffset: 3, lots: 10 },
-    { batchId: 144, slotId: 1, side: "SELL", tickOffset: 8, lots: 20 },
+    { batchId: 165970141, slotId: 0, side: "BUY", tickOffset: 2, lots: 10 },
   ]);
 
-  // Synthetic Tick Aggregates for K=101
+  // Synthetic Tick Aggregates for K=101 fallback
   const [bidQty, setBidQty] = useState<number[]>(() => {
     const arr = new Array(101).fill(0);
     for (let i = 0; i <= 50; i++) {
@@ -103,87 +110,178 @@ export default function Home() {
     }>
   >([
     {
-      batchId: 141,
-      clearingPrice: 150.045,
+      batchId: 165970139,
+      clearingPrice: 119.615,
       matchedLots: 1420,
-      offsetBps: 3,
-      oraclePrice: 150.00,
+      offsetBps: 1,
+      oraclePrice: 119.60,
       oracleConf: 12000,
       status: "SETTLED",
       cuConsumed: 18728,
     },
     {
-      batchId: 140,
-      clearingPrice: 149.985,
+      batchId: 165970138,
+      clearingPrice: 119.595,
       matchedLots: 980,
       offsetBps: -1,
-      oraclePrice: 150.00,
+      oraclePrice: 119.60,
       oracleConf: 10500,
       status: "SETTLED",
       cuConsumed: 16174,
     },
     {
-      batchId: 139,
-      clearingPrice: 150.015,
+      batchId: 165970137,
+      clearingPrice: 119.60,
       matchedLots: 1650,
-      offsetBps: 1,
-      oraclePrice: 150.00,
+      offsetBps: 0,
+      oraclePrice: 119.60,
       oracleConf: 9800,
       status: "SETTLED",
       cuConsumed: 22890,
     },
     {
-      batchId: 138,
-      clearingPrice: 150.00,
+      batchId: 165970136,
+      clearingPrice: 119.60,
       matchedLots: 0,
       offsetBps: 0,
-      oraclePrice: 150.00,
+      oraclePrice: 119.60,
       oracleConf: 500000,
       status: "VOID",
       cuConsumed: 6592,
     },
   ]);
 
-  // Polling loop to simulate Solana slots and batch transitions (every 800ms)
+  // 1. LIVE MARKET DATA POLLING LOOP (Every 2.5 seconds)
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentSlot((prev) => {
-        const next = prev + 1;
-        setSlotsRemaining((rem) => {
-          if (rem <= 1) {
-            // Batch closes, increment batch ID
-            setCurrentBatchId((b) => {
-              const newBatchId = b + 1;
-              // Generate mock clearing record
-              const offset = Math.floor(Math.random() * 7) - 3;
-              const clPrice = markPrice * (1 + offset / 10_000);
-              const matched = Math.floor(Math.random() * 800 + 400);
+    let mounted = true;
 
-              setRecentBatches((old) => [
-                {
-                  batchId: b,
-                  clearingPrice: clPrice,
-                  matchedLots: matched,
-                  offsetBps: offset,
-                  oraclePrice: markPrice,
-                  oracleConf: 12000,
-                  status: "CLEARED",
-                  cuConsumed: Math.floor(Math.random() * 5000 + 16000),
-                },
-                ...old.slice(0, 19),
-              ]);
+    const pollMarketData = async () => {
+      try {
+        const stats = await fetchSolStats();
+        if (mounted && stats) {
+          setMarketStats(stats);
+          setMarkPrice(stats.lastPrice);
+        }
 
-              return newBatchId;
-            });
-            return 2; // reset 2 slots per batch
-          }
-          return rem - 1;
+        const depth = await fetchLiveDepth(stats?.lastPrice || markPrice);
+        if (mounted && depth) {
+          setDynamicBids(depth.bids);
+          setDynamicAsks(depth.asks);
+          setDynamicBidRatio(depth.bidRatio);
+        }
+      } catch (err) {
+        console.error("Live market polling failed:", err);
+      }
+    };
+
+    pollMarketData();
+    const interval = setInterval(pollMarketData, 2500);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  // 2. LIVE SOLANA SLOT & BATCH CYCLE (Every 800ms ~ 2 slots per batch)
+  useEffect(() => {
+    let mounted = true;
+
+    const syncSlot = async () => {
+      try {
+        const slot = await connection.getSlot("processed");
+        if (mounted && slot > 0) {
+          setCurrentSlot(slot);
+          const bId = Math.floor(slot / 2);
+          setCurrentBatchId(bId);
+          setSlotsRemaining(2 - (slot % 2));
+        }
+      } catch {
+        // Fallback local simulation if RPC times out
+        setCurrentSlot((prev) => {
+          const next = prev + 1;
+          setSlotsRemaining((rem) => {
+            if (rem <= 1) {
+              setCurrentBatchId((b) => {
+                const newBatchId = b + 1;
+                const offset = Math.floor(Math.random() * 5) - 2;
+                const clPrice = markPrice * (1 + offset / 10_000);
+                const matched = Math.floor(Math.random() * 800 + 400);
+
+                setRecentBatches((old) => [
+                  {
+                    batchId: b,
+                    clearingPrice: clPrice,
+                    matchedLots: matched,
+                    offsetBps: offset,
+                    oraclePrice: markPrice,
+                    oracleConf: 12000,
+                    status: "CLEARED",
+                    cuConsumed: Math.floor(Math.random() * 5000 + 16000),
+                  },
+                  ...old.slice(0, 19),
+                ]);
+
+                return newBatchId;
+              });
+              return 2;
+            }
+            return rem - 1;
+          });
+          return next;
         });
-        return next;
-      });
-    }, 800);
+      }
+    };
 
-    return () => clearInterval(interval);
+    const interval = setInterval(syncSlot, 800);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [connection, markPrice]);
+
+  // 3. LIVE SOLANA WALLET BALANCE
+  useEffect(() => {
+    if (!connected || !publicKey) {
+      setSolBalance(null);
+      return;
+    }
+
+    let mounted = true;
+    const fetchBalance = async () => {
+      try {
+        const lamports = await connection.getBalance(publicKey);
+        if (mounted) {
+          setSolBalance(lamports / 1e9);
+        }
+      } catch (e) {
+        console.error("Balance fetch error:", e);
+      }
+    };
+
+    fetchBalance();
+    const interval = setInterval(fetchBalance, 10000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [connected, publicKey, connection]);
+
+  // 4. DYNAMIC POSITION MARK-TO-MARKET UPDATE
+  useEffect(() => {
+    if (position && position.sizeLots !== 0) {
+      const positionSol = position.sizeLots * 0.001;
+      const uPnl = positionSol * (markPrice - position.entryPrice);
+      setPosition((prev) =>
+        prev
+          ? {
+              ...prev,
+              markPrice,
+              unrealizedPnl: parseFloat(uPnl.toFixed(2)),
+            }
+          : null
+      );
+    }
   }, [markPrice]);
 
   // Order Placement Handler
@@ -203,7 +301,7 @@ export default function Home() {
     setIsPlacingOrder(true);
     await new Promise((res) => setTimeout(res, 600));
 
-    // Update local state
+    // Update local book tick aggregates
     const tick = Math.max(0, Math.min(100, 50 + offsetBps));
     if (side === "BUY") {
       setBidQty((prev) => {
@@ -218,6 +316,10 @@ export default function Home() {
         return n;
       });
     }
+
+    // Allocate required margin from collateral
+    const orderMargin = price * lots * 0.001 * 0.1;
+    setCollateral((prev) => Math.max(0, parseFloat((prev - orderMargin).toFixed(2))));
 
     setActiveOrders((prev) => [
       {
@@ -235,6 +337,11 @@ export default function Home() {
 
   // Cancel Order Handler
   const handleCancelOrder = async (batchId: number, slotId: number) => {
+    const order = activeOrders.find((o) => o.batchId === batchId && o.slotId === slotId);
+    if (order) {
+      const orderMargin = markPrice * order.lots * 0.001 * 0.1;
+      setCollateral((prev) => parseFloat((prev + orderMargin).toFixed(2)));
+    }
     setActiveOrders((prev) =>
       prev.filter((o) => !(o.batchId === batchId && o.slotId === slotId))
     );
@@ -260,15 +367,16 @@ export default function Home() {
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-[#0b0e11] text-[#f0f3f6]">
-      {/* 1. Thin Infinite Ticker Banner Across Very Top */}
+      {/* 1. Thin Infinite Ticker Banner Across Very Top (Dynamic live market prices) */}
       <MarketTickerBanner />
 
-      {/* 2. Top Header Navigation */}
+      {/* 2. Top Header Navigation (Dynamic 24h stats, live price flash, funding countdown) */}
       <Header
         currentSlot={currentSlot}
         currentBatchId={currentBatchId}
         slotsRemaining={slotsRemaining}
         markPrice={markPrice}
+        stats={marketStats}
         onOpenFaucetModal={() => setIsFaucetOpen(true)}
       />
 
@@ -285,7 +393,7 @@ export default function Home() {
         {activeTab === "trade" && (
           <div className="flex-1 flex flex-col min-w-0 bg-[#0b0e11] overflow-hidden">
             <div className="flex-1 flex min-h-0 overflow-hidden">
-              {/* Centerpiece: Authentic Candlestick TradingView Chart + FBA Crossing Curve Overlay */}
+              {/* Centerpiece: Authentic Candlestick TradingView Chart with dynamic klines + FBA Curve */}
               <TradingChart
                 markPrice={markPrice}
                 batchId={currentBatchId}
@@ -294,11 +402,14 @@ export default function Home() {
                 onSelectPrice={setSelectedPrice}
               />
 
-              {/* Order Book Micro-Ladder & Trades */}
+              {/* Order Book Micro-Ladder & Trades with live depth */}
               <OrderBook
                 oraclePrice={markPrice}
                 bidQty={bidQty}
                 askQty={askQty}
+                dynamicBids={dynamicBids}
+                dynamicAsks={dynamicAsks}
+                dynamicBidRatio={dynamicBidRatio}
                 onSelectOffset={setSelectedOffsetBps}
                 onSelectPrice={setSelectedPrice}
               />
@@ -314,7 +425,7 @@ export default function Home() {
               />
             </div>
 
-            {/* Bottom Docking Ledger */}
+            {/* Bottom Docking Ledger (Balances, Positions, Open Orders, FBA Log) */}
             <BottomLedger
               collateral={collateral}
               quotePosition={quotePosition}

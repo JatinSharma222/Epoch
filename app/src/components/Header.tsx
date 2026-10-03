@@ -3,13 +3,15 @@
 import React from "react";
 import Image from "next/image";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { Coins, Search, ChevronDown, Activity, Sparkles } from "lucide-react";
+import { Coins, Search, ChevronDown, Activity } from "lucide-react";
+import { MarketStats } from "../lib/marketData";
 
 interface HeaderProps {
   currentSlot: number;
   currentBatchId: number;
   slotsRemaining: number;
   markPrice: number;
+  stats?: MarketStats | null;
   onOpenFaucetModal: () => void;
 }
 
@@ -18,12 +20,22 @@ export const Header: React.FC<HeaderProps> = ({
   currentBatchId,
   slotsRemaining,
   markPrice,
+  stats,
   onOpenFaucetModal,
 }) => {
   const progressPercent = Math.max(0, Math.min(100, (1 - slotsRemaining / 2) * 100));
-  const indexPrice = (markPrice * 1.0003).toFixed(2);
-  const high24h = (markPrice * 1.031).toFixed(2);
-  const low24h = (markPrice * 0.978).toFixed(2);
+  const indexPrice = stats?.indexPrice ? stats.indexPrice.toFixed(2) : (markPrice * 1.0003).toFixed(2);
+  const high24h = stats?.highPrice ? stats.highPrice.toFixed(2) : (markPrice * 1.031).toFixed(2);
+  const low24h = stats?.lowPrice ? stats.lowPrice.toFixed(2) : (markPrice * 0.978).toFixed(2);
+  const volumeUsd = stats?.volumeUsd
+    ? `$${stats.volumeUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+    : "$33,957,991.07";
+  const volumeSol = stats?.volumeSol
+    ? stats.volumeSol.toLocaleString(undefined, { maximumFractionDigits: 2 })
+    : "192,346.18";
+  const changePercent = stats?.priceChangePercent ?? 2.45;
+  const isPositive = changePercent >= 0;
+  const fundingCountdown = stats?.fundingCountdown ?? "00:30:13";
 
   return (
     <header className="h-[52px] border-b bp-border bg-[#0e1217] flex items-center justify-between px-3 shrink-0 gap-3 select-none overflow-x-auto">
@@ -57,10 +69,14 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Price Ticker & Primary Metrics */}
         <div className="flex flex-col">
-          <span className="text-[16px] font-bold font-mono text-[#0ecb81] tracking-tight leading-none">
+          <span
+            className={`text-[16px] font-bold font-mono tracking-tight leading-none tabular-nums ${
+              isPositive ? "text-[#0ecb81]" : "text-[#f6465d]"
+            }`}
+          >
             ${markPrice.toFixed(2)}
           </span>
-          <span className="text-[10px] font-mono text-[#848e9c] leading-tight">
+          <span className="text-[10px] font-mono text-[#848e9c] leading-tight tabular-nums">
             ${indexPrice}
           </span>
         </div>
@@ -69,42 +85,49 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center gap-4 text-[11px]">
           <div className="flex flex-col">
             <span className="text-[#848e9c] text-[10px]">Index Price</span>
-            <span className="font-mono text-[#f0f3f6] font-medium">${indexPrice}</span>
+            <span className="font-mono text-[#f0f3f6] font-medium tabular-nums">${indexPrice}</span>
           </div>
 
           <div className="flex flex-col">
             <span className="text-[#848e9c] text-[10px]">24H Change</span>
-            <span className="font-mono text-[#0ecb81] font-medium">+2.45%</span>
+            <span
+              className={`font-mono font-medium tabular-nums ${
+                isPositive ? "text-[#0ecb81]" : "text-[#f6465d]"
+              }`}
+            >
+              {isPositive ? "+" : ""}
+              {changePercent.toFixed(2)}%
+            </span>
           </div>
 
           <div className="flex flex-col hidden lg:flex">
             <span className="text-[#848e9c] text-[10px]">1H Funding / Countdown</span>
-            <span className="font-mono text-[#eab308] font-medium">
-              0.00041% <span className="text-[#848e9c]">/ 00:30:13</span>
+            <span className="font-mono text-[#eab308] font-medium tabular-nums">
+              0.00041% <span className="text-[#848e9c]">/ {fundingCountdown}</span>
             </span>
           </div>
 
           <div className="flex flex-col hidden xl:flex">
             <span className="text-[#848e9c] text-[10px]">24H High</span>
-            <span className="font-mono text-[#f0f3f6] font-medium">${high24h}</span>
+            <span className="font-mono text-[#f0f3f6] font-medium tabular-nums">${high24h}</span>
           </div>
 
           <div className="flex flex-col hidden xl:flex">
             <span className="text-[#848e9c] text-[10px]">24H Low</span>
-            <span className="font-mono text-[#f0f3f6] font-medium">${low24h}</span>
+            <span className="font-mono text-[#f0f3f6] font-medium tabular-nums">${low24h}</span>
           </div>
 
           <div className="flex flex-col hidden 2xl:flex">
             <span className="text-[#848e9c] text-[10px]">24H Volume (USD)</span>
-            <span className="font-mono text-[#f0f3f6] font-medium">$33,957,991.07</span>
+            <span className="font-mono text-[#f0f3f6] font-medium tabular-nums">{volumeUsd}</span>
           </div>
 
           <div className="flex flex-col hidden 2xl:flex">
             <span className="text-[#848e9c] text-[10px]">Open Interest (SOL)</span>
-            <span className="font-mono text-[#f0f3f6] font-medium">192,346.18</span>
+            <span className="font-mono text-[#f0f3f6] font-medium tabular-nums">{volumeSol}</span>
           </div>
 
-          {/* FBA Batch Indicator (Clean Discreet Badge) */}
+          {/* FBA Batch Indicator */}
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#161b22] border bp-border text-[10px] font-mono">
             <span className="w-1.5 h-1.5 rounded-full bg-[#0ecb81] animate-pulse"></span>
             <span className="text-[#848e9c]">Slot #{currentSlot || "..."}</span>

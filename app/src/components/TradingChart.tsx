@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Zap,
   Activity,
@@ -20,6 +20,7 @@ import {
   Eye,
   Trash2,
 } from "lucide-react";
+import { fetchLiveKlines, Candle } from "../lib/marketData";
 
 interface TradingChartProps {
   markPrice: number;
@@ -41,9 +42,30 @@ export const TradingChart: React.FC<TradingChartProps> = ({
   const [priceRef, setPriceRef] = useState<"last" | "mark" | "index">("last");
   const [hoveredCandle, setHoveredCandle] = useState<number | null>(null);
   const [activeTool, setActiveTool] = useState<string>("crosshair");
+  const [realCandles, setRealCandles] = useState<Candle[]>([]);
 
-  // Synthetic deterministic candlestick data centered on markPrice
+  // Fetch live candlesticks whenever timeframe changes
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      const data = await fetchLiveKlines(timeframe, 48);
+      if (mounted && data.length > 0) {
+        setRealCandles(data);
+      }
+    };
+    load();
+    const interval = setInterval(load, 10000); // 10s poll
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [timeframe]);
+
+  // Use real candles or fallback
   const candles = useMemo(() => {
+    if (realCandles.length > 0) {
+      return realCandles.map((c, idx) => ({ ...c, i: idx }));
+    }
     const list = [];
     let current = markPrice - 2.8;
     for (let i = 0; i < 48; i++) {
@@ -54,22 +76,28 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       const low = Math.min(open, close) - Math.abs(Math.cos(i * 0.9)) * 0.7 - 0.1;
       const isGreen = close >= open;
       const volume = Math.floor(Math.abs(delta) * 140 + 45);
-      list.push({ i, open, high, low, close, isGreen, volume });
+      list.push({ i, time: Date.now() - (48 - i) * 3600000, open, high, low, close, isGreen, volume });
       current = close;
     }
-    // Ensure the last candle closes at exact markPrice
     list[list.length - 1].close = markPrice;
-    list[list.length - 1].high = Math.max(list[list.length - 1].high, markPrice + 0.2);
-    list[list.length - 1].low = Math.min(list[list.length - 1].low, markPrice - 0.2);
     return list;
-  }, [markPrice]);
+  }, [realCandles, markPrice]);
 
-  // Compute 20-period Moving Average
+  // Dynamically compute chart price bounds from candles
+  const { minPrice, maxPrice } = useMemo(() => {
+    if (candles.length === 0) return { minPrice: markPrice - 5, maxPrice: markPrice + 5 };
+    const lows = candles.map((c) => c.low);
+    const highs = candles.map((c) => c.high);
+    const min = Math.min(...lows, markPrice - 0.5);
+    const max = Math.max(...highs, markPrice + 0.5);
+    const pad = Math.max(0.5, (max - min) * 0.08);
+    return { minPrice: min - pad, maxPrice: max + pad };
+  }, [candles, markPrice]);
+
+  // Compute 10-period Moving Average
   const smaPoints = useMemo(() => {
     const period = 10;
     const points: Array<{ x: number; y: number }> = [];
-    const minPrice = markPrice - 5;
-    const maxPrice = markPrice + 5;
     const scaleY = (p: number) => 300 - ((p - minPrice) / (maxPrice - minPrice)) * 240;
 
     for (let i = period - 1; i < candles.length; i++) {
@@ -83,7 +111,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       points.push({ x, y });
     }
     return points;
-  }, [candles, markPrice]);
+  }, [candles, minPrice, maxPrice]);
 
   const smaPath = useMemo(() => {
     if (smaPoints.length === 0) return "";
@@ -414,7 +442,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
                   {/* Horizontal price grid lines */}
                   {[0, 1, 2, 3, 4, 5, 6].map((idx) => {
                     const y = 30 + idx * 45;
-                    const priceLabel = (markPrice + (3 - idx) * 1.5).toFixed(2);
+                    const priceLabel = (maxPrice - (idx / 6) * (maxPrice - minPrice)).toFixed(2);
                     return (
                       <g key={idx}>
                         <line
@@ -474,8 +502,6 @@ export const TradingChart: React.FC<TradingChartProps> = ({
                     {candles.map((c, i) => {
                       const x = 20 + i * 17.5;
                       const candleMidX = x + 5.5;
-                      const minPrice = markPrice - 5;
-                      const maxPrice = markPrice + 5;
                       const scaleY = (p: number) =>
                         300 - ((p - minPrice) / (maxPrice - minPrice)) * 240;
 
@@ -518,28 +544,34 @@ export const TradingChart: React.FC<TradingChartProps> = ({
                   </g>
 
                   {/* Current Mark Price Horizontal Line */}
-                  <line
-                    x1="0"
-                    y1="165"
-                    x2="870"
-                    y2="165"
-                    stroke="#0ecb81"
-                    strokeDasharray="3 3"
-                    strokeWidth="1"
-                    opacity="0.85"
-                  />
-                  {/* Current Price Beacon on right axis */}
-                  <rect x="872" y="155" width="64" height="20" rx="2" fill="#00c087" />
-                  <text
-                    x="878"
-                    y="169"
-                    fill="#002114"
-                    fontFamily="JetBrains Mono"
-                    fontSize="11"
-                    fontWeight="700"
-                  >
-                    {markPrice.toFixed(2)}
-                  </text>
+                  {(() => {
+                    const currentY = Math.max(20, Math.min(330, 300 - ((markPrice - minPrice) / (maxPrice - minPrice)) * 240));
+                    return (
+                      <g>
+                        <line
+                          x1="0"
+                          y1={currentY}
+                          x2="870"
+                          y2={currentY}
+                          stroke="#0ecb81"
+                          strokeDasharray="3 3"
+                          strokeWidth="1"
+                          opacity="0.85"
+                        />
+                        <rect x="872" y={currentY - 10} width="64" height="20" rx="2" fill="#00c087" />
+                        <text
+                          x="878"
+                          y={currentY + 4}
+                          fill="#002114"
+                          fontFamily="JetBrains Mono"
+                          fontSize="11"
+                          fontWeight="700"
+                        >
+                          {markPrice.toFixed(2)}
+                        </text>
+                      </g>
+                    );
+                  })()}
                 </svg>
               </div>
 
