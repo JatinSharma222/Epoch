@@ -3,15 +3,66 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    /* Surface layers (darkest to lightest) */
+    --bg-base: #0B0E11;
+    --bg-panel: #0E1217;
+    --bg-surface: #12161C;
+    --bg-elevated: #181D24;
+    --bg-hover: #1F2633;
+    --bg-overlay: #272A2E;
+    
+    /* Borders */
+    --border-default: rgba(255, 255, 255, 0.06);
+    --border-subtle: rgba(255, 255, 255, 0.04);
+    --border-strong: rgba(255, 255, 255, 0.12);
+    
+    /* Text */
+    --text-primary: #FFFFFF;
+    --text-secondary: #B7BDC6;
+    --text-muted: #848E9C;
+    --text-disabled: #4B5563;
+    
+    /* Semantic: Trading */
+    --green: #00C087;
+    --green-hover: #00A372;
+    --green-bg: rgba(0, 192, 135, 0.12);
+    --green-text: #0ECB81;
+    --red: #F23645;
+    --red-hover: #D92D3B;
+    --red-bg: rgba(242, 54, 69, 0.12);
+    --red-text: #F6465D;
+    
+    /* Brand */
+    --brand: #E54040;
+    --brand-hover: #D03838;
+    --accent: #00F0FF;
+    --amber: #EAB308;
+    --sol: #9945FF;
+    
+    /* Shadows */
+    --shadow-popup: 0 8px 24px rgba(0, 0, 0, 0.60);
+    
+    /* Radii */
+    --radius-sm: 2px;
+    --radius-default: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+    --radius-pill: 9999px;
+  }
+
   html, body {
     margin: 0;
     padding: 0;
-    background-color: #0b0e11;
-    color: #f0f3f6;
+    background-color: var(--bg-base);
+    color: var(--text-secondary);
     font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    overflow-x: hidden;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
+  /* Ultra-thin scrollbars matching terminal aesthetic */
   ::-webkit-scrollbar {
     width: 3px;
     height: 3px;
@@ -20,52 +71,148 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.08);
     border-radius: 2px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  /* Remove number input spinners for cleaner price/qty inputs */
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+
+  /* Range slider styling */
+  input[type='range'] {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+  }
+  input[type='range']::-webkit-slider-runnable-track {
+    height: 3px;
+    background: var(--bg-elevated);
+    border-radius: 2px;
+  }
+  input[type='range']::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--text-primary);
+    border: 2px solid var(--bg-panel);
+    margin-top: -4.5px;
+    transition: transform 0.1s ease;
+  }
+  input[type='range']::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+  }
+  input[type='range']::-moz-range-track {
+    height: 3px;
+    background: var(--bg-elevated);
+    border-radius: 2px;
+    border: none;
+  }
+  input[type='range']::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--text-primary);
+    border: 2px solid var(--bg-panel);
+    cursor: pointer;
+  }
+
+  /* Custom checkbox styling */
+  input[type='checkbox'] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 13px;
+    height: 13px;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    background: var(--bg-surface);
+    cursor: pointer;
+    position: relative;
+    flex-shrink: 0;
+  }
+  input[type='checkbox']:checked {
+    background: var(--text-primary);
+    border-color: var(--text-primary);
+  }
+  input[type='checkbox']:checked::after {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 1px;
+    width: 5px;
+    height: 8px;
+    border: solid var(--bg-base);
+    border-width: 0 1.5px 1.5px 0;
+    transform: rotate(45deg);
+  }
+  input[type='checkbox']:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
   }
 }
 
+/* Utility classes for borders */
 .bp-border {
-  border-color: rgba(255, 255, 255, 0.07);
+  border-color: var(--border-default);
 }
-
 .bp-border-subtle {
-  border-color: rgba(255, 255, 255, 0.04);
+  border-color: var(--border-subtle);
+}
+.bp-border-strong {
+  border-color: var(--border-strong);
 }
 
+/* Tabular numbers for financial data */
 .tabular-nums {
   font-variant-numeric: tabular-nums;
 }
 
-/* Wallet adapter custom styling overrides to match dark theme */
+/* Focus ring utility */
+.focus-ring:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Wallet adapter overrides to match dark theme */
 .wallet-adapter-button {
   background-color: #ffffff !important;
   color: #000000 !important;
   font-family: inherit !important;
   font-size: 12px !important;
   font-weight: 600 !important;
-  height: 32px !important;
+  height: 30px !important;
   padding: 0 12px !important;
-  border-radius: 4px !important;
-  transition: all 0.2s ease !important;
+  border-radius: var(--radius-default) !important;
+  transition: all 0.15s ease !important;
 }
-
 .wallet-adapter-button:hover {
   background-color: #e1e4ea !important;
 }
-
 .wallet-adapter-button-trigger {
   background-color: #ffffff !important;
 }
-
 .wallet-adapter-modal-wrapper {
-  background-color: #111418 !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background-color: var(--bg-panel) !important;
+  border: 1px solid var(--border-strong) !important;
+  box-shadow: var(--shadow-popup) !important;
 }
-
 .wallet-adapter-modal-title {
-  color: #ffffff !important;
+  color: var(--text-primary) !important;
+}
+.wallet-adapter-modal-list li {
+  background-color: var(--bg-surface) !important;
+}
+.wallet-adapter-modal-list li:hover {
+  background-color: var(--bg-elevated) !important;
 }
