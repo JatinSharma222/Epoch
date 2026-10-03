@@ -1,0 +1,2893 @@
+{
+  "address": "CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap",
+  "metadata": {
+    "name": "epoch",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Epoch - Frequent Batch Auction perpetual-futures exchange on Solana"
+  },
+  "instructions": [
+    {
+      "name": "cancel_order",
+      "docs": [
+        "Cancel an active order before its target batch closes."
+      ],
+      "discriminator": [
+        95,
+        129,
+        237,
+        240,
+        8,
+        49,
+        223,
+        132
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "batch",
+          "writable": true
+        },
+        {
+          "name": "user",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  115,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "target_batch",
+          "type": "u64"
+        },
+        {
+          "name": "ring_index",
+          "type": "u8"
+        },
+        {
+          "name": "slot_id",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "clear_batch",
+      "docs": [
+        "Clear an expired batch, execute auction, compute clearing price, and allocate fills."
+      ],
+      "discriminator": [
+        194,
+        215,
+        191,
+        209,
+        220,
+        20,
+        81,
+        102
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "batch",
+          "writable": true
+        },
+        {
+          "name": "cranker",
+          "docs": [
+            "Permissionless cranker invoking clear_batch"
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "batch_id",
+          "type": "u64"
+        },
+        {
+          "name": "ring_index",
+          "type": "u8"
+        },
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "ClearBatchParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "create_user",
+      "docs": [
+        "Create a new per-user account for trading and collateral accounting."
+      ],
+      "discriminator": [
+        108,
+        227,
+        130,
+        130,
+        252,
+        109,
+        75,
+        218
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  115,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "deposit",
+      "docs": [
+        "Deposit mock USDC collateral into the protocol vault."
+      ],
+      "discriminator": [
+        242,
+        35,
+        198,
+        137,
+        82,
+        225,
+        242,
+        182
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "user",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  115,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user_token_account",
+          "writable": true
+        },
+        {
+          "name": "collateral_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  108,
+                  108,
+                  97,
+                  116,
+                  101,
+                  114,
+                  97,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "faucet",
+      "docs": [
+        "Mint mock USDC to caller for testing on devnet / localnet (capped per call)."
+      ],
+      "discriminator": [
+        0,
+        98,
+        59,
+        30,
+        144,
+        142,
+        113,
+        12
+      ],
+      "accounts": [
+        {
+          "name": "quote_mint",
+          "docs": [
+            "Mock USDC mint."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  111,
+                  116,
+                  101,
+                  95,
+                  109,
+                  105,
+                  110,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint_authority",
+          "docs": [
+            "PDA authority allowed to mint mock USDC."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  105,
+                  110,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "recipient_token_account",
+          "docs": [
+            "Token account receiving the newly minted tokens."
+          ],
+          "writable": true
+        },
+        {
+          "name": "recipient",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "fund_vault",
+      "docs": [
+        "Fund the Backstop Vault with mock USDC collateral."
+      ],
+      "discriminator": [
+        26,
+        33,
+        207,
+        242,
+        119,
+        108,
+        134,
+        73
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_user",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  115,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault_authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "funder_token_account",
+          "writable": true
+        },
+        {
+          "name": "collateral_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  108,
+                  108,
+                  97,
+                  116,
+                  101,
+                  114,
+                  97,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "funder",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "initialize_batch",
+      "docs": [
+        "Initialize a zero-copy Batch account for a ring slot."
+      ],
+      "discriminator": [
+        126,
+        44,
+        205,
+        90,
+        220,
+        105,
+        105,
+        193
+      ],
+      "accounts": [
+        {
+          "name": "batch",
+          "writable": true
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "ring_index",
+          "type": "u8"
+        },
+        {
+          "name": "batch_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "initialize_market",
+      "docs": [
+        "Initialize the global Market account, mock USDC mint, and collateral vault."
+      ],
+      "discriminator": [
+        35,
+        35,
+        189,
+        193,
+        155,
+        48,
+        170,
+        203
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint_authority",
+          "docs": [
+            "PDA that serves as the mint authority for the mock USDC token."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  105,
+                  110,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "quote_mint",
+          "docs": [
+            "Mock USDC mint with 6 decimals (1 USDC = 1,000,000 micro-USDC)."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  111,
+                  116,
+                  101,
+                  95,
+                  109,
+                  105,
+                  110,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "collateral_vault",
+          "docs": [
+            "PDA SPL token account holding all user collateral. Authority is the market PDA."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  108,
+                  108,
+                  97,
+                  116,
+                  101,
+                  114,
+                  97,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "InitializeMarketArgs"
+            }
+          }
+        },
+        {
+          "name": "oracle_feed_id",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "initialize_vault_user",
+      "docs": [
+        "Initialize the Backstop Vault UserAccount PDA owned by the vault authority PDA."
+      ],
+      "discriminator": [
+        111,
+        127,
+        204,
+        43,
+        155,
+        190,
+        190,
+        254
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_user",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  115,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault_authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "liquidate",
+      "docs": [
+        "Liquidate an undercollateralized user position directly against the Backstop Vault."
+      ],
+      "discriminator": [
+        223,
+        179,
+        226,
+        125,
+        48,
+        46,
+        39,
+        74
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_user",
+          "docs": [
+            "The Backstop Vault's UserAccount PDA that absorbs the liquidated position (spec §10.4)."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  115,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault_authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user",
+          "docs": [
+            "The undercollateralized user account being liquidated."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  115,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "liquidatee"
+              }
+            ]
+          }
+        },
+        {
+          "name": "liquidatee"
+        },
+        {
+          "name": "liquidator",
+          "docs": [
+            "Permissionless caller / liquidator / keeper triggering the liquidation."
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "LiquidateParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "place_order",
+      "docs": [
+        "Place or replace (upsert) an order targeting a future or current batch."
+      ],
+      "discriminator": [
+        51,
+        194,
+        155,
+        175,
+        109,
+        130,
+        96,
+        106
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "batch",
+          "writable": true
+        },
+        {
+          "name": "user",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  115,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "PlaceOrderArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "settle_users",
+      "docs": [
+        "Settle users for a cleared or void batch in pages."
+      ],
+      "discriminator": [
+        125,
+        30,
+        171,
+        102,
+        44,
+        45,
+        86,
+        25
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "batch",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "batch_id",
+          "type": "u64"
+        },
+        {
+          "name": "ring_index",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "update_market_params",
+      "docs": [
+        "Admin updates tunable market parameters."
+      ],
+      "discriminator": [
+        70,
+        117,
+        202,
+        191,
+        205,
+        174,
+        92,
+        82
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "market"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "new_params",
+          "type": {
+            "defined": {
+              "name": "InitializeMarketArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_vault_params",
+      "docs": [
+        "Admin updates Backstop Vault parameters."
+      ],
+      "discriminator": [
+        70,
+        157,
+        73,
+        56,
+        190,
+        227,
+        31,
+        133
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "market"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "new_params",
+          "type": {
+            "defined": {
+              "name": "UpdateVaultParamsArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "vault_quote",
+      "docs": [
+        "Permissionlessly place the Backstop Vault ladder quotes for a future batch."
+      ],
+      "discriminator": [
+        81,
+        100,
+        197,
+        152,
+        9,
+        82,
+        51,
+        81
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "batch",
+          "writable": true
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_user",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  115,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault_authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "cranker",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "VaultQuoteParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "withdraw",
+      "docs": [
+        "Withdraw mock USDC collateral from the protocol vault (flat position rule)."
+      ],
+      "discriminator": [
+        183,
+        18,
+        70,
+        156,
+        148,
+        109,
+        161,
+        34
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "user",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  115,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user_token_account",
+          "writable": true
+        },
+        {
+          "name": "collateral_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  108,
+                  108,
+                  97,
+                  116,
+                  101,
+                  114,
+                  97,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Batch",
+      "discriminator": [
+        156,
+        194,
+        70,
+        44,
+        22,
+        88,
+        137,
+        44
+      ]
+    },
+    {
+      "name": "Market",
+      "discriminator": [
+        219,
+        190,
+        213,
+        55,
+        0,
+        227,
+        198,
+        154
+      ]
+    },
+    {
+      "name": "UserAccount",
+      "discriminator": [
+        211,
+        33,
+        136,
+        16,
+        186,
+        110,
+        242,
+        127
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "BatchCleared",
+      "discriminator": [
+        8,
+        207,
+        38,
+        149,
+        136,
+        1,
+        85,
+        160
+      ]
+    },
+    {
+      "name": "BatchVoided",
+      "discriminator": [
+        41,
+        216,
+        67,
+        18,
+        157,
+        182,
+        74,
+        155
+      ]
+    },
+    {
+      "name": "PositionLiquidated",
+      "discriminator": [
+        40,
+        107,
+        90,
+        214,
+        96,
+        30,
+        61,
+        128
+      ]
+    },
+    {
+      "name": "UserSettled",
+      "discriminator": [
+        59,
+        168,
+        210,
+        46,
+        37,
+        155,
+        138,
+        136
+      ]
+    },
+    {
+      "name": "VaultQuoteSkipped",
+      "discriminator": [
+        241,
+        160,
+        232,
+        58,
+        155,
+        109,
+        176,
+        222
+      ]
+    },
+    {
+      "name": "VaultQuoted",
+      "discriminator": [
+        34,
+        96,
+        211,
+        251,
+        217,
+        20,
+        195,
+        160
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "Unauthorized",
+      "msg": "Unauthorized"
+    },
+    {
+      "code": 6001,
+      "name": "ZeroAmount",
+      "msg": "Amount must be greater than zero"
+    },
+    {
+      "code": 6002,
+      "name": "FaucetCapExceeded",
+      "msg": "Faucet limit exceeded"
+    },
+    {
+      "code": 6003,
+      "name": "HasPendingOrders",
+      "msg": "Cannot withdraw with pending orders"
+    },
+    {
+      "code": 6004,
+      "name": "PositionNotFlat",
+      "msg": "Position must be flat to withdraw"
+    },
+    {
+      "code": 6005,
+      "name": "InsufficientCollateral",
+      "msg": "Insufficient collateral"
+    },
+    {
+      "code": 6006,
+      "name": "MathOverflow",
+      "msg": "Arithmetic overflow"
+    },
+    {
+      "code": 6007,
+      "name": "RingSlotBusy",
+      "msg": "Ring slot is busy with an unsettled batch"
+    },
+    {
+      "code": 6008,
+      "name": "BatchClosed",
+      "msg": "Batch has already closed"
+    },
+    {
+      "code": 6009,
+      "name": "BatchNotOpen",
+      "msg": "Batch is not open"
+    },
+    {
+      "code": 6010,
+      "name": "BatchInPast",
+      "msg": "Target batch is in the past"
+    },
+    {
+      "code": 6011,
+      "name": "BatchTooFarAhead",
+      "msg": "Target batch is beyond lookahead window"
+    },
+    {
+      "code": 6012,
+      "name": "BatchFull",
+      "msg": "Batch order buffer is full"
+    },
+    {
+      "code": 6013,
+      "name": "InvalidSlotId",
+      "msg": "Invalid order slot id"
+    },
+    {
+      "code": 6014,
+      "name": "InvalidTick",
+      "msg": "Invalid tick index"
+    },
+    {
+      "code": 6015,
+      "name": "InvalidSide",
+      "msg": "Invalid order side"
+    },
+    {
+      "code": 6016,
+      "name": "OrderNotFound",
+      "msg": "Order not found"
+    },
+    {
+      "code": 6017,
+      "name": "OrderTooSmall",
+      "msg": "Order quantity below minimum lots"
+    },
+    {
+      "code": 6018,
+      "name": "OrderNotionalTooSmall",
+      "msg": "Order notional below minimum"
+    },
+    {
+      "code": 6019,
+      "name": "InsufficientMargin",
+      "msg": "Insufficient margin"
+    },
+    {
+      "code": 6020,
+      "name": "BatchNotCleared",
+      "msg": "Batch is not cleared or void"
+    },
+    {
+      "code": 6021,
+      "name": "BatchAlreadySettled",
+      "msg": "Batch is already settled"
+    },
+    {
+      "code": 6022,
+      "name": "BatchIdMismatch",
+      "msg": "Batch ID mismatch"
+    },
+    {
+      "code": 6023,
+      "name": "DuplicateUserAccount",
+      "msg": "Duplicate user account in settlement"
+    },
+    {
+      "code": 6024,
+      "name": "OracleStale",
+      "msg": "Oracle price is stale"
+    },
+    {
+      "code": 6025,
+      "name": "OracleConfidenceTooWide",
+      "msg": "Oracle confidence interval is too wide"
+    },
+    {
+      "code": 6026,
+      "name": "NotLiquidatable",
+      "msg": "Position is not liquidatable"
+    },
+    {
+      "code": 6027,
+      "name": "PositionFlat",
+      "msg": "Position is flat"
+    },
+    {
+      "code": 6028,
+      "name": "SelfLiquidation",
+      "msg": "Cannot liquidate vault against itself"
+    }
+  ],
+  "types": [
+    {
+      "name": "Batch",
+      "docs": [
+        "Batch account (PDA seed `[b\"batch\", ring_index]`, zero-copy).",
+        "",
+        "Contains the tick aggregates, clearing results, and up to `MAX_ORDERS` orders.",
+        "Size budget: 128 orders × 64 B + 2 × 101 × 8 B + header ≈ 9,936 B ≤ 10,240 B."
+      ],
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "batch_id",
+            "docs": [
+              "Batch sequence number."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "docs": [
+              "Current state from `BatchStatus`."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "_pad0",
+            "type": {
+              "array": [
+                "u8",
+                7
+              ]
+            }
+          },
+          {
+            "name": "num_orders",
+            "docs": [
+              "Number of orders placed in this batch."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "settled_orders",
+            "docs": [
+              "Number of orders that have been settled."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "clearing_tick",
+            "docs": [
+              "Clearing tick index (i*), set by `clear_batch`."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "_pad1",
+            "type": {
+              "array": [
+                "u8",
+                2
+              ]
+            }
+          },
+          {
+            "name": "oracle_price",
+            "docs": [
+              "Oracle price at clear time (micro-USDC per SOL)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "oracle_conf",
+            "docs": [
+              "Oracle confidence at clear time (micro-USDC)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "oracle_posted_slot",
+            "docs": [
+              "Slot in which the oracle update was posted."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "clearing_price",
+            "docs": [
+              "Uniform clearing price (micro-USDC per SOL, multiple of price_tick)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "matched_lots",
+            "docs": [
+              "Total matched lots (Q*)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "bid_marginal_tick",
+            "docs": [
+              "Buy-side marginal tick index (t_b)."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "_pad2",
+            "type": {
+              "array": [
+                "u8",
+                6
+              ]
+            }
+          },
+          {
+            "name": "bid_marginal_alloc",
+            "docs": [
+              "Buy-side lots allocated at marginal tick (M_b)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "bid_marginal_total",
+            "docs": [
+              "Total buy lots at marginal tick (T_b = bid_qty[t_b])."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "ask_marginal_tick",
+            "docs": [
+              "Sell-side marginal tick index (t_a)."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "_pad3",
+            "type": {
+              "array": [
+                "u8",
+                6
+              ]
+            }
+          },
+          {
+            "name": "ask_marginal_alloc",
+            "docs": [
+              "Sell-side lots allocated at marginal tick (M_a)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "ask_marginal_total",
+            "docs": [
+              "Total sell lots at marginal tick (T_a = ask_qty[t_a])."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "bid_qty",
+            "docs": [
+              "Aggregate buy lots at each tick (updated by place/cancel)."
+            ],
+            "type": {
+              "array": [
+                "u64",
+                101
+              ]
+            }
+          },
+          {
+            "name": "ask_qty",
+            "docs": [
+              "Aggregate sell lots at each tick (updated by place/cancel)."
+            ],
+            "type": {
+              "array": [
+                "u64",
+                101
+              ]
+            }
+          },
+          {
+            "name": "orders",
+            "docs": [
+              "Order buffer, indexed by insertion order."
+            ],
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "Order"
+                  }
+                },
+                128
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "BatchCleared",
+      "docs": [
+        "Emitted when a batch is cleared through on-chain auction."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "batch_id",
+            "type": "u64"
+          },
+          {
+            "name": "clearing_price",
+            "type": "u64"
+          },
+          {
+            "name": "offset_bps",
+            "type": "i32"
+          },
+          {
+            "name": "matched_lots",
+            "type": "u64"
+          },
+          {
+            "name": "oracle_price",
+            "type": "u64"
+          },
+          {
+            "name": "oracle_conf",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BatchVoided",
+      "docs": [
+        "Emitted when a batch is marked VOID (e.g. stale oracle or delay)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "batch_id",
+            "type": "u64"
+          },
+          {
+            "name": "reason",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ClearBatchParams",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "oracle_price",
+            "type": "u64"
+          },
+          {
+            "name": "oracle_conf",
+            "type": "u64"
+          },
+          {
+            "name": "oracle_posted_slot",
+            "type": "u64"
+          },
+          {
+            "name": "oracle_timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "InitializeMarketArgs",
+      "docs": [
+        "Instruction arguments for initializing market parameters."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "base_lot",
+            "type": "u64"
+          },
+          {
+            "name": "price_tick",
+            "type": "u64"
+          },
+          {
+            "name": "min_order_lots",
+            "type": "u64"
+          },
+          {
+            "name": "min_order_notional",
+            "type": "u64"
+          },
+          {
+            "name": "funding_period_slots",
+            "type": "u32"
+          },
+          {
+            "name": "batch_slots",
+            "type": "u16"
+          },
+          {
+            "name": "lookahead",
+            "type": "u16"
+          },
+          {
+            "name": "k_ticks",
+            "type": "u16"
+          },
+          {
+            "name": "tick_bps",
+            "type": "u16"
+          },
+          {
+            "name": "imr_bps",
+            "type": "u16"
+          },
+          {
+            "name": "mmr_bps",
+            "type": "u16"
+          },
+          {
+            "name": "fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "liq_penalty_bps",
+            "type": "u16"
+          },
+          {
+            "name": "max_oracle_age_secs",
+            "type": "u16"
+          },
+          {
+            "name": "max_conf_bps",
+            "type": "u16"
+          },
+          {
+            "name": "max_clear_delay_slots",
+            "type": "u16"
+          },
+          {
+            "name": "max_orders_per_batch",
+            "type": "u16"
+          },
+          {
+            "name": "funding_cap_bps",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LiquidateParams",
+      "docs": [
+        "Parameters passed into the permissionless `liquidate` instruction."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "oracle_price",
+            "docs": [
+              "Oracle price in micro-USDC (6 decimals, e.g. 150_000_000 for $150.00)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "oracle_conf",
+            "docs": [
+              "Pyth confidence interval in micro-USDC."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "oracle_timestamp",
+            "docs": [
+              "Publish timestamp of the oracle price update."
+            ],
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Market",
+      "docs": [
+        "Global market configuration account (PDA seed `[b\"market\"]`).",
+        "",
+        "One per market. Contains admin keys, oracle config, funding state,",
+        "and fee/insurance pools. Zero-copy for efficient on-chain access.",
+        "",
+        "Field ordering: i128 fields first (16-byte aligned), then Pubkeys (32B)",
+        "and u64 fields. Avoids implicit padding under `#[repr(C)]`."
+      ],
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "funding_index",
+            "docs": [
+              "Cumulative funding index, fixed-point with F_SCALE = 10^9."
+            ],
+            "type": "i128"
+          },
+          {
+            "name": "admin",
+            "docs": [
+              "Admin authority (devnet only; can update params and fund vault)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "quote_mint",
+            "docs": [
+              "Mock USDC mint address."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "collateral_vault",
+            "docs": [
+              "SPL token account holding all user collateral."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "oracle_feed_id",
+            "docs": [
+              "Pyth SOL/USD feed id (32 bytes, verified on-chain)."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "params",
+            "docs": [
+              "All tunable market parameters (inline struct)."
+            ],
+            "type": {
+              "defined": {
+                "name": "MarketParams"
+              }
+            }
+          },
+          {
+            "name": "start_slot",
+            "docs": [
+              "Slot at which batch counting begins; `batch_id = (slot - start_slot) / N`."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "next_batch_to_clear",
+            "docs": [
+              "Next batch_id that needs clearing (monotonic pointer)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "last_oracle_price",
+            "docs": [
+              "Last observed oracle price (for display and coarse checks)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "open_interest_lots",
+            "docs": [
+              "Sum of all long positions in lots (= sum of all short positions)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "fee_pool",
+            "docs": [
+              "Accrued trading fees in micro-USDC."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "insurance_fund",
+            "docs": [
+              "Accrued insurance fund in micro-USDC."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "bad_debt",
+            "docs": [
+              "Cumulative bad debt in micro-USDC not covered by insurance fund."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "vault_params",
+            "docs": [
+              "Backstop vault parameters (inline struct, 48 bytes)."
+            ],
+            "type": {
+              "defined": {
+                "name": "VaultParams"
+              }
+            }
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump for the market account."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "_pad_bump",
+            "docs": [
+              "Padding to align to 8-byte boundary."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                7
+              ]
+            }
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Reserved space for future fields without reallocation."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketParams",
+      "docs": [
+        "Market parameters stored inline in the Market account.",
+        "All defaults are from `02-MECHANISM_SPEC.md` §1, §9 and `01-ARCHITECTURE.md` §5.1."
+      ],
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "base_lot",
+            "docs": [
+              "Base lot size in lamports (default 1000 = 0.001 SOL)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "price_tick",
+            "docs": [
+              "Price granularity in micro-USDC (default 1000 = $0.001)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "min_order_lots",
+            "docs": [
+              "Minimum order size in lots (default 10)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "min_order_notional",
+            "docs": [
+              "Minimum order notional in micro-USDC (default 10_000_000 = $10)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "funding_period_slots",
+            "docs": [
+              "Funding period length in slots (default 72000 ≈ 8 hours)."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "batch_slots",
+            "docs": [
+              "Slots per batch (default 2)."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "lookahead",
+            "docs": [
+              "Lookahead: how many future batches an order may target (default 3)."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "k_ticks",
+            "docs": [
+              "Number of price ticks in the grid (default 101, must be odd)."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "tick_bps",
+            "docs": [
+              "Basis points per tick (default 1)."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "imr_bps",
+            "docs": [
+              "Initial margin requirement in bps (default 1000 = 10%)."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "mmr_bps",
+            "docs": [
+              "Maintenance margin requirement in bps (default 500 = 5%)."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "fee_bps",
+            "docs": [
+              "Trading fee in bps on filled notional (default 5)."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "liq_penalty_bps",
+            "docs": [
+              "Liquidation penalty in bps (default 100)."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "max_oracle_age_secs",
+            "docs": [
+              "Max oracle age in seconds before rejection (default 10)."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "max_conf_bps",
+            "docs": [
+              "Max oracle confidence / price ratio in bps (default 20)."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "max_clear_delay_slots",
+            "docs": [
+              "Max slots after batch close before VOID (default 4)."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "max_orders_per_batch",
+            "docs": [
+              "Max orders allowed per batch (default 128)."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "funding_cap_bps",
+            "docs": [
+              "Funding rate cap in bps (default 50)."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "_pad0",
+            "docs": [
+              "Padding for 8-byte alignment (offset 62 -> 64)."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                2
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Order",
+      "docs": [
+        "Individual order within a Batch (64 bytes, zero-copy).",
+        "",
+        "Layout: `user_pda(32) + lots(8) + filled_lots(8) + tick(2) + side(1) +",
+        "slot_id(1) + status(1) + flags(1) + _padding(10) = 64`."
+      ],
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "user_pda",
+            "docs": [
+              "PDA of the user who placed this order."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "lots",
+            "docs": [
+              "Requested lot quantity."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "filled_lots",
+            "docs": [
+              "Lots filled during clearing (set at settlement)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "tick",
+            "docs": [
+              "Limit tick index in `[0, K-1]`."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "side",
+            "docs": [
+              "Side: `OrderSide::BUY` or `OrderSide::SELL`."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "slot_id",
+            "docs": [
+              "User's slot index `[0, 8)` for this batch."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "status",
+            "docs": [
+              "Lifecycle status from `OrderStatus`."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "flags",
+            "docs": [
+              "Bit flags from `OrderFlags`."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "_padding",
+            "docs": [
+              "Padding to 64 bytes."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                10
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "PlaceOrderArgs",
+      "docs": [
+        "Arguments for placing or replacing an order."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "target_batch",
+            "type": "u64"
+          },
+          {
+            "name": "ring_index",
+            "type": "u8"
+          },
+          {
+            "name": "slot_id",
+            "type": "u8"
+          },
+          {
+            "name": "side",
+            "type": "u8"
+          },
+          {
+            "name": "tick",
+            "type": "u16"
+          },
+          {
+            "name": "lots",
+            "type": "u64"
+          },
+          {
+            "name": "flags",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PositionLiquidated",
+      "docs": [
+        "Emitted when an undercollateralized user position is liquidated."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "liquidatee",
+            "type": "pubkey"
+          },
+          {
+            "name": "liquidator",
+            "type": "pubkey"
+          },
+          {
+            "name": "batch_id",
+            "type": "u64"
+          },
+          {
+            "name": "oracle_price",
+            "type": "u64"
+          },
+          {
+            "name": "base_lots",
+            "type": "i64"
+          },
+          {
+            "name": "notional",
+            "type": "u64"
+          },
+          {
+            "name": "penalty",
+            "type": "u64"
+          },
+          {
+            "name": "insurance_covered",
+            "type": "u64"
+          },
+          {
+            "name": "bad_debt",
+            "type": "u64"
+          },
+          {
+            "name": "user_remaining_collateral",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "UpdateVaultParamsArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "quote_offset_bps",
+            "type": {
+              "array": [
+                "u16",
+                3
+              ]
+            }
+          },
+          {
+            "name": "quote_lots",
+            "type": {
+              "array": [
+                "u64",
+                3
+              ]
+            }
+          },
+          {
+            "name": "max_inventory_lots",
+            "type": "u64"
+          },
+          {
+            "name": "skew_bps",
+            "type": "u16"
+          },
+          {
+            "name": "max_conf_bps",
+            "type": "u16"
+          },
+          {
+            "name": "is_active",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "UserAccount",
+      "docs": [
+        "Per-user account (PDA seed `[b\"user\", owner.key()]`).",
+        "",
+        "Tracks collateral, positions, funding state, and pending order counts.",
+        "One account per user across all batches. Zero-copy for efficient settlement.",
+        "",
+        "Field ordering: i128 fields first (16-byte aligned), then Pubkeys (32B)",
+        "and u64/i64 (8-byte), then smaller fields at the end. Explicit padding",
+        "ensures no compiler-generated padding bytes exist."
+      ],
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "quote_position",
+            "docs": [
+              "Quote-ledger position in signed micro-USDC (spec §7).",
+              "`Σ(collateral + quote_position)` is conserved across all users (I-1)."
+            ],
+            "type": "i128"
+          },
+          {
+            "name": "funding_snapshot",
+            "docs": [
+              "Last funding index value applied to this user."
+            ],
+            "type": "i128"
+          },
+          {
+            "name": "owner",
+            "docs": [
+              "Wallet that owns this account."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "collateral",
+            "docs": [
+              "Deposited collateral in micro-USDC. Adjusted by fees, realized PnL folds.",
+              "Can go negative only via bad debt (I-1)."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "base_position",
+            "docs": [
+              "Net position in signed lots. Positive = long, negative = short."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "pending_buy_lots",
+            "docs": [
+              "Sum of buy lots in unsettled orders (for worst-case margin)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "pending_sell_lots",
+            "docs": [
+              "Sum of sell lots in unsettled orders (for worst-case margin)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "active_orders",
+            "docs": [
+              "Count of active orders across all open batches."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "flags",
+            "docs": [
+              "Bit flags (e.g., LIQUIDATING)."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "_pad",
+            "docs": [
+              "Padding to 8-byte boundary."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                6
+              ]
+            }
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Reserved space for future fields."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
+          },
+          {
+            "name": "_pad2",
+            "docs": [
+              "Padding to 16-byte alignment boundary (offset 168 -> 176)."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "UserSettled",
+      "docs": [
+        "Emitted when a user's fills, funding, and fees are settled for a batch."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "batch_id",
+            "type": "u64"
+          },
+          {
+            "name": "fill_lots",
+            "type": "u64"
+          },
+          {
+            "name": "fee",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VaultParams",
+      "docs": [
+        "On-chain parameters for the Backstop Vault demo liquidity engine (architecture §9)."
+      ],
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "quote_offset_bps",
+            "docs": [
+              "Rung offsets in basis points relative to oracle (default [3, 6, 10])."
+            ],
+            "type": {
+              "array": [
+                "u16",
+                3
+              ]
+            }
+          },
+          {
+            "name": "_pad0",
+            "docs": [
+              "Padding for 8-byte alignment."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                2
+              ]
+            }
+          },
+          {
+            "name": "quote_lots",
+            "docs": [
+              "Lot sizes for each rung (default [10, 20, 30])."
+            ],
+            "type": {
+              "array": [
+                "u64",
+                3
+              ]
+            }
+          },
+          {
+            "name": "max_inventory_lots",
+            "docs": [
+              "Maximum allowed position in lots before quoting stops (default 1000)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "skew_bps",
+            "docs": [
+              "Max inventory skew in basis points (default 5)."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "max_conf_bps",
+            "docs": [
+              "Max oracle confidence in bps before quoting halts (default 15)."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "is_active",
+            "docs": [
+              "Active flag (1 = active, 0 = paused)."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "_pad1",
+            "docs": [
+              "Padding to 8-byte boundary."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                3
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "VaultQuoteParams",
+      "docs": [
+        "Parameters for placing the Backstop Vault ladder into a target batch."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "target_batch",
+            "type": "u64"
+          },
+          {
+            "name": "ring_index",
+            "type": "u8"
+          },
+          {
+            "name": "oracle_price",
+            "type": "u64"
+          },
+          {
+            "name": "oracle_conf",
+            "type": "u64"
+          },
+          {
+            "name": "oracle_timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VaultQuoteSkipped",
+      "docs": [
+        "Emitted when the Backstop Vault skips quoting due to an on-chain guard."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "target_batch",
+            "type": "u64"
+          },
+          {
+            "name": "ring_index",
+            "type": "u8"
+          },
+          {
+            "name": "reason",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VaultQuoted",
+      "docs": [
+        "Emitted when the Backstop Vault successfully quotes into a batch."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "target_batch",
+            "type": "u64"
+          },
+          {
+            "name": "ring_index",
+            "type": "u8"
+          },
+          {
+            "name": "inventory",
+            "type": "i64"
+          },
+          {
+            "name": "shift_bps",
+            "type": "i64"
+          },
+          {
+            "name": "orders_placed",
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}

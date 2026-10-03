@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body {
+    margin: 0;
+    padding: 0;
+    background-color: #0b0e11;
+    color: #f0f3f6;
+    font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    overflow-x: hidden;
+  }
+
+  ::-webkit-scrollbar {
+    width: 3px;
+    height: 3px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+}
+
+.bp-border {
+  border-color: rgba(255, 255, 255, 0.07);
+}
+
+.bp-border-subtle {
+  border-color: rgba(255, 255, 255, 0.04);
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Wallet adapter custom styling overrides to match dark theme */
+.wallet-adapter-button {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  font-family: inherit !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  height: 32px !important;
+  padding: 0 12px !important;
+  border-radius: 4px !important;
+  transition: all 0.2s ease !important;
+}
+
+.wallet-adapter-button:hover {
+  background-color: #e1e4ea !important;
+}
+
+.wallet-adapter-button-trigger {
+  background-color: #ffffff !important;
+}
+
+.wallet-adapter-modal-wrapper {
+  background-color: #111418 !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.wallet-adapter-modal-title {
+  color: #ffffff !important;
+}
