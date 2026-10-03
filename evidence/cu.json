@@ -1,6 +1,6 @@
 {
   "description": "Gate G1 Compute Unit Spike Measurements",
-  "timestamp": "2026-10-02T16:06:31.810Z",
+  "timestamp": "2026-10-03T04:32:00.009Z",
   "network": "localnet",
   "toolchain": {
     "solana": "3.0.15",
@@ -15,7 +15,7 @@
     {
       "instruction": "place_order",
       "condition": "empty_batch",
-      "cu_consumed": 11701,
+      "cu_consumed": 13201,
       "target_max_cu": 60000,
       "passed": true,
       "label": "MEASURED"

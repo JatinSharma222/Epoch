@@ -118,6 +118,11 @@ pub mod epoch {
     ) -> Result<()> {
         handle_update_vault_params(ctx, new_params)
     }
+
+    /// Liquidate an undercollateralized user position directly against the Backstop Vault.
+    pub fn liquidate(ctx: Context<Liquidate>, params: LiquidateParams) -> Result<()> {
+        handle_liquidate(ctx, params)
+    }
 }
 
 #[cfg(test)]

@@ -55,3 +55,18 @@ pub mod VaultSkipReason {
     pub const INSUFFICIENT_MARGIN: u8 = 5;
     pub const BATCH_FULL: u8 = 6;
 }
+
+/// Emitted when an undercollateralized user position is liquidated.
+#[event]
+pub struct PositionLiquidated {
+    pub liquidatee: Pubkey,
+    pub liquidator: Pubkey,
+    pub batch_id: u64,
+    pub oracle_price: u64,
+    pub base_lots: i64,
+    pub notional: u64,
+    pub penalty: u64,
+    pub insurance_covered: u64,
+    pub bad_debt: u64,
+    pub user_remaining_collateral: i64,
+}

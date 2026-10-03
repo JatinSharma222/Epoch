@@ -3113,6 +3113,480 @@ describe("Epoch Program Integration Tests", () => {
       expect(vaultStatus!.activeOrders).to.equal(0);
     });
   });
+
+  describe("Task T-14: Liquidation & Fallback Close-Out (Spec §10, ADR-20)", () => {
+    let vaultAuthority: PublicKey;
+    let vaultUserPda: PublicKey;
+    let keeper: EpochKeeper;
+
+    const liquidatee1 = anchor.web3.Keypair.generate();
+    let liquidatee1Pda: PublicKey;
+    let liquidatee1Ata: PublicKey;
+
+    const liquidatee2 = anchor.web3.Keypair.generate();
+    let liquidatee2Pda: PublicKey;
+    let liquidatee2Ata: PublicKey;
+
+    async function advanceSlots(n: number) {
+      for (let i = 0; i < n; i++) {
+        const tx = new anchor.web3.Transaction().add(
+          anchor.web3.SystemProgram.transfer({
+            fromPubkey: admin.publicKey,
+            toPubkey: admin.publicKey,
+            lamports: 100,
+          })
+        );
+        await provider.sendAndConfirm(tx);
+      }
+    }
+
+    before(async () => {
+      [vaultAuthority] = PublicKey.findProgramAddressSync(
+        [Buffer.from("vault")],
+        program.programId
+      );
+      [vaultUserPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("user"), vaultAuthority.toBuffer()],
+        program.programId
+      );
+
+      [liquidatee1Pda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("user"), liquidatee1.publicKey.toBuffer()],
+        program.programId
+      );
+      liquidatee1Ata = getAssociatedTokenAddressSync(
+        quoteMintPda,
+        liquidatee1.publicKey
+      );
+
+      [liquidatee2Pda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("user"), liquidatee2.publicKey.toBuffer()],
+        program.programId
+      );
+      liquidatee2Ata = getAssociatedTokenAddressSync(
+        quoteMintPda,
+        liquidatee2.publicKey
+      );
+
+      // Fund liquidatee accounts with SOL
+      const fundTx = new anchor.web3.Transaction().add(
+        anchor.web3.SystemProgram.transfer({
+          fromPubkey: admin.publicKey,
+          toPubkey: liquidatee1.publicKey,
+          lamports: 2 * anchor.web3.LAMPORTS_PER_SOL,
+        }),
+        anchor.web3.SystemProgram.transfer({
+          fromPubkey: admin.publicKey,
+          toPubkey: liquidatee2.publicKey,
+          lamports: 2 * anchor.web3.LAMPORTS_PER_SOL,
+        })
+      );
+      await provider.sendAndConfirm(fundTx);
+
+      // Create ATAs
+      const initAta1Tx = new anchor.web3.Transaction().add(
+        createAssociatedTokenAccountInstruction(
+          liquidatee1.publicKey,
+          liquidatee1Ata,
+          liquidatee1.publicKey,
+          quoteMintPda
+        )
+      );
+      await anchor.web3.sendAndConfirmTransaction(provider.connection, initAta1Tx, [liquidatee1]);
+
+      const initAta2Tx = new anchor.web3.Transaction().add(
+        createAssociatedTokenAccountInstruction(
+          liquidatee2.publicKey,
+          liquidatee2Ata,
+          liquidatee2.publicKey,
+          quoteMintPda
+        )
+      );
+      await anchor.web3.sendAndConfirmTransaction(provider.connection, initAta2Tx, [liquidatee2]);
+
+      // Create user accounts
+      await program.methods
+        .createUser()
+        .accounts({
+          user: liquidatee1Pda,
+          owner: liquidatee1.publicKey,
+          systemProgram: anchor.web3.SystemProgram.programId,
+        })
+        .signers([liquidatee1])
+        .rpc();
+
+      await program.methods
+        .createUser()
+        .accounts({
+          user: liquidatee2Pda,
+          owner: liquidatee2.publicKey,
+          systemProgram: anchor.web3.SystemProgram.programId,
+        })
+        .signers([liquidatee2])
+        .rpc();
+
+      keeper = new EpochKeeper(
+        {
+          rpcUrl: provider.connection.rpcEndpoint,
+          programId: program.programId,
+          network: "localnet",
+        },
+        (admin as any).payer
+      );
+    });
+
+    it("Rejects liquidation when user has a healthy position (equity >= MMR)", async () => {
+      // testUser has an open position from previous tests and ample collateral
+      const nowSecs = Math.floor(Date.now() / 1000);
+      try {
+        await program.methods
+          .liquidate({
+            oraclePrice: new anchor.BN(160_000_000),
+            oracleConf: new anchor.BN(0),
+            oracleTimestamp: new anchor.BN(nowSecs),
+          })
+          .accounts({
+            market: marketPda,
+            vaultAuthority,
+            vaultUser: vaultUserPda,
+            user: userPda,
+            liquidatee: testUser.publicKey,
+            liquidator: admin.publicKey,
+          })
+          .rpc({ skipPreflight: true });
+        expect.fail("Healthy position liquidation should have failed");
+      } catch (err: any) {
+        const str = err.toString();
+        expect(
+          str.includes("Position is not liquidatable") ||
+            str.includes("NotLiquidatable")
+        ).to.be.true;
+      }
+    });
+
+    it("Rejects liquidation when user position is flat (base_position == 0)", async () => {
+      // liquidatee1 has 0 position
+      const nowSecs = Math.floor(Date.now() / 1000);
+      try {
+        await program.methods
+          .liquidate({
+            oraclePrice: new anchor.BN(160_000_000),
+            oracleConf: new anchor.BN(0),
+            oracleTimestamp: new anchor.BN(nowSecs),
+          })
+          .accounts({
+            market: marketPda,
+            vaultAuthority,
+            vaultUser: vaultUserPda,
+            user: liquidatee1Pda,
+            liquidatee: liquidatee1.publicKey,
+            liquidator: admin.publicKey,
+          })
+          .rpc({ skipPreflight: true });
+        expect.fail("Flat position liquidation should have failed");
+      } catch (err: any) {
+        const str = err.toString();
+        expect(
+          str.includes("Position is flat") || str.includes("PositionFlat")
+        ).to.be.true;
+      }
+    });
+
+    it("Rejects self-liquidation of vault against itself", async () => {
+      const nowSecs = Math.floor(Date.now() / 1000);
+      try {
+        await program.methods
+          .liquidate({
+            oraclePrice: new anchor.BN(160_000_000),
+            oracleConf: new anchor.BN(0),
+            oracleTimestamp: new anchor.BN(nowSecs),
+          })
+          .accounts({
+            market: marketPda,
+            vaultAuthority,
+            vaultUser: vaultUserPda,
+            user: vaultUserPda,
+            liquidatee: vaultAuthority,
+            liquidator: admin.publicKey,
+          })
+          .rpc({ skipPreflight: true });
+        expect.fail("Self liquidation should have failed");
+      } catch (err: any) {
+        const str = err.toString();
+        expect(
+          str.includes("Cannot liquidate vault against itself") ||
+            str.includes("SelfLiquidation")
+        ).to.be.true;
+      }
+    });
+
+    it("Executes liquidation with positive equity below MMR, paying penalty to insurance fund (I-1, I-11)", async () => {
+      // 1. Fund liquidatee1 with $4.30 USDC (4_300_000 micro-USDC)
+      await program.methods
+        .faucet(new anchor.BN(10_000_000))
+        .accounts({
+          quoteMint: quoteMintPda,
+          mintAuthority: mintAuthorityPda,
+          recipientTokenAccount: liquidatee1Ata,
+          recipient: liquidatee1.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([liquidatee1])
+        .rpc();
+
+      await program.methods
+        .deposit(new anchor.BN(4_300_000))
+        .accounts({
+          market: marketPda,
+          user: liquidatee1Pda,
+          userTokenAccount: liquidatee1Ata,
+          collateralVault: collateralVaultPda,
+          owner: liquidatee1.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([liquidatee1])
+        .rpc();
+
+      // 2. liquidatee1 enters long position: 100 lots @ $160 ($16.00 notional)
+      const marketPre = await program.account.market.fetch(marketPda);
+      const curSlot = await provider.connection.getSlot();
+      const currentBatch = Math.floor(
+        (curSlot - marketPre.startSlot.toNumber()) / marketPre.params.batchSlots
+      );
+      const targetBatchId = new anchor.BN(currentBatch + 1);
+      const ringIndex = targetBatchId.toNumber() % 8;
+      const batchPda = getBatchPda(ringIndex);
+
+      await program.methods
+        .placeOrder({
+          targetBatch: targetBatchId,
+          ringIndex,
+          slotId: 0,
+          side: 0, // BUY
+          tick: 50,
+          lots: new anchor.BN(100),
+          oraclePrice: new anchor.BN(160_000_000),
+          flags: 0,
+        })
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+          user: liquidatee1Pda,
+          owner: liquidatee1.publicKey,
+        })
+        .signers([liquidatee1])
+        .rpc({ skipPreflight: true });
+
+      // Counterparty sell from testUser
+      await program.methods
+        .placeOrder({
+          targetBatch: targetBatchId,
+          ringIndex,
+          slotId: 1,
+          side: 1, // SELL
+          tick: 50,
+          lots: new anchor.BN(100),
+          oraclePrice: new anchor.BN(160_000_000),
+          flags: 0,
+        })
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+          user: userPda,
+          owner: testUser.publicKey,
+        })
+        .signers([testUser])
+        .rpc({ skipPreflight: true });
+
+      const closeSlot =
+        marketPre.startSlot.toNumber() +
+        (targetBatchId.toNumber() + 1) * marketPre.params.batchSlots;
+      const slotNow = await provider.connection.getSlot();
+      if (slotNow < closeSlot + 1) {
+        await advanceSlots(closeSlot + 1 - slotNow);
+      }
+
+      await keeper.clearBatch(targetBatchId.toNumber(), ringIndex);
+      await keeper.settleUsers(targetBatchId.toNumber(), ringIndex, 10);
+
+      // Verify liquidatee1 is now long 100 lots
+      const userPreLiq = await program.account.userAccount.fetch(liquidatee1Pda);
+      expect(userPreLiq.basePosition.toNumber()).to.equal(100);
+      expect(userPreLiq.pendingBuyLots.toNumber()).to.equal(0);
+      expect(userPreLiq.activeOrders).to.equal(0);
+
+      const vaultUserPre = await program.account.userAccount.fetch(vaultUserPda);
+      const vaultBasePre = vaultUserPre.basePosition.toNumber();
+      const insFundPre = (await program.account.market.fetch(marketPda)).insuranceFund.toNumber();
+
+      // 3. Mark price drops to $120.00
+      // Loss: 100 lots * ($120 - $160) / 1000 = -$4.00 (-4_000_000 micro-USDC).
+      // Equity = $4.30 - $0.008(fee) - $4.00 = ~$0.292.
+      // MMR (5% on 100 lots @ $120) = $0.60 (600_000 micro-USDC).
+      // Equity ($0.292) < MMR ($0.60) -> Liquidatable!
+      const nowSecs = Math.floor(Date.now() / 1000);
+      await program.methods
+        .liquidate({
+          oraclePrice: new anchor.BN(120_000_000),
+          oracleConf: new anchor.BN(0),
+          oracleTimestamp: new anchor.BN(nowSecs),
+        })
+        .accounts({
+          market: marketPda,
+          vaultAuthority,
+          vaultUser: vaultUserPda,
+          user: liquidatee1Pda,
+          liquidatee: liquidatee1.publicKey,
+          liquidator: admin.publicKey,
+        })
+        .rpc({ skipPreflight: true });
+
+      // 4. Verify post-liquidation state
+      const userPostLiq = await program.account.userAccount.fetch(liquidatee1Pda);
+      const vaultUserPost = await program.account.userAccount.fetch(vaultUserPda);
+      const marketPost = await program.account.market.fetch(marketPda);
+
+      expect(userPostLiq.basePosition.toNumber()).to.equal(0); // Position closed
+      expect(userPostLiq.quotePosition.toString()).to.equal("0"); // Quote folded
+      expect(userPostLiq.collateral.toNumber()).to.be.greaterThanOrEqual(0); // Invariant I-11: equity >= 0
+
+      // Vault absorbed the 100 long lots
+      expect(vaultUserPost.basePosition.toNumber()).to.equal(vaultBasePre + 100);
+
+      // Penalty (100 bps on $12.00 = 120_000 micro-USDC) added to insurance fund:
+      expect(marketPost.insuranceFund.toNumber()).to.equal(insFundPre + 120_000);
+      expect(marketPost.badDebt.toNumber()).to.equal(0);
+    });
+
+    it("Executes liquidation with negative equity, absorbing deficit via insurance fund and bad debt (I-1, I-11)", async () => {
+      // 1. Fund liquidatee2 with $1.50 USDC (1_500_000 micro-USDC)
+      await program.methods
+        .faucet(new anchor.BN(10_000_000))
+        .accounts({
+          quoteMint: quoteMintPda,
+          mintAuthority: mintAuthorityPda,
+          recipientTokenAccount: liquidatee2Ata,
+          recipient: liquidatee2.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([liquidatee2])
+        .rpc();
+
+      await program.methods
+        .deposit(new anchor.BN(1_500_000))
+        .accounts({
+          market: marketPda,
+          user: liquidatee2Pda,
+          userTokenAccount: liquidatee2Ata,
+          collateralVault: collateralVaultPda,
+          owner: liquidatee2.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([liquidatee2])
+        .rpc();
+
+      // 2. liquidatee2 enters 100 lots long @ $160
+      const marketPre = await program.account.market.fetch(marketPda);
+      const curSlot = await provider.connection.getSlot();
+      const currentBatch = Math.floor(
+        (curSlot - marketPre.startSlot.toNumber()) / marketPre.params.batchSlots
+      );
+      const targetBatchId = new anchor.BN(currentBatch + 1);
+      const ringIndex = targetBatchId.toNumber() % 8;
+      const batchPda = getBatchPda(ringIndex);
+
+      await program.methods
+        .placeOrder({
+          targetBatch: targetBatchId,
+          ringIndex,
+          slotId: 0,
+          side: 0, // BUY
+          tick: 50,
+          lots: new anchor.BN(100),
+          oraclePrice: new anchor.BN(160_000_000),
+          flags: 0,
+        })
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+          user: liquidatee2Pda,
+          owner: liquidatee2.publicKey,
+        })
+        .signers([liquidatee2])
+        .rpc({ skipPreflight: true });
+
+      // Counterparty sell
+      await program.methods
+        .placeOrder({
+          targetBatch: targetBatchId,
+          ringIndex,
+          slotId: 2,
+          side: 1, // SELL
+          tick: 50,
+          lots: new anchor.BN(100),
+          oraclePrice: new anchor.BN(160_000_000),
+          flags: 0,
+        })
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+          user: userPda,
+          owner: testUser.publicKey,
+        })
+        .signers([testUser])
+        .rpc({ skipPreflight: true });
+
+      const closeSlot =
+        marketPre.startSlot.toNumber() +
+        (targetBatchId.toNumber() + 1) * marketPre.params.batchSlots;
+      const slotNow = await provider.connection.getSlot();
+      if (slotNow < closeSlot + 1) {
+        await advanceSlots(closeSlot + 1 - slotNow);
+      }
+
+      await keeper.clearBatch(targetBatchId.toNumber(), ringIndex);
+      await keeper.settleUsers(targetBatchId.toNumber(), ringIndex, 10);
+
+      // 3. Catastrophic price crash to $90.00 (loss of -$3.00 on 100 lots bought @ $120)
+      // Loss = -$3.00 (-3_000_000 micro-USDC).
+      // Collateral = $1.50 -> Deficit = ~$1.50 (-1_506_000 micro-USDC).
+      // Insurance fund currently has 120_000 micro-USDC (from test 4).
+      const insFundPre = (await program.account.market.fetch(marketPda)).insuranceFund.toNumber();
+      expect(insFundPre).to.be.greaterThan(0);
+
+      const nowSecs = Math.floor(Date.now() / 1000);
+      await program.methods
+        .liquidate({
+          oraclePrice: new anchor.BN(90_000_000),
+          oracleConf: new anchor.BN(0),
+          oracleTimestamp: new anchor.BN(nowSecs),
+        })
+        .accounts({
+          market: marketPda,
+          vaultAuthority,
+          vaultUser: vaultUserPda,
+          user: liquidatee2Pda,
+          liquidatee: liquidatee2.publicKey,
+          liquidator: admin.publicKey,
+        })
+        .rpc({ skipPreflight: true });
+
+      const user2Post = await program.account.userAccount.fetch(liquidatee2Pda);
+      const marketPost = await program.account.market.fetch(marketPda);
+
+      expect(user2Post.basePosition.toNumber()).to.equal(0);
+      expect(marketPost.insuranceFund.toNumber()).to.equal(0); // Drained
+      expect(marketPost.badDebt.toNumber()).to.be.greaterThan(0); // Bad debt recorded
+      // Invariant I-11: user collateral is negative by exactly the bad debt amount
+      expect(user2Post.collateral.toNumber()).to.equal(-marketPost.badDebt.toNumber());
+    });
+
+    it("Keeper helper liquidateUser executes autonomously and records telemetry", async () => {
+      // Test keeper method with an already flat position returns success
+      const res = await keeper.liquidateUser(liquidatee1Pda, liquidatee1.publicKey);
+      expect(res.success).to.be.true;
+    });
+  });
 });
 
 

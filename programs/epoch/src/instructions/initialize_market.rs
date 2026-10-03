@@ -120,6 +120,7 @@ pub fn handle_initialize_market(
     market.open_interest_lots = 0;
     market.fee_pool = 0;
     market.insurance_fund = 0;
+    market.bad_debt = 0;
     market.vault_params = crate::state::VaultParams::default();
     market.bump = ctx.bumps.market;
 

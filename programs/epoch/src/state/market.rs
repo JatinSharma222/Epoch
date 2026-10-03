@@ -145,6 +145,8 @@ pub struct Market {
     pub fee_pool: u64,
     /// Accrued insurance fund in micro-USDC.
     pub insurance_fund: u64,
+    /// Cumulative bad debt in micro-USDC not covered by insurance fund.
+    pub bad_debt: u64,
     /// Backstop vault parameters (inline struct, 48 bytes).
     pub vault_params: VaultParams,
     /// PDA bump for the market account.
@@ -152,7 +154,7 @@ pub struct Market {
     /// Padding to align to 8-byte boundary.
     pub _pad_bump: [u8; 7],
     /// Reserved space for future fields without reallocation.
-    pub _reserved: [u8; 72],
+    pub _reserved: [u8; 64],
 }
 
 const _: () = {

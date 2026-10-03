@@ -476,6 +476,101 @@ export class EpochKeeper {
   }
 
   /**
+   * Liquidates an undercollateralized user position directly against the Backstop Vault (spec §10.4).
+   */
+  public async liquidateUser(
+    userPda: PublicKey,
+    liquidateeOwner: PublicKey
+  ): Promise<{
+    success: boolean;
+    signature?: string;
+    cu?: number;
+    error?: string;
+  }> {
+    // 1. Off-chain check: if position is flat, no liquidation needed
+    try {
+      const userAcc = await (this.program.account as any).userAccount.fetch(userPda);
+      if (userAcc.basePosition.toNumber() === 0) {
+        return { success: true };
+      }
+    } catch {
+      return { success: false, error: "User account not found" };
+    }
+
+    const market = await this.getMarket();
+    const currentSlot = await this.connection.getSlot();
+    const submitSlot = currentSlot;
+
+    const oraclePrice = await this.oracle.getLatestPrice(
+      market.lastOraclePrice.toNumber() || 150_000_000
+    );
+
+    try {
+      const txSig = await this.program.methods
+        .liquidate({
+          oraclePrice: oraclePrice.price,
+          oracleConf: oraclePrice.conf,
+          oracleTimestamp: oraclePrice.publishTime,
+        })
+        .accounts({
+          market: this.marketPda,
+          vaultAuthority: this.vaultAuthority,
+          vaultUser: this.vaultUser,
+          user: userPda,
+          liquidatee: liquidateeOwner,
+          liquidator: this.wallet.publicKey,
+        })
+        .rpc({ skipPreflight: true });
+
+      const txInfo = await this.connection.getTransaction(txSig, {
+        commitment: "confirmed",
+        maxSupportedTransactionVersion: 0,
+      });
+
+      const landedSlot = txInfo?.slot || (await this.connection.getSlot());
+      const cuConsumed = txInfo?.meta?.computeUnitsConsumed || 0;
+
+      this.logger.logTx({
+        signature: txSig,
+        kind: "liquidate",
+        source: "keeper",
+        network: this.config.network || "devnet",
+        submit_slot: submitSlot,
+        landed_slot: landedSlot,
+        cu_consumed: cuConsumed,
+        success: true,
+        error: null,
+        created_at: new Date().toISOString(),
+      });
+
+      this.logger.info(
+        `[keeper] Liquidated user ${userPda.toBase58()} at oracle price ${oraclePrice.price.toString()} (${cuConsumed} CU) [MEASURED]`
+      );
+
+      return { success: true, signature: txSig, cu: cuConsumed };
+    } catch (err: any) {
+      const logs = err.logs || err.transactionLogs || [];
+      const logStr = Array.isArray(logs) ? logs.join(" ") : "";
+      const fullErr = `${err.toString()} ${logStr}`;
+
+      if (
+        fullErr.includes("NotLiquidatable") ||
+        fullErr.includes("Position is not liquidatable") ||
+        fullErr.includes("PositionFlat") ||
+        fullErr.includes("Position is flat")
+      ) {
+        return { success: true };
+      }
+
+      this.logger.warn(
+        `[keeper] liquidate error for user ${userPda.toBase58()}:`,
+        fullErr
+      );
+      return { success: false, error: fullErr };
+    }
+  }
+
+  /**
    * One execution tick: inspects all batches, clears closed ones, settles cleared ones,
    * and places Backstop Vault quotes into future batches.
    */

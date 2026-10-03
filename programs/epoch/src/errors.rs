@@ -98,4 +98,24 @@ pub enum EpochError {
     /// Duplicate user account provided in settlement page.
     #[msg("Duplicate user account in settlement")]
     DuplicateUserAccount,
+
+    /// Oracle price update is stale.
+    #[msg("Oracle price is stale")]
+    OracleStale,
+
+    /// Oracle confidence interval is too wide.
+    #[msg("Oracle confidence interval is too wide")]
+    OracleConfidenceTooWide,
+
+    /// Position is not liquidatable (equity satisfies maintenance margin requirement).
+    #[msg("Position is not liquidatable")]
+    NotLiquidatable,
+
+    /// Position is flat; nothing to liquidate.
+    #[msg("Position is flat")]
+    PositionFlat,
+
+    /// Cannot liquidate vault against itself.
+    #[msg("Cannot liquidate vault against itself")]
+    SelfLiquidation,
 }
