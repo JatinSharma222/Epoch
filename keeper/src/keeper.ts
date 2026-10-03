@@ -571,13 +571,72 @@ export class EpochKeeper {
   }
 
   /**
+   * Scans all UserAccount instances and liquidates any position with equity < MMR (spec §10.4).
+   */
+  public async liquidateEligibleUsers(): Promise<number> {
+    let liquidatedCount = 0;
+    try {
+      const users = await (this.program.account as any).userAccount.all();
+      const market = await this.getMarket();
+      const oracleData = await this.oracle.getLatestPrice(
+        market.lastOraclePrice.toNumber() || 150_000_000
+      );
+      const oraclePrice = oracleData.price.toNumber();
+      const mmrBps = market.params.mmrBps;
+
+      for (const u of users) {
+        // Skip Backstop Vault itself
+        if (u.publicKey.equals(this.vaultUser)) continue;
+
+        const basePos = u.account.basePosition.toNumber();
+        if (basePos === 0) continue; // Flat position
+
+        // Has open orders? Cannot liquidate until settled
+        if (
+          u.account.pendingBuyLots.toNumber() > 0 ||
+          u.account.pendingSellLots.toNumber() > 0 ||
+          u.account.activeOrders > 0
+        ) {
+          continue;
+        }
+
+        const collateral = u.account.collateral.toNumber();
+        const quotePos = Number(u.account.quotePosition.toString());
+        const fundingSnapshot = Number(u.account.fundingSnapshot.toString());
+        const fundingIndex = Number(market.fundingIndex.toString());
+
+        const delta = fundingIndex - fundingSnapshot;
+        const pendingFunding = Math.floor((basePos * delta) / 1_000_000_000);
+        const posVal = Math.floor((basePos * oraclePrice) / 1000);
+        const equity = collateral + quotePos + posVal - pendingFunding;
+
+        const absBase = Math.abs(basePos);
+        const mmrReq = Math.floor(
+          (mmrBps * absBase * oraclePrice) / 1000 / 10_000
+        );
+
+        if (equity < mmrReq) {
+          const res = await this.liquidateUser(u.publicKey, u.account.owner);
+          if (res.success) {
+            liquidatedCount++;
+          }
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn("[keeper] liquidation scan error:", err.toString());
+    }
+    return liquidatedCount;
+  }
+
+  /**
    * One execution tick: inspects all batches, clears closed ones, settles cleared ones,
-   * and places Backstop Vault quotes into future batches.
+   * places Backstop Vault quotes into future batches, and liquidates undercollateralized positions.
    */
   public async tick(): Promise<{
     clearedCount: number;
     settledCount: number;
     vaultQuotesCount: number;
+    liquidatedCount: number;
     currentSlot: number;
   }> {
     const currentSlot = await this.connection.getSlot();
@@ -586,6 +645,7 @@ export class EpochKeeper {
     let clearedCount = 0;
     let settledCount = 0;
     let vaultQuotesCount = 0;
+    let liquidatedCount = 0;
 
     for (const b of summaries) {
       // 1. Check for clearing
@@ -627,7 +687,14 @@ export class EpochKeeper {
       this.logger.warn("[keeper] vault tick error:", err.toString());
     }
 
-    return { clearedCount, settledCount, vaultQuotesCount, currentSlot };
+    // 4. Scan for undercollateralized positions and liquidate them
+    try {
+      liquidatedCount = await this.liquidateEligibleUsers();
+    } catch (err: any) {
+      this.logger.warn("[keeper] liquidation scan tick error:", err.toString());
+    }
+
+    return { clearedCount, settledCount, vaultQuotesCount, liquidatedCount, currentSlot };
   }
 
   /**
