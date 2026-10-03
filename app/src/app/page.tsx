@@ -6,7 +6,7 @@ import { PublicKey } from "@solana/web3.js";
 import { MarketTickerBanner } from "../components/MarketTickerBanner";
 import { Header } from "../components/Header";
 import { Sidebar } from "../components/Sidebar";
-import { BatchAuctionCrossingCurve } from "../components/BatchAuctionCrossingCurve";
+import { TradingChart } from "../components/TradingChart";
 import { OrderBook } from "../components/OrderBook";
 import { OrderTicket } from "../components/OrderTicket";
 import { BottomLedger } from "../components/BottomLedger";
@@ -34,6 +34,7 @@ export default function Home() {
   const [currentBatchId, setCurrentBatchId] = useState<number>(142);
   const [slotsRemaining, setSlotsRemaining] = useState<number>(2);
   const [markPrice, setMarkPrice] = useState<number>(150.04);
+  const [selectedPrice, setSelectedPrice] = useState<number>(150.04);
   const [selectedOffsetBps, setSelectedOffsetBps] = useState<number>(3);
   const [isPlacingOrder, setIsPlacingOrder] = useState<boolean>(false);
 
@@ -188,11 +189,13 @@ export default function Home() {
   // Order Placement Handler
   const handlePlaceOrder = async ({
     side,
+    price,
     lots,
     offsetBps,
     targetBatch,
   }: {
     side: "BUY" | "SELL";
+    price: number;
     lots: number;
     offsetBps: number;
     targetBatch: number;
@@ -201,7 +204,7 @@ export default function Home() {
     await new Promise((res) => setTimeout(res, 600));
 
     // Update local state
-    const tick = 50 + offsetBps;
+    const tick = Math.max(0, Math.min(100, 50 + offsetBps));
     if (side === "BUY") {
       setBidQty((prev) => {
         const n = [...prev];
@@ -282,30 +285,31 @@ export default function Home() {
         {activeTab === "trade" && (
           <div className="flex-1 flex flex-col min-w-0 bg-[#0b0e11] overflow-hidden">
             <div className="flex-1 flex min-h-0 overflow-hidden">
-              {/* Centerpiece: Batch Auction Crossing Curve */}
-              <BatchAuctionCrossingCurve
+              {/* Centerpiece: Authentic Candlestick TradingView Chart + FBA Crossing Curve Overlay */}
+              <TradingChart
+                markPrice={markPrice}
                 batchId={currentBatchId}
-                oraclePrice={markPrice}
                 bidQty={bidQty}
                 askQty={askQty}
+                onSelectPrice={setSelectedPrice}
               />
 
-              {/* Order Book Micro-Ladder */}
+              {/* Order Book Micro-Ladder & Trades */}
               <OrderBook
                 oraclePrice={markPrice}
                 bidQty={bidQty}
                 askQty={askQty}
                 onSelectOffset={setSelectedOffsetBps}
+                onSelectPrice={setSelectedPrice}
               />
 
               {/* Order Placement Console */}
               <OrderTicket
                 currentBatchId={currentBatchId}
-                oraclePrice={markPrice}
-                selectedOffsetBps={selectedOffsetBps}
-                onChangeOffset={setSelectedOffsetBps}
-                availableCollateral={collateral}
+                markPrice={markPrice}
+                availableEquity={collateral}
                 isPlacingOrder={isPlacingOrder}
+                selectedPrice={selectedPrice}
                 onPlaceOrder={handlePlaceOrder}
               />
             </div>

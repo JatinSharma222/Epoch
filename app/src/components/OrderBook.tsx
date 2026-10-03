@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useState, useMemo } from "react";
 
 interface OrderBookProps {
   oraclePrice: number;
   bidQty: number[];
   askQty: number[];
   onSelectOffset?: (offsetBps: number) => void;
+  onSelectPrice?: (price: number) => void;
 }
 
 export const OrderBook: React.FC<OrderBookProps> = ({
@@ -14,14 +15,19 @@ export const OrderBook: React.FC<OrderBookProps> = ({
   bidQty,
   askQty,
   onSelectOffset,
+  onSelectPrice,
 }) => {
-  // Aggregate top 8 asks (ticks 51..58)
+  const [activeTab, setActiveTab] = useState<"book" | "trades">("book");
+  const [depthMode, setDepthMode] = useState<"both" | "bids" | "asks">("both");
+  const [precision, setPrecision] = useState<"0.01" | "0.05" | "0.10">("0.01");
+
+  // Aggregate top 10 asks (ticks 51..60)
   const asks = useMemo(() => {
     const list = [];
     let cumulative = 0;
-    for (let offset = 1; offset <= 8; offset++) {
+    for (let offset = 1; offset <= 10; offset++) {
       const tick = 50 + offset;
-      const lots = askQty[tick] || Math.floor(Math.sin(offset) * 20 + 25);
+      const lots = askQty[tick] || Math.floor(Math.sin(offset * 0.7) * 400 + 800);
       cumulative += lots;
       const price = oraclePrice * (1 + offset / 10_000);
       list.push({ offset, tick, price, lots, cumulative });
@@ -29,13 +35,13 @@ export const OrderBook: React.FC<OrderBookProps> = ({
     return list.reverse(); // Asks displayed descending
   }, [askQty, oraclePrice]);
 
-  // Aggregate top 8 bids (ticks 49..42)
+  // Aggregate top 10 bids (ticks 49..40)
   const bids = useMemo(() => {
     const list = [];
     let cumulative = 0;
-    for (let offset = -1; offset >= -8; offset--) {
+    for (let offset = -1; offset >= -10; offset--) {
       const tick = 50 + offset;
-      const lots = bidQty[tick] || Math.floor(Math.cos(offset) * 20 + 25);
+      const lots = bidQty[tick] || Math.floor(Math.cos(offset * 0.7) * 400 + 800);
       cumulative += lots;
       const price = oraclePrice * (1 + offset / 10_000);
       list.push({ offset, tick, price, lots, cumulative });
@@ -44,8 +50,8 @@ export const OrderBook: React.FC<OrderBookProps> = ({
   }, [bidQty, oraclePrice]);
 
   const maxTotal = useMemo(() => {
-    const maxA = asks[0]?.cumulative || 100;
-    const maxB = bids[bids.length - 1]?.cumulative || 100;
+    const maxA = asks[0]?.cumulative || 1000;
+    const maxB = bids[bids.length - 1]?.cumulative || 1000;
     return Math.max(maxA, maxB);
   }, [asks, bids]);
 
@@ -53,91 +59,231 @@ export const OrderBook: React.FC<OrderBookProps> = ({
   const totalAsks = asks.reduce((acc, a) => acc + a.lots, 0);
   const bidRatio = Math.round((totalBids / (totalBids + totalAsks || 1)) * 100);
 
+  // Mock recent trades for the Trades tab
+  const recentTrades = useMemo(() => {
+    const trades = [];
+    let p = oraclePrice;
+    for (let i = 0; i < 16; i++) {
+      const isBuy = i % 2 === 0;
+      p += isBuy ? 0.01 : -0.01;
+      const size = (Math.random() * 25 + 1.5).toFixed(2);
+      const time = new Date(Date.now() - i * 1800).toLocaleTimeString();
+      trades.push({ id: i, price: p, size, isBuy, time });
+    }
+    return trades;
+  }, [oraclePrice]);
+
+  const handleRowClick = (price: number, offset: number) => {
+    if (onSelectPrice) onSelectPrice(price);
+    if (onSelectOffset) onSelectOffset(offset);
+  };
+
   return (
-    <div className="w-[260px] hidden lg:flex flex-col min-h-0 bg-[#0e1217] border-r bp-border select-none font-mono text-[11px]">
-      {/* Header */}
+    <div className="w-[280px] xl:w-[290px] hidden lg:flex flex-col min-h-0 bg-[#0e1217] border-r bp-border select-none font-mono text-[11px]">
+      {/* Book / Trades Tabs & Controls (Backpack 1:1 match) */}
       <div className="h-[38px] border-b bp-border flex items-center justify-between px-3 shrink-0">
-        <span className="font-bold text-white text-[12px]">Order Book</span>
-        <span className="text-[10px] text-[#848e9c]">1 bp Tick Grid</span>
-      </div>
+        <div className="flex items-center gap-4 text-[12px]">
+          <button
+            onClick={() => setActiveTab("book")}
+            className={`pb-2.5 pt-2 -mb-[1px] transition-colors ${
+              activeTab === "book"
+                ? "font-bold text-white border-b-2 border-white"
+                : "font-medium text-[#848e9c] hover:text-white"
+            }`}
+          >
+            Book
+          </button>
+          <button
+            onClick={() => setActiveTab("trades")}
+            className={`pb-2.5 pt-2 -mb-[1px] transition-colors ${
+              activeTab === "trades"
+                ? "font-bold text-white border-b-2 border-white"
+                : "font-medium text-[#848e9c] hover:text-white"
+            }`}
+          >
+            Trades
+          </button>
+        </div>
 
-      {/* Table Headers */}
-      <div className="grid grid-cols-3 px-3 py-1.5 text-[10px] text-[#848e9c] border-b bp-border-subtle">
-        <span>Price (USD)</span>
-        <span className="text-right">Size (Lots)</span>
-        <span className="text-right">Total (Lots)</span>
-      </div>
-
-      {/* Ladder Container */}
-      <div className="flex-1 flex flex-col justify-between overflow-hidden">
-        {/* ASKS (RED) */}
-        <div className="flex flex-col justify-end overflow-hidden flex-1 px-1">
-          {asks.map((a) => {
-            const depthPct = Math.min(100, (a.cumulative / maxTotal) * 100);
-            return (
-              <div
-                key={`ask-${a.tick}`}
-                onClick={() => onSelectOffset && onSelectOffset(a.offset)}
-                className="grid grid-cols-3 px-2 py-[2px] relative hover:bg-[#161b22] cursor-pointer"
+        {activeTab === "book" && (
+          <div className="flex items-center gap-2.5 text-[#848e9c]">
+            {/* Depth display switcher */}
+            <div className="flex items-center gap-1.5 cursor-pointer">
+              <button
+                onClick={() => setDepthMode("both")}
+                className={`w-3.5 h-3.5 flex flex-col justify-between py-0.5 rounded transition-opacity ${
+                  depthMode === "both" ? "opacity-100" : "opacity-40 hover:opacity-80"
+                }`}
+                title="Default: Bids and Asks"
               >
-                <div
-                  className="absolute inset-y-0 right-0 bg-[#f6465d]/10 pointer-events-none"
-                  style={{ width: `${depthPct}%` }}
-                />
-                <span className="text-[#f6465d] relative">{a.price.toFixed(3)}</span>
-                <span className="text-right text-[#f0f3f6] relative">{a.lots}</span>
-                <span className="text-right text-[#848e9c] relative">{a.cumulative}</span>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* MID SPREAD ROW */}
-        <div className="py-1 px-3 bg-[#13171d] border-y bp-border flex items-center justify-between shrink-0 my-0.5">
-          <div className="flex items-center gap-2">
-            <span className="text-[12px] font-bold text-white">${oraclePrice.toFixed(2)}</span>
-            <span className="text-[10px] text-[#848e9c]">Oracle Mark</span>
-          </div>
-          <div className="flex items-center gap-1 text-[10px] text-[#0ecb81]">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#0ecb81]"></span>
-            <span>Uniform FBA</span>
-          </div>
-        </div>
-
-        {/* BIDS (GREEN) */}
-        <div className="flex flex-col justify-start overflow-hidden flex-1 px-1">
-          {bids.map((b) => {
-            const depthPct = Math.min(100, (b.cumulative / maxTotal) * 100);
-            return (
-              <div
-                key={`bid-${b.tick}`}
-                onClick={() => onSelectOffset && onSelectOffset(b.offset)}
-                className="grid grid-cols-3 px-2 py-[2px] relative hover:bg-[#161b22] cursor-pointer"
+                <span className="h-[2px] bg-[#f6465d] w-full rounded-sm"></span>
+                <span className="h-[2px] bg-[#0ecb81] w-full rounded-sm"></span>
+              </button>
+              <button
+                onClick={() => setDepthMode("bids")}
+                className={`w-3.5 h-3.5 flex flex-col justify-center py-0.5 rounded transition-opacity ${
+                  depthMode === "bids" ? "opacity-100" : "opacity-40 hover:opacity-80"
+                }`}
+                title="Bids only"
               >
-                <div
-                  className="absolute inset-y-0 right-0 bg-[#0ecb81]/10 pointer-events-none"
-                  style={{ width: `${depthPct}%` }}
-                />
-                <span className="text-[#0ecb81] relative">{b.price.toFixed(3)}</span>
-                <span className="text-right text-[#f0f3f6] relative">{b.lots}</span>
-                <span className="text-right text-[#848e9c] relative">{b.cumulative}</span>
-              </div>
-            );
-          })}
-        </div>
+                <span className="h-[3px] bg-[#0ecb81] w-full rounded-sm"></span>
+              </button>
+              <button
+                onClick={() => setDepthMode("asks")}
+                className={`w-3.5 h-3.5 flex flex-col justify-center py-0.5 rounded transition-opacity ${
+                  depthMode === "asks" ? "opacity-100" : "opacity-40 hover:opacity-80"
+                }`}
+                title="Asks only"
+              >
+                <span className="h-[3px] bg-[#f6465d] w-full rounded-sm"></span>
+              </button>
+            </div>
 
-        {/* BOTTOM DEPTH RATIO BAR */}
-        <div className="px-3 py-1.5 border-t bp-border shrink-0 bg-[#0e1217]">
-          <div className="w-full h-1 rounded-full overflow-hidden flex bg-[#161b22]">
-            <div className="bg-[#0ecb81] h-full" style={{ width: `${bidRatio}%` }}></div>
-            <div className="bg-[#f6465d] h-full" style={{ width: `${100 - bidRatio}%` }}></div>
+            <div className="w-[1px] h-3 bg-[#242b35]"></div>
+
+            {/* Grouping Selector */}
+            <button
+              onClick={() => {
+                const next = precision === "0.01" ? "0.05" : precision === "0.05" ? "0.10" : "0.01";
+                setPrecision(next);
+              }}
+              className="px-1.5 py-0.5 rounded bg-[#12161c] border bp-border text-[10px] text-[#848e9c] hover:text-white transition-colors"
+              title="Tick size precision"
+            >
+              {precision}
+            </button>
           </div>
-          <div className="flex items-center justify-between text-[10px] text-[#848e9c] mt-1">
-            <span className="text-[#0ecb81]">{bidRatio}% Buy</span>
-            <span className="text-[#f6465d]">{100 - bidRatio}% Sell</span>
+        )}
+      </div>
+
+      {activeTab === "trades" ? (
+        /* RECENT TRADES LIST */
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <div className="grid grid-cols-3 px-3 py-1.5 text-[10px] font-mono text-[#848e9c] border-b bp-border-subtle">
+            <span>Price (USD)</span>
+            <span className="text-right">Size (SOL)</span>
+            <span className="text-right">Time</span>
+          </div>
+          <div className="flex-1 overflow-y-auto px-1 divide-y bp-border-subtle">
+            {recentTrades.map((t) => (
+              <div
+                key={t.id}
+                onClick={() => onSelectPrice && onSelectPrice(t.price)}
+                className="grid grid-cols-3 px-2 py-1 hover:bg-[#161b22] cursor-pointer text-[11px]"
+              >
+                <span className={t.isBuy ? "text-[#0ecb81]" : "text-[#f6465d]"}>
+                  {t.price.toFixed(2)}
+                </span>
+                <span className="text-right text-[#f0f3f6]">{t.size}</span>
+                <span className="text-right text-[#848e9c] text-[10px]">{t.time}</span>
+              </div>
+            ))}
           </div>
         </div>
-      </div>
+      ) : (
+        /* ORDER BOOK LADDER */
+        <div className="flex-1 flex flex-col justify-between overflow-hidden">
+          {/* Table Column Headers */}
+          <div className="grid grid-cols-3 px-3 py-1.5 text-[10px] font-mono text-[#848e9c] border-b bp-border-subtle shrink-0">
+            <span>Price (USD)</span>
+            <span className="text-right">Size (SOL)</span>
+            <span className="text-right">Total (SOL)</span>
+          </div>
+
+          <div
+            className="flex-1 flex flex-col justify-between overflow-hidden font-mono text-[11px] leading-[18px]"
+            style={{ fontVariantNumeric: "tabular-nums", letterSpacing: "-0.02em" }}
+          >
+            {/* ASKS (RED) */}
+            {(depthMode === "both" || depthMode === "asks") && (
+              <div className="flex flex-col justify-end overflow-hidden flex-1 px-1">
+                {asks.slice(depthMode === "asks" ? 0 : 2).map((a) => {
+                  const depthPct = Math.min(100, Math.round((a.cumulative / maxTotal) * 100));
+                  return (
+                    <div
+                      key={`ask-${a.tick}`}
+                      onClick={() => handleRowClick(a.price, a.offset)}
+                      className="grid grid-cols-3 px-2 py-[1px] relative hover:bg-[#161b22] cursor-pointer group"
+                    >
+                      <div
+                        className="absolute inset-y-0 right-0 bg-[#f6465d]/12 pointer-events-none transition-all duration-150 group-hover:bg-[#f6465d]/20"
+                        style={{ width: `${depthPct}%` }}
+                      />
+                      <span className="text-[#f6465d] relative">{a.price.toFixed(2)}</span>
+                      <span className="text-right text-[#f0f3f6] relative">
+                        {a.lots.toLocaleString()}
+                      </span>
+                      <span className="text-right text-[#848e9c] relative">
+                        {a.cumulative.toLocaleString()}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* SPREAD / CURRENT BATCH CLEARING (Backpack Exact Row) */}
+            <div className="py-1 px-3 bg-[#13171d] border-y bp-border flex items-center justify-between shrink-0 my-0.5">
+              <div className="flex items-center gap-2">
+                <span className="text-[13px] font-bold text-white">
+                  ${oraclePrice.toFixed(2)}
+                </span>
+                <span className="text-[10px] text-[#848e9c]">Index</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-[10px] text-[#0ecb81]">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#0ecb81] animate-pulse"></span>
+                <span>FBA 0.01 Spread</span>
+              </div>
+            </div>
+
+            {/* BIDS (GREEN) */}
+            {(depthMode === "both" || depthMode === "bids") && (
+              <div className="flex flex-col justify-start overflow-hidden flex-1 px-1">
+                {bids.slice(0, depthMode === "bids" ? 10 : 8).map((b) => {
+                  const depthPct = Math.min(100, Math.round((b.cumulative / maxTotal) * 100));
+                  return (
+                    <div
+                      key={`bid-${b.tick}`}
+                      onClick={() => handleRowClick(b.price, b.offset)}
+                      className="grid grid-cols-3 px-2 py-[1px] relative hover:bg-[#161b22] cursor-pointer group"
+                    >
+                      <div
+                        className="absolute inset-y-0 right-0 bg-[#0ecb81]/12 pointer-events-none transition-all duration-150 group-hover:bg-[#0ecb81]/20"
+                        style={{ width: `${depthPct}%` }}
+                      />
+                      <span className="text-[#0ecb81] relative">{b.price.toFixed(2)}</span>
+                      <span className="text-right text-[#f0f3f6] relative">
+                        {b.lots.toLocaleString()}
+                      </span>
+                      <span className="text-right text-[#848e9c] relative">
+                        {b.cumulative.toLocaleString()}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* BOTTOM DEPTH RATIO BAR */}
+            <div className="px-3 py-1.5 border-t bp-border shrink-0 bg-[#0e1217]">
+              <div className="w-full h-1 rounded-full overflow-hidden flex bg-[#161b22]">
+                <div
+                  className="bg-[#0ecb81] h-full transition-all duration-300"
+                  style={{ width: `${bidRatio}%` }}
+                ></div>
+                <div
+                  className="bg-[#f6465d] h-full transition-all duration-300"
+                  style={{ width: `${100 - bidRatio}%` }}
+                ></div>
+              </div>
+              <div className="flex items-center justify-between text-[10px] font-mono text-[#848e9c] mt-1">
+                <span className="text-[#0ecb81]">{bidRatio}% Buy</span>
+                <span className="text-[#f6465d]">{100 - bidRatio}% Sell</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
