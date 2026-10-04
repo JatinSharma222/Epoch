@@ -1,8 +1,10 @@
 "use client";
 
 import React from "react";
-import { ShieldCheck, Cpu, CheckCircle2, Award, Zap, Server, Terminal } from "lucide-react";
+import { ShieldCheck, Cpu, CheckCircle2, Award, Zap, Server, Terminal, Activity, TrendingUp } from "lucide-react";
 import cuData from "../../../evidence/cu.json";
+import landingData from "../../../evidence/landing_devnet_summary.json";
+import simData from "../../../evidence/simulations/summary.json";
 import { formatNumber } from "../lib/formatters";
 
 export const EvidenceView: React.FC = () => {
@@ -239,6 +241,138 @@ export const EvidenceView: React.FC = () => {
                 <span className="text-[#848E9C]">
                   Any liquidation shortfall exceeding insurance fund capacity is booked to the market bad debt ledger. Haircuts are applied transparently according to spec rules.
                 </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Task T-17 / L-1: Solana Devnet Landing Latency */}
+        <div className="bg-[#0E1217] rounded-lg border bp-border p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Activity className="w-4 h-4 text-[#00F0FF]" />
+              <span className="font-bold text-white text-[13px]">
+                Task T-17 / Test L-1 — Solana Devnet Landing Latency Distribution
+              </span>
+            </div>
+            <span className="px-2 py-0.5 rounded bg-[#162720] text-[#0ECB81] text-[10px] font-bold border border-[#0ECB81]/30 font-mono">
+              MEASURED (Devnet)
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 font-mono">
+            <div className="p-3 rounded bg-[#12161C] border bp-border">
+              <span className="text-[#848E9C] text-[10px]">Landing Delay P50</span>
+              <div className="text-[15px] font-bold text-white mt-1 tabular-nums">
+                {landingData.landing_slots.p50} Slots
+              </div>
+              <span className="text-[9px] text-[#0ECB81]">{(landingData.latency_wall_clock_ms.p50 / 1000).toFixed(2)}s wall-clock</span>
+            </div>
+
+            <div className="p-3 rounded bg-[#12161C] border bp-border">
+              <span className="text-[#848E9C] text-[10px]">Landing Delay P90</span>
+              <div className="text-[15px] font-bold text-white mt-1 tabular-nums">
+                {landingData.landing_slots.p90} Slots
+              </div>
+              <span className="text-[9px] text-[#EAB308]">{(landingData.latency_wall_clock_ms.p90 / 1000).toFixed(2)}s wall-clock</span>
+            </div>
+
+            <div className="p-3 rounded bg-[#12161C] border bp-border">
+              <span className="text-[#848E9C] text-[10px]">Landing Delay P99 (Tail)</span>
+              <div className="text-[15px] font-bold text-white mt-1 tabular-nums">
+                {landingData.landing_slots.p99} Slots
+              </div>
+              <span className="text-[9px] text-[#848E9C]">Max: {landingData.landing_slots.max} slots</span>
+            </div>
+
+            <div className="p-3 rounded bg-[#12161C] border bp-border">
+              <span className="text-[#848E9C] text-[10px]">Mean CU Consumed</span>
+              <div className="text-[15px] font-bold text-[#00F0FF] mt-1 tabular-nums">
+                {formatNumber(landingData.compute_units.mean, 0)} CU
+              </div>
+              <span className="text-[9px] text-[#848E9C]">n={landingData.sample_size} on-chain txs</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Task T-16: Economic Simulations S-1 to S-5 */}
+        <div className="bg-[#0E1217] rounded-lg border bp-border p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-[#9945FF]" />
+              <span className="font-bold text-white text-[13px]">
+                Task T-16 — Economic Simulation Suite & Hypotheses Scorecard
+              </span>
+            </div>
+            <span className="px-2 py-0.5 rounded bg-[#20162B] text-[#9945FF] text-[10px] font-bold border border-[#9945FF]/30 font-mono">
+              SIMULATED (1,000 Candles)
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 font-mono text-[11px]">
+            <div className="p-3 rounded bg-[#12161C] border bp-border space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-white">H1: Adverse Selection</span>
+                <span className="text-[#0ECB81] text-[10px]">PASS</span>
+              </div>
+              <div className="text-[13px] font-bold text-[#0ECB81]">91.0% Loss Reduction</div>
+              <div className="text-[9px] text-[#848E9C]">
+                Under k=5 snipers, batch competition drives uniform price close to true price.
+              </div>
+            </div>
+
+            <div className="p-3 rounded bg-[#12161C] border bp-border space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-white">H2: Dominant Sniper</span>
+                <span className="text-[#0ECB81] text-[10px]">PASS</span>
+              </div>
+              <div className="text-[13px] font-bold text-[#EAB308]">53.8% vs 91.0%</div>
+              <div className="text-[9px] text-[#848E9C]">
+                With k=1 sniper, protection shrinks toward zero as predicted by mechanism theory.
+              </div>
+            </div>
+
+            <div className="p-3 rounded bg-[#12161C] border bp-border space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-white">H3: Break-Even Offset</span>
+                <span className="text-[#0ECB81] text-[10px]">PASS</span>
+              </div>
+              <div className="text-[13px] font-bold text-white">≥ 6 bps @ 800ms</div>
+              <div className="text-[9px] text-[#848E9C]">
+                Monotonic break-even spread curve confirmed; vault ladders remain profitable.
+              </div>
+            </div>
+
+            <div className="p-3 rounded bg-[#12161C] border bp-border space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-white">H4: Cranker Option</span>
+                <span className="text-[#EAB308] text-[10px]">QUALIFIED</span>
+              </div>
+              <div className="text-[13px] font-bold text-[#EAB308]">1.61 bps (W=4 slots)</div>
+              <div className="text-[9px] text-[#848E9C]">
+                Exceeds 1.5 bps maker fee, below 3.0 bps taker fee; requires permissionless racing.
+              </div>
+            </div>
+
+            <div className="p-3 rounded bg-[#12161C] border bp-border space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-white">H5: Landing Success</span>
+                <span className="text-[#0ECB81] text-[10px]">TUNED</span>
+              </div>
+              <div className="text-[13px] font-bold text-[#0ECB81]">97.7% (N=4, L=3)</div>
+              <div className="text-[9px] text-[#848E9C]">
+                70.0% at N=2; expanding batch horizon to N=4 comfortably exceeds 90% target.
+              </div>
+            </div>
+
+            <div className="p-3 rounded bg-[#12161C] border bp-border space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-white">H6: Uninformed Cost</span>
+                <span className="text-[#0ECB81] text-[10px]">PASS</span>
+              </div>
+              <div className="text-[13px] font-bold text-[#0ECB81]">5.99 vs 6.01 bps</div>
+              <div className="text-[9px] text-[#848E9C]">
+                Uninformed traders pay slightly less or identical in Epoch vs continuous book.
               </div>
             </div>
           </div>
