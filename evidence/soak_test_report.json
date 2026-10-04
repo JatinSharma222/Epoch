@@ -1,0 +1,73 @@
+{
+  "title": "Epoch Gate G4 Continuous Soak Telemetry Report",
+  "network": "devnet",
+  "program_id": "CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap",
+  "start_time": "2026-10-04T16:11:31.727Z",
+  "last_update_time": "2026-10-04T16:14:35.409Z",
+  "duration_seconds": 183,
+  "target_duration_seconds": 1800,
+  "status": "RUNNING",
+  "batches": {
+    "total_evaluated": 14,
+    "non_empty_cleared": 11,
+    "empty_batches": 3,
+    "void_batches": 0,
+    "void_reasons": {}
+  },
+  "transactions": {
+    "total_submitted": 39,
+    "confirmed": 33,
+    "failed": 6,
+    "failure_causes": {
+      "{\"InstructionError\":[2,{\"Custom\":6008}]}": 3,
+      "{\"InstructionError\":[1,{\"Custom\":6008}]}": 3
+    }
+  },
+  "invariants": {
+    "i1_conservation_checks": 11,
+    "i1_passed": 11,
+    "i1_failed": 0,
+    "i4_volume_balance_checks": 11,
+    "i4_passed": 11,
+    "i4_failed": 0,
+    "i12_tick_bounds_checks": 11,
+    "i12_passed": 11,
+    "i12_failed": 0
+  },
+  "latency_telemetry": {
+    "clear_to_settle_ms": {
+      "p50": 4903,
+      "p90": 5508,
+      "min": 3733,
+      "max": 6281,
+      "samples": [
+        4841,
+        4709,
+        4931,
+        4903,
+        5508,
+        4351,
+        3733,
+        6281,
+        4948,
+        3779,
+        5133
+      ]
+    },
+    "target_ahead_landing": {
+      "total_orders_tracked": 32,
+      "landed_in_target_batch": 26,
+      "missed_target_batch": 6,
+      "on_time_success_rate_pct": 81.25,
+      "lookahead_L": 3,
+      "batch_duration_N": 2
+    }
+  },
+  "rpc_telemetry": {
+    "total_rpc_calls": 383,
+    "rpc_calls_per_minute": 125.57,
+    "start_balance_sol": 5.3219095,
+    "current_balance_sol": 5.3198686,
+    "sol_spent": 0.00204
+  }
+}
