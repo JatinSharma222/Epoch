@@ -54,7 +54,7 @@ async function main() {
     console.log("[keeper] Executing single tick...");
     const res = await keeper.tick();
     console.log(
-      `[keeper] Tick complete: slot=${res.currentSlot}, cleared=${res.clearedCount}, settled_pages=${res.settledCount}`
+      `[keeper] Tick complete: slot=${res.currentSlot}, cleared=${res.clearedCount}, settled_pages=${res.settledCount}, vault_quotes=${res.vaultQuotesCount}, liquidated=${res.liquidatedCount}`
     );
     process.exit(0);
   } else {

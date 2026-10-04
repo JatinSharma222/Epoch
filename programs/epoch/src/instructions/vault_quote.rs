@@ -106,8 +106,7 @@ pub fn handle_vault_quote(ctx: Context<VaultQuote>, params: VaultQuoteParams) ->
         market.last_oracle_price
     };
     require!(oracle_price > 0, EpochError::OracleStale);
-    let conf_bps = (params.oracle_conf as u128 * 10_000) / oracle_price as u128;
-    if conf_bps > market.vault_params.max_conf_bps as u128 {
+    if !is_oracle_confident(params.oracle_conf, oracle_price, market.vault_params.max_conf_bps) {
         emit!(VaultQuoteSkipped {
             target_batch,
             ring_index,
@@ -120,7 +119,7 @@ pub fn handle_vault_quote(ctx: Context<VaultQuote>, params: VaultQuoteParams) ->
     let mut vault_user = ctx.accounts.vault_user.load_mut()?;
     let inventory = vault_user.base_position;
     let max_inventory = market.vault_params.max_inventory_lots;
-    if inventory.unsigned_abs() >= max_inventory {
+    if !is_inventory_within_limit(inventory, max_inventory) {
         emit!(VaultQuoteSkipped {
             target_batch,
             ring_index,
@@ -145,35 +144,15 @@ pub fn handle_vault_quote(ctx: Context<VaultQuote>, params: VaultQuoteParams) ->
         require!(batch.status == BatchStatus::OPEN, EpochError::BatchNotOpen);
     }
 
-    // 8. Calculate inventory skew: shift_bps = (inventory * skew_bps) / max_inventory
-    let skew_bps = market.vault_params.skew_bps as i64;
-    let shift_bps = if max_inventory > 0 {
-        ((inventory * skew_bps) / (max_inventory as i64)).clamp(-skew_bps, skew_bps)
-    } else {
-        0
-    };
-
-    // 9. Prepare 6 ladder quotes: 3 bids (slots 0..3) and 3 asks (slots 3..6)
-    // Structure: (slot_id, side, tick, lots)
-    let k_max = (market.params.k_ticks - 1) as i64;
-    let mut quotes: [(u8, u8, u16, u64); 6] = [(0, 0, 0, 0); 6];
-
-    for r in 0..3 {
-        let base_offset = market.vault_params.quote_offset_bps[r] as i64;
-        let lots = market.vault_params.quote_lots[r];
-
-        // Bid offset = -base_offset - shift_bps
-        let bid_offset = -base_offset - shift_bps;
-        let bid_tick = (CENTER_TICK as i64 + bid_offset).clamp(0, k_max) as u16;
-        let bid_slot = r as u8;
-        quotes[r] = (bid_slot, OrderSide::BUY, bid_tick, lots);
-
-        // Ask offset = +base_offset - shift_bps
-        let ask_offset = base_offset - shift_bps;
-        let ask_tick = (CENTER_TICK as i64 + ask_offset).clamp(0, k_max) as u16;
-        let ask_slot = (3 + r) as u8;
-        quotes[3 + r] = (ask_slot, OrderSide::SELL, ask_tick, lots);
-    }
+    // 8 & 9. Calculate inventory skew and prepare 6 ladder quotes: 3 bids and 3 asks
+    let (shift_bps, quotes) = compute_vault_ladder(
+        inventory,
+        max_inventory,
+        market.vault_params.skew_bps,
+        market.params.k_ticks,
+        market.vault_params.quote_offset_bps,
+        market.vault_params.quote_lots,
+    );
 
     let vault_user_pda = ctx.accounts.vault_user.key();
     let mut orders_placed: u8 = 0;
@@ -269,4 +248,177 @@ pub fn handle_vault_quote(ctx: Context<VaultQuote>, params: VaultQuoteParams) ->
     });
 
     Ok(())
+}
+
+/// Oracle confidence guard: returns true if confidence ratio (in bps) <= max_conf_bps.
+pub fn is_oracle_confident(oracle_conf: u64, oracle_price: u64, max_conf_bps: u16) -> bool {
+    if oracle_price == 0 {
+        return false;
+    }
+    let conf_bps = (oracle_conf as u128 * 10_000) / oracle_price as u128;
+    conf_bps <= max_conf_bps as u128
+}
+
+/// Inventory guard: returns true if |inventory| < max_inventory.
+pub fn is_inventory_within_limit(inventory: i64, max_inventory: u64) -> bool {
+    inventory.unsigned_abs() < max_inventory
+}
+
+/// Computes inventory skew and the 6-rung ladder quotes (3 bids, 3 asks).
+/// Returns (shift_bps, [(slot_id, side, tick, lots); 6]).
+pub fn compute_vault_ladder(
+    inventory: i64,
+    max_inventory: u64,
+    skew_bps: u16,
+    k_ticks: u16,
+    quote_offset_bps: [u16; 3],
+    quote_lots: [u64; 3],
+) -> (i64, [(u8, u8, u16, u64); 6]) {
+    let skew_bps = skew_bps as i64;
+    let shift_bps = if max_inventory > 0 {
+        ((inventory * skew_bps) / (max_inventory as i64)).clamp(-skew_bps, skew_bps)
+    } else {
+        0
+    };
+
+    let k_max = (k_ticks.saturating_sub(1)) as i64;
+    let mut quotes: [(u8, u8, u16, u64); 6] = [(0, 0, 0, 0); 6];
+
+    for r in 0..3 {
+        let base_offset = quote_offset_bps[r] as i64;
+        let lots = quote_lots[r];
+
+        // Bid offset = -base_offset - shift_bps
+        let bid_offset = -base_offset - shift_bps;
+        let bid_tick = (CENTER_TICK as i64 + bid_offset).clamp(0, k_max) as u16;
+        let bid_slot = r as u8;
+        quotes[r] = (bid_slot, OrderSide::BUY, bid_tick, lots);
+
+        // Ask offset = +base_offset - shift_bps
+        let ask_offset = base_offset - shift_bps;
+        let ask_tick = (CENTER_TICK as i64 + ask_offset).clamp(0, k_max) as u16;
+        let ask_slot = (3 + r) as u8;
+        quotes[3 + r] = (ask_slot, OrderSide::SELL, ask_tick, lots);
+    }
+
+    (shift_bps, quotes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_symmetric_quotes_at_zero_inventory() {
+        let quote_offset_bps = [3, 6, 10];
+        let quote_lots = [10, 20, 30];
+        let (shift_bps, quotes) = compute_vault_ladder(0, 1000, 10, 101, quote_offset_bps, quote_lots);
+
+        assert_eq!(shift_bps, 0);
+        // Bids: center (50) - offset
+        assert_eq!(quotes[0], (0, OrderSide::BUY, 47, 10)); // -3 bps
+        assert_eq!(quotes[1], (1, OrderSide::BUY, 44, 20)); // -6 bps
+        assert_eq!(quotes[2], (2, OrderSide::BUY, 40, 30)); // -10 bps
+
+        // Asks: center (50) + offset
+        assert_eq!(quotes[3], (3, OrderSide::SELL, 53, 10)); // +3 bps
+        assert_eq!(quotes[4], (4, OrderSide::SELL, 56, 20)); // +6 bps
+        assert_eq!(quotes[5], (5, OrderSide::SELL, 60, 30)); // +10 bps
+    }
+
+    #[test]
+    fn test_positive_inventory_downward_skew() {
+        // Vault is LONG (+500 of 1000 max inventory).
+        // Skew should shift ticks downward to discourage buying and encourage selling.
+        let quote_offset_bps = [3, 6, 10];
+        let quote_lots = [10, 20, 30];
+        let (shift_bps, quotes) =
+            compute_vault_ladder(500, 1000, 10, 101, quote_offset_bps, quote_lots);
+
+        // shift = (500 * 10) / 1000 = +5 bps
+        assert_eq!(shift_bps, 5);
+        // Bids: 50 - 3 - 5 = 42, 50 - 6 - 5 = 39, 50 - 10 - 5 = 35
+        assert_eq!(quotes[0].2, 42);
+        assert_eq!(quotes[1].2, 39);
+        assert_eq!(quotes[2].2, 35);
+
+        // Asks: 50 + 3 - 5 = 48, 50 + 6 - 5 = 51, 50 + 10 - 5 = 55
+        assert_eq!(quotes[3].2, 48);
+        assert_eq!(quotes[4].2, 51);
+        assert_eq!(quotes[5].2, 55);
+    }
+
+    #[test]
+    fn test_negative_inventory_upward_skew() {
+        // Vault is SHORT (-500 of 1000 max inventory).
+        // Skew should shift ticks upward to encourage buying and discourage selling.
+        let quote_offset_bps = [3, 6, 10];
+        let quote_lots = [10, 20, 30];
+        let (shift_bps, quotes) =
+            compute_vault_ladder(-500, 1000, 10, 101, quote_offset_bps, quote_lots);
+
+        // shift = (-500 * 10) / 1000 = -5 bps
+        assert_eq!(shift_bps, -5);
+        // Bids: 50 - 3 - (-5) = 52, 50 - 6 - (-5) = 49, 50 - 10 - (-5) = 45
+        assert_eq!(quotes[0].2, 52);
+        assert_eq!(quotes[1].2, 49);
+        assert_eq!(quotes[2].2, 45);
+
+        // Asks: 50 + 3 - (-5) = 58, 50 + 6 - (-5) = 61, 50 + 10 - (-5) = 65
+        assert_eq!(quotes[3].2, 58);
+        assert_eq!(quotes[4].2, 61);
+        assert_eq!(quotes[5].2, 65);
+    }
+
+    #[test]
+    fn test_extreme_inventory_skew_clamping() {
+        // Inventory far exceeds max_inventory (+5000 lots when max is 1000)
+        let (shift_bps, _) = compute_vault_ladder(5000, 1000, 10, 101, [3, 6, 10], [10, 20, 30]);
+        assert_eq!(shift_bps, 10); // Clamped to skew_bps
+
+        let (shift_bps_neg, _) =
+            compute_vault_ladder(-5000, 1000, 10, 101, [3, 6, 10], [10, 20, 30]);
+        assert_eq!(shift_bps_neg, -10); // Clamped to -skew_bps
+    }
+
+    #[test]
+    fn test_tick_clamping_at_boundaries() {
+        // Extreme offsets should never produce tick < 0 or tick > K-1 (100)
+        let (shift, quotes) =
+            compute_vault_ladder(1000, 1000, 60, 101, [45, 50, 55], [10, 20, 30]);
+        assert_eq!(shift, 60);
+        for q in quotes {
+            assert!(q.2 <= 100);
+        }
+    }
+
+    #[test]
+    fn test_oracle_confidence_guard() {
+        // Price $150.00 = 150_000_000
+        let price = 150_000_000u64;
+        let max_conf_bps = 20u16;
+
+        // 10 bps conf: 150_000 -> (150_000 * 10_000) / 150_000_000 = 10 bps <= 20 bps -> OK
+        assert!(is_oracle_confident(150_000, price, max_conf_bps));
+
+        // Exactly 20 bps conf: 300_000 -> 20 bps <= 20 bps -> OK
+        assert!(is_oracle_confident(300_000, price, max_conf_bps));
+
+        // 25 bps conf: 375_000 -> 25 bps > 20 bps -> REJECTED
+        assert!(!is_oracle_confident(375_000, price, max_conf_bps));
+
+        // Zero price -> REJECTED
+        assert!(!is_oracle_confident(100, 0, max_conf_bps));
+    }
+
+    #[test]
+    fn test_inventory_guard() {
+        let max_inv = 500u64;
+        assert!(is_inventory_within_limit(0, max_inv));
+        assert!(is_inventory_within_limit(499, max_inv));
+        assert!(is_inventory_within_limit(-499, max_inv));
+        assert!(!is_inventory_within_limit(500, max_inv));
+        assert!(!is_inventory_within_limit(-500, max_inv));
+        assert!(!is_inventory_within_limit(1000, max_inv));
+    }
 }

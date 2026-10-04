@@ -134,12 +134,27 @@ export class EpochKeeper {
       const user = await (this.program.account as any).userAccount.fetch(
         this.vaultUser
       );
+      const market = await this.getMarket();
+      const oraclePrice = market ? market.lastOraclePrice.toNumber() : 0;
+      const basePos = user.basePosition.toNumber();
+      const quotePos = Number(user.quotePosition.toString());
+      const collateral = user.collateral.toNumber();
+      const fundingSnapshot = Number(user.fundingSnapshot.toString());
+      const fundingIndex = market ? Number(market.fundingIndex.toString()) : 0;
+      const delta = fundingIndex - fundingSnapshot;
+      const pendingFunding = Math.floor((basePos * delta) / 1_000_000_000);
+      const posVal = Math.floor((basePos * oraclePrice) / 1000);
+      const pnl = quotePos + posVal - pendingFunding;
+      const equity = collateral + pnl;
+
       return {
         vaultAuthority: this.vaultAuthority,
         vaultUser: this.vaultUser,
-        inventoryLots: user.basePosition.toNumber(),
-        collateralMicroUsdc: user.collateral.toNumber(),
+        inventoryLots: basePos,
+        collateralMicroUsdc: collateral,
         quotePositionMicroUsdc: user.quotePosition.toString(),
+        pnlMicroUsdc: pnl,
+        equityMicroUsdc: equity,
         activeOrders: user.activeOrders,
       };
     } catch {
@@ -713,7 +728,7 @@ export class EpochKeeper {
         if (quoteRes.success) vaultQuotesCount++;
 
         this.logger.info(
-          `[vault] inventory=${vaultStatus.inventoryLots} lots, collateral=${vaultStatus.collateralMicroUsdc} micro-USDC, quote_pos=${vaultStatus.quotePositionMicroUsdc} [MEASURED]`
+          `[vault] inventory=${vaultStatus.inventoryLots} lots, collateral=${vaultStatus.collateralMicroUsdc} micro-USDC, quote_pos=${vaultStatus.quotePositionMicroUsdc}, pnl=${vaultStatus.pnlMicroUsdc} micro-USDC, equity=${vaultStatus.equityMicroUsdc} micro-USDC [MEASURED]`
         );
       }
     } catch (err: any) {

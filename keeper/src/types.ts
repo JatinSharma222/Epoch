@@ -57,6 +57,9 @@ export interface VaultStatus {
   inventoryLots: number;
   collateralMicroUsdc: number;
   quotePositionMicroUsdc: string;
+  pnlMicroUsdc?: number;
+  equityMicroUsdc?: number;
   activeOrders: number;
 }
+
 
