@@ -32,6 +32,7 @@ export class EpochKeeper {
   private isTickBusy: boolean = false;
   private lastSlotReceived: number = 0;
   private lastLiqScanTs: number = 0;
+  private lastMarketWarnTs: number = 0;
 
   constructor(config: KeeperConfig, walletKeypair?: Keypair) {
     this.config = config;
@@ -100,10 +101,14 @@ export class EpochKeeper {
   }
 
   /**
-   * Fetches on-chain Market configuration account.
+   * Fetches on-chain Market configuration account, returning null if uninitialized.
    */
   public async getMarket(): Promise<any> {
-    return (this.program.account as any).market.fetch(this.marketPda);
+    try {
+      return await (this.program.account as any).market.fetchNullable(this.marketPda);
+    } catch {
+      return null;
+    }
   }
 
   public getVaultAuthority(): PublicKey {
@@ -140,6 +145,9 @@ export class EpochKeeper {
    */
   public async getBatchSummaries(): Promise<BatchSummary[]> {
     const market = await this.getMarket();
+    if (!market) {
+      return [];
+    }
     const batchSlots = market.params.batchSlots;
     const startSlot = market.startSlot.toNumber();
     const summaries: BatchSummary[] = [];
@@ -646,6 +654,18 @@ export class EpochKeeper {
     currentSlot: number;
   }> {
     const currentSlot = slotOverride ?? (await this.connection.getSlot());
+    const market = await this.getMarket();
+    if (!market) {
+      const now = Date.now();
+      if (!this.lastMarketWarnTs || now - this.lastMarketWarnTs > 10000) {
+        this.lastMarketWarnTs = now;
+        this.logger.warn(
+          `[keeper] Market account ${this.marketPda.toBase58()} is not yet initialized on ${this.config.network || "devnet"}. Waiting for initialization...`
+        );
+      }
+      return { clearedCount: 0, settledCount: 0, vaultQuotesCount: 0, liquidatedCount: 0, currentSlot };
+    }
+
     const summaries = await this.getBatchSummaries();
 
     let clearedCount = 0;
