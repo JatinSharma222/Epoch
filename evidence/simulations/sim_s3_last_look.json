@@ -1,0 +1,17 @@
+{
+  "scenario": "S-3: Last-Look & Visible Order Exploitation",
+  "threat_evaluated": "R4 (Last-Look Advantage) & Test X-03",
+  "sample_episodes": 10000,
+  "clob_frontrunning_mev_extracted_mean_bps": 3.0,
+  "clob_frontrunning_mev_extracted_p90_bps": 3.0,
+  "epoch_uniform_auction_mev_extracted_mean_bps": 0.0,
+  "epoch_uniform_auction_mev_extracted_p90_bps": 0.0,
+  "mev_extraction_reduction_pct": 100.0,
+  "clob_uninformed_slippage_mean_bps": 6.888,
+  "epoch_uninformed_slippage_mean_bps": 7.071,
+  "verdict": {
+    "finding": "Uniform price clearing completely neutralizes within-batch sandwich attacks and priority-based frontrunning.",
+    "mev_elimination": "100.0% reduction in priority MEV extraction [SIMULATED]",
+    "mechanism_rationale": "Because all buy and sell orders within a batch execute at the exact same uniform clearing price (spec \u00a75), a late order cannot buy at a low tick and sell at a high tick inside the same batch."
+  }
+}

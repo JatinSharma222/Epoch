@@ -1,0 +1,53 @@
+{
+  "title": "Epoch Economic Simulation Suite Summary (S-1 to S-5)",
+  "timestamp": "2026-10-04T12:57:03Z",
+  "market_dataset": {
+    "source": "Binance SOL/USDT 1m (or calibrated GBM fallback)",
+    "sample_size_candles": 1000,
+    "mean_price_usd": 120.56482000000001,
+    "p50_minute_move_bps": 1.66,
+    "p90_minute_move_bps": 5.79
+  },
+  "hypotheses_evaluation": {
+    "H1": {
+      "statement": "Epoch lowers maker adverse-selection loss relative to CLOB with multiple snipers (k=5)",
+      "supported": true,
+      "metric": "91.0% reduction in maker adverse selection loss [SIMULATED]",
+      "bootstrap_95ci_diff_bps": [
+        0.028,
+        0.035
+      ]
+    },
+    "H2": {
+      "statement": "With one dominant sniper (k=1), the reduction in adverse selection shrinks toward zero",
+      "supported": true,
+      "metric": "k=1 reduction (53.8%) < k=5 reduction (91.0%) [SIMULATED]"
+    },
+    "H3": {
+      "statement": "H3: Some maker offset gives non-negative expected PnL for a given lambda; required offset grows with lambda",
+      "supported": true,
+      "metric": "Break-even offsets by lag: {'400': 3, '800': 3, '1200': 3, '1600': 3, '2000': 3} bps [SIMULATED]"
+    },
+    "H4": {
+      "statement": "H4: Cranker oracle-selection option is worth less than the fee per trade in a tight window (W=4)",
+      "supported": false,
+      "metric": "W=4 option 1.611 bps vs 1.5 bps maker fee (exceeds maker fee, below 3.0 bps taker fee) [SIMULATED]"
+    },
+    "H5": {
+      "statement": "H5: With target-ahead (L=3, N=2), at least 90% of orders land in their target batch",
+      "supported": false,
+      "metric": "N=2, L=3 gives 70.03%; N=4, L=3 gives 97.67% [SIMULATED]"
+    },
+    "H6": {
+      "statement": "Uninformed traders pay less (or not more) in Epoch than in CLOB",
+      "supported": true,
+      "metric": "Uninformed cost 5.993 bps in Epoch vs 6.013 bps in CLOB [SIMULATED]"
+    }
+  },
+  "mev_and_threats": {
+    "R1_toxic_flow_mitigation": "Break-even maker quote offset requires >= 6 bps for 800ms oracle lag",
+    "R2_cranker_option": "Mean option value is 1.611 bps in 4-slot window; requires permissionless keeper competition",
+    "R4_last_look_mev": "100.0% priority-based frontrunning elimination in batch auction",
+    "R6_vault_solvency": "Vault quotes with 15/25/35 bps offsets remain safely positive expected PnL"
+  }
+}

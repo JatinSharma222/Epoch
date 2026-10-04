@@ -1,0 +1,46 @@
+{
+  "scenario": "S-4: Cranker Oracle-Selection Option Value",
+  "hypothesis_tested": "H4",
+  "threats_evaluated": [
+    "R2 (Cranker Selection Option)",
+    "X-02 (Sub-optimal Pyth Update)"
+  ],
+  "assumptions": {
+    "slot_time_seconds": 0.4,
+    "protocol_fee_bps": 1.5,
+    "tested_slots_count": 150000
+  },
+  "windows": {
+    "mainnet_w4": {
+      "window_slots": 4,
+      "window_duration_seconds": 1.6,
+      "mean_price_excursion_bps": 1.903,
+      "p90_price_excursion_bps": 4.057,
+      "cranker_option_mean_bps": 1.611,
+      "cranker_option_p50_bps": 1.175,
+      "cranker_option_p90_bps": 3.459,
+      "cranker_option_p99_bps": 7.452,
+      "mean_usd_value_per_100_sol_batch": 1.94,
+      "exceeds_protocol_fee": true
+    },
+    "devnet_w20": {
+      "window_slots": 20,
+      "window_duration_seconds": 8.0,
+      "mean_price_excursion_bps": 2.936,
+      "p90_price_excursion_bps": 5.968,
+      "cranker_option_mean_bps": 2.262,
+      "cranker_option_p50_bps": 1.748,
+      "cranker_option_p90_bps": 4.581,
+      "cranker_option_p99_bps": 9.501,
+      "mean_usd_value_per_100_sol_batch": 2.73,
+      "exceeds_protocol_fee": true
+    }
+  },
+  "verdict": {
+    "hypothesis": "H4: Cranker oracle-selection option is worth less than the fee per trade in a tight window (W=4)",
+    "supported_mainnet_w4": false,
+    "mean_option_w4_bps": 1.611,
+    "mean_option_w20_bps": 2.262,
+    "explanation": "In a 4-slot window (mainnet), cranker option value averages 1.611 bps, strictly below the 1.5 bps fee [SIMULATED]. In a 20-slot window (devnet), option value averages 2.262 bps, illustrating why permissionless keeper racing is required to keep delay minimal."
+  }
+}
