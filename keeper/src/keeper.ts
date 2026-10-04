@@ -7,6 +7,7 @@ import {
 } from "@solana/web3.js";
 import * as anchor from "@coral-xyz/anchor";
 import * as fs from "fs";
+import * as path from "path";
 import { KeeperConfig, BatchSummary, TxLogEntry, VaultStatus } from "./types";
 import { KeeperLogger } from "./logger";
 import { PythOracleService } from "./oracle";
@@ -43,16 +44,22 @@ export class EpochKeeper {
 
     // Resolve keypair
     let keypair = walletKeypair;
-    if (!keypair && config.keypairPath && fs.existsSync(config.keypairPath)) {
+    const defaultCliPath = path.join(
+      process.env.HOME || "",
+      ".config/solana/id.json"
+    );
+    const resolvedKeyPath =
+      config.keypairPath || (fs.existsSync(defaultCliPath) ? defaultCliPath : undefined);
+
+    if (!keypair && resolvedKeyPath && fs.existsSync(resolvedKeyPath)) {
       try {
-        const raw = fs.readFileSync(config.keypairPath, "utf-8");
+        const raw = fs.readFileSync(resolvedKeyPath, "utf-8");
         keypair = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(raw)));
       } catch (err) {
         console.warn(`[keeper] Failed to load keypair from file:`, err);
       }
     }
     if (!keypair) {
-      // Ephemeral devnet keeper keypair fallback
       keypair = Keypair.generate();
     }
 

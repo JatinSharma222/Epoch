@@ -15,7 +15,9 @@ import {
 } from "../app/src/lib/constants";
 
 async function main() {
-  const rpcUrl = process.env.EPOCH_RPC_URL || "http://127.0.0.1:8899";
+  const rpcUrl = process.argv.includes("--devnet")
+    ? (process.env.EPOCH_RPC_URL || "https://api.devnet.solana.com")
+    : "http://127.0.0.1:8899";
   console.log(`\n=== Initializing Epoch Protocol on ${rpcUrl} ===`);
 
   const connection = new Connection(rpcUrl, "confirmed");
@@ -44,9 +46,14 @@ async function main() {
   const [collateralVaultPda] = getCollateralVaultPda();
   const [vaultAuthorityPda] = getVaultAuthorityPda();
   const [vaultUserPda] = getVaultUserPda();
+  const [mintAuthorityPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("mint_authority")],
+    PROGRAM_ID
+  );
 
   console.log(`Market PDA:           ${marketPda.toBase58()}`);
   console.log(`Quote Mint PDA:       ${quoteMintPda.toBase58()}`);
+  console.log(`Mint Authority PDA:   ${mintAuthorityPda.toBase58()}`);
   console.log(`Collateral Vault PDA: ${collateralVaultPda.toBase58()}`);
   console.log(`Vault Authority PDA:  ${vaultAuthorityPda.toBase58()}`);
   console.log(`Vault User PDA:       ${vaultUserPda.toBase58()}`);
@@ -77,6 +84,8 @@ async function main() {
   const marketInfo = await connection.getAccountInfo(marketPda);
   if (!marketInfo) {
     const defaultMarketArgs = {
+      baseLot: new anchor.BN(1000),
+      priceTick: new anchor.BN(1000),
       minOrderLots: new anchor.BN(10),
       minOrderNotional: new anchor.BN(1_000_000), // $1.00
       fundingPeriodSlots: 28800, // 8h
@@ -100,7 +109,7 @@ async function main() {
       .initializeMarket(defaultMarketArgs, dummyOracleFeedId)
       .accounts({
         market: marketPda,
-        mintAuthority: vaultAuthorityPda,
+        mintAuthority: mintAuthorityPda,
         quoteMint: quoteMintPda,
         collateralVault: collateralVaultPda,
         admin: payer.publicKey,
