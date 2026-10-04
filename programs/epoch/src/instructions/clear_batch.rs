@@ -152,9 +152,11 @@ pub fn handle_clear_batch(
         false
     };
 
-    // d. Oracle posted slot invalid: in future
+    // d. Oracle posted slot invalid (spec 01 §7): require posted_slot >= close_slot and posted_slot <= close_slot + max_clear_delay_slots
     let is_invalid_slot = if params.oracle_posted_slot > 0 {
-        params.oracle_posted_slot > current_slot
+        params.oracle_posted_slot < close_slot
+            || (max_delay > 0 && params.oracle_posted_slot > close_slot.saturating_add(max_delay))
+            || params.oracle_posted_slot > current_slot
     } else {
         false
     };

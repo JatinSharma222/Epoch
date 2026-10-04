@@ -1,4 +1,5 @@
 use crate::errors::EpochError;
+use crate::events::OrderCancelled;
 use crate::state::constants::RING_SIZE;
 use crate::state::{Batch, BatchStatus, Market, OrderSide, OrderStatus, UserAccount};
 use anchor_lang::prelude::*;
@@ -99,6 +100,13 @@ pub fn handle_cancel_order(
         slot_id,
         old_lots
     );
+
+    emit!(OrderCancelled {
+        user: user_pda,
+        batch_id: target_batch,
+        slot_id,
+        lots: old_lots,
+    });
 
     Ok(())
 }

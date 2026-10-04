@@ -53,7 +53,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Market Dropdown Pill (Backpack 1:1) */}
+        {/* Market Selector Pill */}
         <div className="flex items-center gap-2 cursor-pointer group pr-3 border-r bp-border hover:opacity-90 transition-opacity">
           <div className="w-6 h-6 rounded-full bg-[#181d24] border bp-border flex items-center justify-center shrink-0">
             <span className="text-[11px] font-bold text-[#9945ff]">◎</span>
@@ -101,9 +101,9 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           <div className="flex flex-col hidden lg:flex">
-            <span className="text-[#848e9c] text-[10px]">1H Funding / Countdown</span>
+            <span className="text-[#848e9c] text-[10px]">8H Funding Rate</span>
             <span className="font-mono text-[#eab308] font-medium tabular-nums">
-              0.00041% <span className="text-[#848e9c]">/ {fundingCountdown}</span>
+              +0.0041%/8h <span className="text-[#848e9c]">/ {fundingCountdown}</span>
             </span>
           </div>
 

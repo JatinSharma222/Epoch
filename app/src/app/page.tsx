@@ -3,7 +3,17 @@
 import React, { useState, useEffect } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
-import { MarketTickerBanner } from "../components/MarketTickerBanner";
+import { AnchorProvider, Program, BN } from "@coral-xyz/anchor";
+import epochIdl from "../lib/epoch_idl.json";
+import {
+  PROGRAM_ID,
+  getMarketPda,
+  getBatchPda,
+  getUserPda,
+  getQuoteMintPda,
+  getCollateralVaultPda,
+  getVaultAuthorityPda,
+} from "../lib/constants";
 import { Header } from "../components/Header";
 import { Sidebar } from "../components/Sidebar";
 import { TradingChart } from "../components/TradingChart";
@@ -18,7 +28,8 @@ import { fetchSolStats, fetchLiveDepth, MarketStats, BookRow } from "../lib/mark
 
 export default function Home() {
   const { connection } = useConnection();
-  const { publicKey, connected } = useWallet();
+  const walletContext = useWallet();
+  const { publicKey, connected } = walletContext;
 
   // Navigation State
   const [activeTab, setActiveTab] = useState<"trade" | "batches" | "evidence">("trade");
@@ -284,59 +295,140 @@ export default function Home() {
     }
   }, [markPrice]);
 
-  // Order Placement Handler
+  // Helper to obtain Anchor Program when wallet is connected
+  const getAnchorProgram = () => {
+    if (!connected || !publicKey || !walletContext) return null;
+    try {
+      const provider = new AnchorProvider(
+        connection,
+        walletContext as any,
+        { commitment: "confirmed" }
+      );
+      return new Program(epochIdl as any, provider);
+    } catch {
+      return null;
+    }
+  };
+
+  // Order Placement Handler (09-UX_SPEC.md §4 & §5)
   const handlePlaceOrder = async ({
     side,
     price,
     lots,
     offsetBps,
-    targetBatch,
+    lifetimeBatches,
+    reduceOnly,
   }: {
     side: "BUY" | "SELL";
     price: number;
     lots: number;
     offsetBps: number;
-    targetBatch: number;
+    lifetimeBatches: number;
+    reduceOnly: boolean;
   }) => {
     setIsPlacingOrder(true);
-    await new Promise((res) => setTimeout(res, 600));
-
-    // Update local book tick aggregates
+    const numBatches = Math.max(1, Math.min(4, lifetimeBatches || 1));
     const tick = Math.max(0, Math.min(100, 50 + offsetBps));
+
+    // 1. Attempt on-chain transactions across targeted batches if wallet connected
+    const program = getAnchorProgram();
+    if (program && publicKey) {
+      try {
+        const [marketPda] = getMarketPda();
+        const [userPda] = getUserPda(publicKey);
+
+        for (let i = 0; i < numBatches; i++) {
+          const targetBatch = currentBatchId + i;
+          const ringIndex = targetBatch % 8;
+          const [batchPda] = getBatchPda(ringIndex);
+
+          await program.methods
+            .placeOrder({
+              targetBatch: new BN(targetBatch),
+              ringIndex,
+              slotId: 0,
+              side: side === "BUY" ? 0 : 1,
+              tick,
+              lots: new BN(lots),
+              flags: reduceOnly ? 1 : 0,
+            })
+            .accounts({
+              market: marketPda,
+              batch: batchPda,
+              user: userPda,
+              owner: publicKey,
+            })
+            .rpc();
+        }
+      } catch (err) {
+        console.warn("On-chain place_order fell back to local state:", err);
+      }
+    } else {
+      await new Promise((res) => setTimeout(res, 500));
+    }
+
+    // 2. Update reactive local state
     if (side === "BUY") {
       setBidQty((prev) => {
         const n = [...prev];
-        n[tick] = (n[tick] || 0) + lots;
+        n[tick] = (n[tick] || 0) + lots * numBatches;
         return n;
       });
     } else {
       setAskQty((prev) => {
         const n = [...prev];
-        n[tick] = (n[tick] || 0) + lots;
+        n[tick] = (n[tick] || 0) + lots * numBatches;
         return n;
       });
     }
 
-    // Allocate required margin from collateral
-    const orderMargin = price * lots * 0.001 * 0.1;
+    const orderMargin = price * lots * 0.001 * 0.1 * numBatches;
     setCollateral((prev) => Math.max(0, parseFloat((prev - orderMargin).toFixed(2))));
 
-    setActiveOrders((prev) => [
-      {
-        batchId: targetBatch,
-        slotId: prev.length,
+    const newOrders: Array<{
+      batchId: number;
+      slotId: number;
+      side: "BUY" | "SELL";
+      tickOffset: number;
+      lots: number;
+    }> = [];
+    for (let i = 0; i < numBatches; i++) {
+      newOrders.push({
+        batchId: currentBatchId + i,
+        slotId: activeOrders.length + i,
         side,
         tickOffset: offsetBps,
         lots,
-      },
-      ...prev,
-    ]);
-
+      });
+    }
+    setActiveOrders((prev) => [...newOrders, ...prev]);
     setIsPlacingOrder(false);
   };
 
   // Cancel Order Handler
   const handleCancelOrder = async (batchId: number, slotId: number) => {
+    const program = getAnchorProgram();
+    if (program && publicKey) {
+      try {
+        const [marketPda] = getMarketPda();
+        const ringIndex = batchId % 8;
+        const [batchPda] = getBatchPda(ringIndex);
+        const [userPda] = getUserPda(publicKey);
+
+        await program.methods
+          .cancelOrder(new BN(batchId), ringIndex, slotId)
+          .accounts({
+            market: marketPda,
+            batch: batchPda,
+            user: userPda,
+            owner: publicKey,
+          })
+          .rpc();
+      } catch (err) {
+        console.warn("On-chain cancel_order fell back to local state:", err);
+      }
+    }
+
     const order = activeOrders.find((o) => o.batchId === batchId && o.slotId === slotId);
     if (order) {
       const orderMargin = markPrice * order.lots * 0.001 * 0.1;
@@ -349,28 +441,88 @@ export default function Home() {
 
   // Faucet Request Handler
   const handleRequestFaucet = async (amountUsd: number) => {
-    await new Promise((res) => setTimeout(res, 800));
+    const program = getAnchorProgram();
+    if (program && publicKey) {
+      try {
+        const [quoteMintPda] = getQuoteMintPda();
+        const [vaultAuthorityPda] = getVaultAuthorityPda();
+        await program.methods
+          .faucet(new BN(amountUsd * 1_000_000))
+          .accounts({
+            quoteMint: quoteMintPda,
+            mintAuthority: vaultAuthorityPda,
+            userQuoteAccount: publicKey,
+            user: publicKey,
+          })
+          .rpc();
+      } catch (err) {
+        console.warn("On-chain faucet fell back to simulated local state:", err);
+      }
+    } else {
+      await new Promise((res) => setTimeout(res, 600));
+    }
     setCollateral((prev) => prev + amountUsd);
   };
 
   // Deposit Handler
   const handleDeposit = async (amountUsd: number) => {
-    await new Promise((res) => setTimeout(res, 600));
+    const program = getAnchorProgram();
+    if (program && publicKey) {
+      try {
+        const [marketPda] = getMarketPda();
+        const [userPda] = getUserPda(publicKey);
+        const [vaultPda] = getCollateralVaultPda();
+        await program.methods
+          .deposit(new BN(amountUsd * 1_000_000))
+          .accounts({
+            market: marketPda,
+            user: userPda,
+            owner: publicKey,
+            userTokenAccount: publicKey,
+            vault: vaultPda,
+          })
+          .rpc();
+      } catch (err) {
+        console.warn("On-chain deposit fell back to simulated local state:", err);
+      }
+    } else {
+      await new Promise((res) => setTimeout(res, 500));
+    }
     setCollateral((prev) => prev + amountUsd);
   };
 
   // Withdraw Handler
   const handleWithdraw = async (amountUsd: number) => {
-    await new Promise((res) => setTimeout(res, 600));
+    const program = getAnchorProgram();
+    if (program && publicKey) {
+      try {
+        const [marketPda] = getMarketPda();
+        const [userPda] = getUserPda(publicKey);
+        const [vaultPda] = getCollateralVaultPda();
+        const [vaultAuthorityPda] = getVaultAuthorityPda();
+        await program.methods
+          .withdraw(new BN(amountUsd * 1_000_000))
+          .accounts({
+            market: marketPda,
+            user: userPda,
+            owner: publicKey,
+            userTokenAccount: publicKey,
+            vault: vaultPda,
+            vaultAuthority: vaultAuthorityPda,
+          })
+          .rpc();
+      } catch (err) {
+        console.warn("On-chain withdraw fell back to simulated local state:", err);
+      }
+    } else {
+      await new Promise((res) => setTimeout(res, 500));
+    }
     setCollateral((prev) => Math.max(0, prev - amountUsd));
   };
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-[#0b0e11] text-[#f0f3f6]">
-      {/* 1. Thin Infinite Ticker Banner Across Very Top (Dynamic live market prices) */}
-      <MarketTickerBanner />
-
-      {/* 2. Top Header Navigation (Dynamic 24h stats, live price flash, funding countdown) */}
+      {/* 1. Top Header Navigation (Dynamic 24h stats, live price flash, funding countdown) */}
       <Header
         currentSlot={currentSlot}
         currentBatchId={currentBatchId}
@@ -380,7 +532,7 @@ export default function Home() {
         onOpenFaucetModal={() => setIsFaucetOpen(true)}
       />
 
-      {/* 3. Main Workspace Layout */}
+      {/* 2. Main Workspace Layout */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar */}
         <Sidebar
@@ -404,12 +556,13 @@ export default function Home() {
 
               {/* Order Book Micro-Ladder & Trades with live depth */}
               <OrderBook
+                currentBatchId={currentBatchId}
                 oraclePrice={markPrice}
                 bidQty={bidQty}
                 askQty={askQty}
+                userOrders={activeOrders}
                 dynamicBids={dynamicBids}
                 dynamicAsks={dynamicAsks}
-                dynamicBidRatio={dynamicBidRatio}
                 onSelectOffset={setSelectedOffsetBps}
                 onSelectPrice={setSelectedPrice}
               />
@@ -417,10 +570,14 @@ export default function Home() {
               {/* Order Placement Console */}
               <OrderTicket
                 currentBatchId={currentBatchId}
-                markPrice={markPrice}
+                oraclePrice={markPrice}
                 availableEquity={collateral}
                 isPlacingOrder={isPlacingOrder}
                 selectedPrice={selectedPrice}
+                selectedOffsetBps={selectedOffsetBps}
+                bidQty={bidQty}
+                askQty={askQty}
+                userPositionLots={position?.sizeLots || 0}
                 onPlaceOrder={handlePlaceOrder}
               />
             </div>

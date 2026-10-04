@@ -1,6 +1,9 @@
 use crate::errors::EpochError;
+use crate::events::OrderPlaced;
 use crate::state::constants::{F_SCALE, MAX_ORDERS, MAX_SLOTS_PER_USER, RING_SIZE};
-use crate::state::{Batch, BatchStatus, Market, Order, OrderSide, OrderStatus, UserAccount};
+use crate::state::{
+    Batch, BatchStatus, Market, Order, OrderFlags, OrderSide, OrderStatus, UserAccount,
+};
 use anchor_lang::prelude::*;
 
 /// Arguments for placing or replacing an order.
@@ -160,6 +163,29 @@ pub fn handle_place_order(ctx: Context<PlaceOrder>, args: PlaceOrderArgs) -> Res
     let mut user = ctx.accounts.user.load_mut()?;
     let user_pda = ctx.accounts.user.key();
 
+    // Reduce-only placement-time validation (spec §5 line 106)
+    if (flags & OrderFlags::REDUCE_ONLY) != 0 {
+        if side == OrderSide::BUY {
+            require!(
+                user.base_position < 0,
+                EpochError::ReduceOnlyExceedsPosition
+            );
+            require!(
+                lots <= (-user.base_position) as u64,
+                EpochError::ReduceOnlyExceedsPosition
+            );
+        } else {
+            require!(
+                user.base_position > 0,
+                EpochError::ReduceOnlyExceedsPosition
+            );
+            require!(
+                lots <= user.base_position as u64,
+                EpochError::ReduceOnlyExceedsPosition
+            );
+        }
+    }
+
     // 5. Check if an open order already exists with the same (user_pda, slot_id) -> UPSERT
     let mut existing_order_idx = None;
     for i in 0..(batch.num_orders as usize) {
@@ -281,6 +307,16 @@ pub fn handle_place_order(ctx: Context<PlaceOrder>, args: PlaceOrderArgs) -> Res
         tick,
         lots
     );
+
+    emit!(OrderPlaced {
+        user: user_pda,
+        batch_id: target_batch,
+        slot_id,
+        side,
+        tick,
+        lots,
+        flags,
+    });
 
     Ok(())
 }

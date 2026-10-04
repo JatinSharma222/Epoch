@@ -28,6 +28,10 @@ export class EpochKeeper {
 
   private isRunning: boolean = false;
   private loopTimeout: NodeJS.Timeout | null = null;
+  private slotSubId: number | null = null;
+  private isTickBusy: boolean = false;
+  private lastSlotReceived: number = 0;
+  private lastLiqScanTs: number = 0;
 
   constructor(config: KeeperConfig, walletKeypair?: Keypair) {
     this.config = config;
@@ -631,15 +635,17 @@ export class EpochKeeper {
   /**
    * One execution tick: inspects all batches, clears closed ones, settles cleared ones,
    * places Backstop Vault quotes into future batches, and liquidates undercollateralized positions.
+   *
+   * @param slotOverride Optional current slot from WebSocket slot notification (avoids RPC getSlot call).
    */
-  public async tick(): Promise<{
+  public async tick(slotOverride?: number): Promise<{
     clearedCount: number;
     settledCount: number;
     vaultQuotesCount: number;
     liquidatedCount: number;
     currentSlot: number;
   }> {
-    const currentSlot = await this.connection.getSlot();
+    const currentSlot = slotOverride ?? (await this.connection.getSlot());
     const summaries = await this.getBatchSummaries();
 
     let clearedCount = 0;
@@ -687,48 +693,83 @@ export class EpochKeeper {
       this.logger.warn("[keeper] vault tick error:", err.toString());
     }
 
-    // 4. Scan for undercollateralized positions and liquidate them
-    try {
-      liquidatedCount = await this.liquidateEligibleUsers();
-    } catch (err: any) {
-      this.logger.warn("[keeper] liquidation scan tick error:", err.toString());
+    // 4. Scan for undercollateralized positions and liquidate them (throttled to every 5 seconds to minimize RPC load)
+    const now = Date.now();
+    if (now - this.lastLiqScanTs >= 5000) {
+      this.lastLiqScanTs = now;
+      try {
+        liquidatedCount = await this.liquidateEligibleUsers();
+      } catch (err: any) {
+        this.logger.warn("[keeper] liquidation scan tick error:", err.toString());
+      }
     }
 
     return { clearedCount, settledCount, vaultQuotesCount, liquidatedCount, currentSlot };
   }
 
   /**
-   * Starts the keeper polling loop.
+   * Starts the keeper loop using WebSocket slotSubscribe with watchdog fallback.
    */
   public async start(): Promise<void> {
     if (this.isRunning) return;
     this.isRunning = true;
-    const intervalMs = this.config.pollIntervalMs || 1000;
 
     this.logger.info(
-      `Epoch Keeper started on ${this.config.network || "devnet"} (interval=${intervalMs}ms)`
+      `Epoch Keeper started on ${this.config.network || "devnet"} (mode=WebSocket slotSubscribe)`
     );
 
-    const loop = async () => {
+    // 1. Subscribe to slot changes over WebSocket
+    try {
+      this.slotSubId = this.connection.onSlotChange(async (slotInfo) => {
+        if (!this.isRunning) return;
+        this.lastSlotReceived = slotInfo.slot;
+        if (this.isTickBusy) return;
+        this.isTickBusy = true;
+        try {
+          await this.tick(slotInfo.slot);
+        } catch (err) {
+          this.logger.error("Error in keeper slot tick:", err);
+        } finally {
+          this.isTickBusy = false;
+        }
+      });
+      this.logger.info(`Subscribed to onSlotChange (subId=${this.slotSubId}) [MEASURED]`);
+    } catch (err) {
+      this.logger.warn("Failed to subscribe via WebSocket, using watchdog fallback:", err);
+    }
+
+    // 2. Watchdog / Heartbeat fallback loop (runs every 3s in case WS is silent or reconnecting)
+    const watchdogInterval = 3000;
+    const watchdog = async () => {
       if (!this.isRunning) return;
-      try {
-        await this.tick();
-      } catch (err) {
-        this.logger.error("Error in keeper tick loop:", err);
+      const currentSlot = await this.connection.getSlot().catch(() => 0);
+      if (currentSlot > this.lastSlotReceived && !this.isTickBusy) {
+        this.isTickBusy = true;
+        try {
+          await this.tick(currentSlot);
+        } catch (err) {
+          this.logger.error("Error in keeper watchdog tick:", err);
+        } finally {
+          this.isTickBusy = false;
+        }
       }
       if (this.isRunning) {
-        this.loopTimeout = setTimeout(loop, intervalMs);
+        this.loopTimeout = setTimeout(watchdog, watchdogInterval);
       }
     };
 
-    loop();
+    watchdog();
   }
 
   /**
-   * Stops the keeper polling loop.
+   * Stops the keeper loop and unsubscribes from WebSocket notifications.
    */
   public stop(): void {
     this.isRunning = false;
+    if (this.slotSubId !== null) {
+      this.connection.removeSlotChangeListener(this.slotSubId).catch(() => {});
+      this.slotSubId = null;
+    }
     if (this.loopTimeout) {
       clearTimeout(this.loopTimeout);
       this.loopTimeout = null;

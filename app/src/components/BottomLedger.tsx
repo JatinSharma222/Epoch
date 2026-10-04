@@ -95,17 +95,14 @@ export const BottomLedger: React.FC<BottomLedgerProps> = ({
       label: "Open Orders",
       count: activeOrders.length,
     },
-    { key: "borrows", label: "Borrows" },
-    { key: "twap", label: "TWAP" },
-    { key: "fills", label: "Fill History" },
     { key: "orderHistory", label: "Order History" },
-    { key: "positionHistory", label: "Position History" },
+    { key: "fills", label: "Trade History" },
     { key: "fundingHistory", label: "Funding History" },
   ];
 
   return (
     <div className="h-[210px] border-t bp-border bg-[#0e1217] flex flex-col shrink-0 min-h-0 select-none font-mono text-[11px]">
-      {/* 1. HORIZONTAL NAVIGATION TABS (Backpack 1:1 match) */}
+      {/* 1. HORIZONTAL NAVIGATION TABS (09 §3.1) */}
       <div className="h-[36px] border-b bp-border flex items-center justify-between px-3 shrink-0">
         <div className="flex items-center gap-4 text-[12px] overflow-x-auto scrollbar-none">
           {tabList.map((tab) => {

@@ -70,3 +70,24 @@ pub struct PositionLiquidated {
     pub bad_debt: u64,
     pub user_remaining_collateral: i64,
 }
+
+/// Emitted when an order is placed into a batch buffer.
+#[event]
+pub struct OrderPlaced {
+    pub user: Pubkey,
+    pub batch_id: u64,
+    pub slot_id: u8,
+    pub side: u8,
+    pub tick: u16,
+    pub lots: u64,
+    pub flags: u8,
+}
+
+/// Emitted when an order is cancelled from a batch buffer.
+#[event]
+pub struct OrderCancelled {
+    pub user: Pubkey,
+    pub batch_id: u64,
+    pub slot_id: u8,
+    pub lots: u64,
+}

@@ -118,4 +118,8 @@ pub enum EpochError {
     /// Cannot liquidate vault against itself.
     #[msg("Cannot liquidate vault against itself")]
     SelfLiquidation,
+
+    /// Reduce-only order exceeds current opposite position.
+    #[msg("Reduce-only order exceeds current opposite position")]
+    ReduceOnlyExceedsPosition,
 }

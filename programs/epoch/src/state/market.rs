@@ -64,7 +64,7 @@ impl Default for MarketParams {
             liq_penalty_bps: 100,
             max_oracle_age_secs: 10,
             max_conf_bps: 20,
-            max_clear_delay_slots: 4,
+            max_clear_delay_slots: 20,
             max_orders_per_batch: 128,
             funding_cap_bps: 50,
             _pad0: [0; 2],

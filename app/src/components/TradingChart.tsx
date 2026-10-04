@@ -9,16 +9,6 @@ import {
   RotateCcw,
   Sliders,
   TrendingUp,
-  Crosshair,
-  Minus,
-  PenTool,
-  Type,
-  Maximize,
-  Compass,
-  Magnet,
-  Lock,
-  Eye,
-  Trash2,
 } from "lucide-react";
 import { fetchLiveKlines, Candle } from "../lib/marketData";
 
@@ -41,7 +31,6 @@ export const TradingChart: React.FC<TradingChartProps> = ({
   const [timeframe, setTimeframe] = useState<"1m" | "5m" | "15m" | "1h" | "4h" | "1D">("1h");
   const [priceRef, setPriceRef] = useState<"last" | "mark" | "index">("last");
   const [hoveredCandle, setHoveredCandle] = useState<number | null>(null);
-  const [activeTool, setActiveTool] = useState<string>("crosshair");
   const [realCandles, setRealCandles] = useState<Candle[]>([]);
 
   // Fetch live candlesticks whenever timeframe changes
@@ -166,7 +155,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
 
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-[#0e1217] border-r bp-border overflow-hidden select-none">
-      {/* 1. CHART TOP TABS & CONTROLS (Backpack exact match) */}
+      {/* 1. CHART TOP TABS & CONTROLS */}
       <div className="h-[38px] border-b bp-border bg-[#0e1217] flex items-center justify-between px-3 shrink-0">
         <div className="flex items-center gap-1 text-[12px]">
           <button
@@ -291,94 +280,9 @@ export const TradingChart: React.FC<TradingChartProps> = ({
         </div>
       </div>
 
-      {/* 3. MAIN WORKSPACE: DRAWING DOCK + CANVAS VIEW */}
-      <div className="flex-1 flex min-h-0 bg-[#0e1217] relative overflow-hidden">
-        {/* Left Drawing Tools Toolbar (Backpack / TradingView 1:1) */}
-        <div className="w-[38px] border-r bp-border flex flex-col items-center py-2 gap-2 text-[#848e9c] shrink-0 bg-[#0e1217] z-20">
-          <button
-            onClick={() => setActiveTool("crosshair")}
-            className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${
-              activeTool === "crosshair" ? "bg-[#181d24] text-white" : "hover:bg-[#161b22] hover:text-white"
-            }`}
-            title="Crosshair"
-          >
-            <Crosshair className="w-4 h-4" />
-          </button>
-
-          <button
-            onClick={() => setActiveTool("trendline")}
-            className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${
-              activeTool === "trendline" ? "bg-[#181d24] text-white" : "hover:bg-[#161b22] hover:text-white"
-            }`}
-            title="Trend Line"
-          >
-            <Minus className="w-4 h-4 rotate-45" />
-          </button>
-
-          <button
-            onClick={() => setActiveTool("brush")}
-            className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${
-              activeTool === "brush" ? "bg-[#181d24] text-white" : "hover:bg-[#161b22] hover:text-white"
-            }`}
-            title="Brush"
-          >
-            <PenTool className="w-4 h-4" />
-          </button>
-
-          <button
-            onClick={() => setActiveTool("text")}
-            className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${
-              activeTool === "text" ? "bg-[#181d24] text-white" : "hover:bg-[#161b22] hover:text-white"
-            }`}
-            title="Text Note"
-          >
-            <Type className="w-4 h-4" />
-          </button>
-
-          <button
-            onClick={() => setActiveTool("measure")}
-            className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${
-              activeTool === "measure" ? "bg-[#181d24] text-white" : "hover:bg-[#161b22] hover:text-white"
-            }`}
-            title="Measure"
-          >
-            <Compass className="w-4 h-4" />
-          </button>
-
-          <div className="w-4 h-[1px] bg-[#242b35] my-1"></div>
-
-          <button
-            className="w-7 h-7 flex items-center justify-center rounded hover:bg-[#161b22] hover:text-white transition-colors"
-            title="Magnet Mode"
-          >
-            <Magnet className="w-4 h-4" />
-          </button>
-
-          <button
-            className="w-7 h-7 flex items-center justify-center rounded hover:bg-[#161b22] hover:text-white transition-colors"
-            title="Lock Drawings"
-          >
-            <Lock className="w-4 h-4" />
-          </button>
-
-          <button
-            className="w-7 h-7 flex items-center justify-center rounded hover:bg-[#161b22] hover:text-white transition-colors"
-            title="Hide Drawings"
-          >
-            <Eye className="w-4 h-4" />
-          </button>
-
-          <button
-            className="w-7 h-7 flex items-center justify-center rounded hover:bg-[#161b22] hover:text-white transition-colors"
-            title="Clear Chart Tools"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Main Canvas Viewport */}
-        <div className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden bg-[#0e1217]">
-          {chartMode === "candles" ? (
+      {/* 3. MAIN WORKSPACE: CANVAS VIEW */}
+      <div className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden bg-[#0e1217]">
+        {chartMode === "candles" ? (
             <div className="w-full h-full flex flex-col min-h-0 relative select-none">
               {/* Floating Candle Stats Strip */}
               <div className="absolute top-2 left-3 z-10 flex flex-wrap items-center gap-x-3 text-[11px] font-mono pointer-events-none">
@@ -671,6 +575,5 @@ export const TradingChart: React.FC<TradingChartProps> = ({
           )}
         </div>
       </div>
-    </div>
-  );
-};
+    );
+  };

@@ -48,7 +48,7 @@ pub mod OrderStatus {
 pub mod OrderFlags {
     /// No special flags.
     pub const NONE: u8 = 0;
-    /// Reduce-only: fill capped so position cannot flip or grow.
+    /// Reduce-only: placement-time validation only (lots <= opposite position); never capped at fill time (§5).
     pub const REDUCE_ONLY: u8 = 1 << 0;
     /// Protocol-created liquidation order.
     pub const LIQUIDATION: u8 = 1 << 1;
