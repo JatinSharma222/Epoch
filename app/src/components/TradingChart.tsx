@@ -9,8 +9,10 @@ import {
   RotateCcw,
   Sliders,
   TrendingUp,
+  Clock,
 } from "lucide-react";
 import { fetchLiveKlines, Candle } from "../lib/marketData";
+import { formatNumber } from "../lib/formatters";
 
 interface TradingChartProps {
   markPrice: number;
@@ -29,9 +31,21 @@ export const TradingChart: React.FC<TradingChartProps> = ({
 }) => {
   const [chartMode, setChartMode] = useState<"candles" | "fba">("candles");
   const [timeframe, setTimeframe] = useState<"1m" | "5m" | "15m" | "1h" | "4h" | "1D">("1h");
-  const [priceRef, setPriceRef] = useState<"last" | "mark" | "index">("last");
+  const [priceRef, setPriceRef] = useState<"last" | "oracle">("last");
   const [hoveredCandle, setHoveredCandle] = useState<number | null>(null);
   const [realCandles, setRealCandles] = useState<Candle[]>([]);
+  const [utcTime, setUtcTime] = useState<string>("");
+
+  // Live UTC Clock (09 §8.1)
+  useEffect(() => {
+    const updateClock = () => {
+      const now = new Date();
+      setUtcTime(now.toUTCString().slice(17, 25) + " UTC");
+    };
+    updateClock();
+    const interval = setInterval(updateClock, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Fetch live candlesticks whenever timeframe changes
   useEffect(() => {
@@ -110,6 +124,17 @@ export const TradingChart: React.FC<TradingChartProps> = ({
     }
     return d;
   }, [smaPoints]);
+
+  // Dynamic Volume metrics & SMA (UX-16)
+  const { maxVolume, volumeSma } = useMemo(() => {
+    if (candles.length === 0) return { maxVolume: 1, volumeSma: 0 };
+    const volumes = candles.map((c) => c.volume);
+    const maxV = Math.max(...volumes, 1);
+    const period = Math.min(10, candles.length);
+    const recent = volumes.slice(-period);
+    const sma = recent.reduce((sum, v) => sum + v, 0) / period;
+    return { maxVolume: maxV, volumeSma: sma };
+  }, [candles]);
 
   // Active displayed candle stats
   const activeCandle = hoveredCandle !== null ? candles[hoveredCandle] : candles[candles.length - 1];
@@ -190,7 +215,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
           </button>
         </div>
 
-        {/* Price Reference Switcher */}
+        {/* Price Reference Switcher (09 §3.4: Oracle and Last batch price only) */}
         <div className="flex items-center p-0.5 rounded bg-[#12161c] border bp-border text-[10px] font-mono">
           <button
             onClick={() => setPriceRef("last")}
@@ -200,27 +225,17 @@ export const TradingChart: React.FC<TradingChartProps> = ({
                 : "text-[#848e9c] hover:text-white"
             }`}
           >
-            Last
+            Last Batch
           </button>
           <button
-            onClick={() => setPriceRef("mark")}
+            onClick={() => setPriceRef("oracle")}
             className={`px-2 py-0.5 rounded transition-all ${
-              priceRef === "mark"
+              priceRef === "oracle"
                 ? "bg-[#1f2633] font-semibold text-white shadow-sm"
                 : "text-[#848e9c] hover:text-white"
             }`}
           >
-            Mark
-          </button>
-          <button
-            onClick={() => setPriceRef("index")}
-            className={`px-2 py-0.5 rounded transition-all ${
-              priceRef === "index"
-                ? "bg-[#1f2633] font-semibold text-white shadow-sm"
-                : "text-[#848e9c] hover:text-white"
-            }`}
-          >
-            Index
+            Oracle
           </button>
         </div>
       </div>
@@ -254,6 +269,12 @@ export const TradingChart: React.FC<TradingChartProps> = ({
 
         {/* Right Tools */}
         <div className="flex items-center gap-2.5 text-[11px]">
+          {/* Live UTC Clock (09 §8.1) */}
+          <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#12161c] border bp-border text-white tabular-nums font-mono text-[10px]">
+            <Clock className="w-3 h-3 text-[#00f0ff]" />
+            <span>{utcTime || "00:00:00 UTC"}</span>
+          </div>
+
           <span className="text-[#0ecb81] font-semibold flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-[#0ecb81] animate-pulse"></span>
             Pyth Live
@@ -306,10 +327,12 @@ export const TradingChart: React.FC<TradingChartProps> = ({
                 </span>
               </div>
 
-              {/* Volume SMA Label */}
+              {/* Volume SMA Label (UX-16: real data, no static 79.38) */}
               <div className="absolute top-7 left-3 z-10 flex items-center gap-1.5 font-mono text-[10px] text-[#848e9c] pointer-events-none">
-                <span>Volume SMA:</span>
-                <span className="text-[#eab308]">79.38</span>
+                <span>Volume SMA(10):</span>
+                <span className="text-[#eab308] tabular-nums font-medium">
+                  {formatNumber(volumeSma, 2)}
+                </span>
               </div>
 
               {/* SVG Candlestick & Volume Canvas */}
@@ -373,23 +396,29 @@ export const TradingChart: React.FC<TradingChartProps> = ({
                   {/* Right vertical separator */}
                   <line x1="870" y1="0" x2="870" y2="350" stroke="rgba(255, 255, 255, 0.07)" />
 
-                  {/* Volume Histogram (Bottom) */}
-                  <g opacity="0.5">
-                    {candles.map((c, i) => {
-                      const x = 20 + i * 17.5;
-                      const h = Math.min(65, c.volume * 0.4);
-                      return (
-                        <rect
-                          key={`vol-${i}`}
-                          x={x}
-                          y={340 - h}
-                          width="11"
-                          height={h}
-                          fill={c.isGreen ? "#0ecb81" : "#f6465d"}
-                          rx="1"
-                        />
-                      );
-                    })}
+                  {/* Volume Histogram (Bottom) - Scaled to maxVolume and colored by candle direction per UX-16 */}
+                  <g opacity="0.6">
+                    {candles.length === 0 ? (
+                      <text x="435" y="330" fill="#848e9c" fontSize="11" textAnchor="middle" fontFamily="sans-serif">
+                        No historical volume data available
+                      </text>
+                    ) : (
+                      candles.map((c, i) => {
+                        const x = 20 + i * 17.5;
+                        const h = Math.max(2, (c.volume / maxVolume) * 65);
+                        return (
+                          <rect
+                            key={`vol-${i}`}
+                            x={x}
+                            y={340 - h}
+                            width="11"
+                            height={h}
+                            fill={c.isGreen ? "#0ecb81" : "#f6465d"}
+                            rx="1"
+                          />
+                        );
+                      })
+                    )}
                   </g>
 
                   {/* Moving Average Line (Yellow) */}

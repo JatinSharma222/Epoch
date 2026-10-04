@@ -24,6 +24,7 @@ import { BatchLogView } from "../components/BatchLogView";
 import { EvidenceView } from "../components/EvidenceView";
 import { FaucetModal } from "../components/FaucetModal";
 import { DepositWithdrawModal } from "../components/DepositWithdrawModal";
+import { ReferencePriceStrip } from "../components/ReferencePriceStrip";
 import { fetchSolStats, fetchLiveDepth, MarketStats, BookRow } from "../lib/marketData";
 
 export default function Home() {
@@ -57,8 +58,8 @@ export default function Home() {
   const [slotsRemaining, setSlotsRemaining] = useState<number>(2);
   const [solBalance, setSolBalance] = useState<number | null>(null);
 
-  // User Balances & Margin Account
-  const [collateral, setCollateral] = useState<number>(2500);
+  // User Balances & Margin Account (09 §6.1: empty without wallet)
+  const [collateral, setCollateral] = useState<number>(0);
   const [quotePosition, setQuotePosition] = useState<number>(0);
   const [position, setPosition] = useState<{
     market: string;
@@ -68,15 +69,7 @@ export default function Home() {
     unrealizedPnl: number;
     marginRatio: number;
     liqPrice: number;
-  } | null>({
-    market: "SOL-PERP",
-    sizeLots: 50,
-    entryPrice: 118.20,
-    markPrice: 119.60,
-    unrealizedPnl: 70.00,
-    marginRatio: 0.12,
-    liqPrice: 95.40,
-  });
+  } | null>(null);
 
   const [activeOrders, setActiveOrders] = useState<
     Array<{
@@ -86,9 +79,7 @@ export default function Home() {
       tickOffset: number;
       lots: number;
     }>
-  >([
-    { batchId: 165970141, slotId: 0, side: "BUY", tickOffset: 2, lots: 10 },
-  ]);
+  >([]);
 
   // Synthetic Tick Aggregates for K=101 fallback
   const [bidQty, setBidQty] = useState<number[]>(() => {
@@ -522,6 +513,9 @@ export default function Home() {
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-[#0b0e11] text-[#f0f3f6]">
+      {/* 0. Top Scrolling Reference Prices Strip (09 §3.4 & B.1) */}
+      <ReferencePriceStrip />
+
       {/* 1. Top Header Navigation (Dynamic 24h stats, live price flash, funding countdown) */}
       <Header
         currentSlot={currentSlot}

@@ -1,7 +1,8 @@
 "use client";
 
 import React from "react";
-import { History, ShieldCheck, CheckCircle2 } from "lucide-react";
+import { History, AlertTriangle } from "lucide-react";
+import { formatUsd, formatNumber, formatLots } from "../lib/formatters";
 
 interface BatchLogViewProps {
   batches: Array<{
@@ -18,28 +19,41 @@ interface BatchLogViewProps {
 
 export const BatchLogView: React.FC<BatchLogViewProps> = ({ batches }) => {
   return (
-    <div className="flex-1 overflow-y-auto p-4 bg-[#0b0e11] font-mono text-[12px] select-none">
+    <div className="flex-1 overflow-y-auto p-4 bg-[#0B0E11] font-mono text-[12px] select-none">
       <div className="max-w-5xl mx-auto space-y-4">
+        {/* Sample Data Banner per 09 §6.1 */}
+        <div className="p-3 rounded-lg bg-[#2B1D0E] border border-[#EAB308]/40 text-[#EAB308] flex items-center justify-between text-[11px]">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-[#EAB308]" />
+            <div>
+              <strong className="font-bold">SAMPLE DATA (DEVNET DEMO):</strong> Historical batch
+              log records represent replay demonstration data. Batches are cleared and settled
+              deterministically via consensus.
+            </div>
+          </div>
+          <span className="text-[10px] px-2 py-0.5 rounded bg-[#EAB308]/20 text-[#EAB308] font-bold uppercase tracking-wider shrink-0 border border-[#EAB308]/30">
+            DEMO STREAM
+          </span>
+        </div>
+
+        {/* Title Header */}
         <div className="flex items-center justify-between pb-3 border-b bp-border">
           <div>
             <h2 className="text-[18px] font-sans font-bold text-white flex items-center gap-2">
-              <History className="w-5 h-5 text-[#e54040]" />
-              Historical Batch Log
+              <History className="w-5 h-5 text-[#E54040]" />
+              Historical Batch Clearance Log
             </h2>
-            <p className="text-[11px] text-[#848e9c]">
-              Every Frequent Batch Auction cleared and settled on-chain with deterministic uniform pricing.
+            <p className="text-[11px] text-[#848E9C]">
+              Frequent Batch Auctions cleared and settled on-chain with deterministic uniform pricing.
             </p>
-          </div>
-          <div className="flex items-center gap-2 text-[11px] text-[#0ecb81] bg-[#162720] border border-[#0ecb81]/30 px-3 py-1.5 rounded-md">
-            <CheckCircle2 className="w-4 h-4" />
-            <span>All Batches Verified</span>
           </div>
         </div>
 
-        <div className="bg-[#0e1217] rounded-lg border bp-border overflow-hidden">
+        {/* Batches Table */}
+        <div className="bg-[#0E1217] rounded-lg border bp-border overflow-hidden">
           <table className="w-full text-left">
             <thead>
-              <tr className="text-[#848e9c] text-[10px] uppercase border-b bp-border bg-[#12161c]">
+              <tr className="text-[#848E9C] text-[10px] uppercase border-b bp-border bg-[#12161C] font-sans">
                 <th className="py-2.5 px-3">Batch ID</th>
                 <th className="py-2.5 px-3">Uniform Price</th>
                 <th className="py-2.5 px-3">Offset (bps)</th>
@@ -50,30 +64,32 @@ export const BatchLogView: React.FC<BatchLogViewProps> = ({ batches }) => {
                 <th className="py-2.5 px-3 text-right">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y bp-border text-[#f0f3f6]">
+            <tbody className="divide-y bp-border text-[#F0F3F6]">
               {batches.map((b) => (
-                <tr key={b.batchId} className="hover:bg-[#161b22] transition-colors">
+                <tr key={b.batchId} className="hover:bg-[#161B22] transition-colors">
                   <td className="py-2.5 px-3 font-bold text-white">Batch #{b.batchId}</td>
-                  <td className="py-2.5 px-3 font-semibold text-[#0ecb81]">
-                    ${b.clearingPrice.toFixed(3)}
+                  <td className="py-2.5 px-3 font-semibold text-[#0ECB81] tabular-nums">
+                    {formatUsd(b.clearingPrice, 3)}
                   </td>
-                  <td className="py-2.5 px-3">
+                  <td className="py-2.5 px-3 tabular-nums">
                     {b.offsetBps > 0 ? `+${b.offsetBps}` : b.offsetBps} bps
                   </td>
-                  <td className="py-2.5 px-3 font-medium">
-                    {b.matchedLots} Lots ({(b.matchedLots * 0.001).toFixed(3)} SOL)
+                  <td className="py-2.5 px-3 font-medium tabular-nums">
+                    {formatLots(b.matchedLots)} ({(b.matchedLots * 0.001).toFixed(3)} SOL)
                   </td>
-                  <td className="py-2.5 px-3 text-[#848e9c]">${b.oraclePrice.toFixed(2)}</td>
-                  <td className="py-2.5 px-3 text-[#848e9c]">±${(b.oracleConf / 1_000_000).toFixed(4)}</td>
-                  <td className="py-2.5 px-3 text-[#00f0ff]">{b.cuConsumed ? `${b.cuConsumed.toLocaleString()} CU` : "~18,728 CU"}</td>
+                  <td className="py-2.5 px-3 text-[#848E9C] tabular-nums">{formatUsd(b.oraclePrice, 2)}</td>
+                  <td className="py-2.5 px-3 text-[#848E9C] tabular-nums">±{formatUsd(b.oracleConf / 1_000_000, 4)}</td>
+                  <td className="py-2.5 px-3 text-[#00F0FF] tabular-nums">
+                    {b.cuConsumed ? `${formatNumber(b.cuConsumed, 0)} CU` : "18,728 CU"}
+                  </td>
                   <td className="py-2.5 px-3 text-right">
                     <span
                       className={`text-[9px] px-2 py-0.5 rounded font-semibold ${
                         b.status === "CLEARED"
-                          ? "bg-[#0ecb81]/15 text-[#0ecb81]"
+                          ? "bg-[#0ECB81]/15 text-[#0ECB81] border border-[#0ECB81]/30"
                           : b.status === "SETTLED"
-                          ? "bg-[#00f0ff]/15 text-[#00f0ff]"
-                          : "bg-[#eab308]/15 text-[#eab308]"
+                          ? "bg-[#00F0FF]/15 text-[#00F0FF] border border-[#00F0FF]/30"
+                          : "bg-[#EAB308]/15 text-[#EAB308] border border-[#EAB308]/30"
                       }`}
                     >
                       {b.status}

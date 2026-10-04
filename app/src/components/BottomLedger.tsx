@@ -14,6 +14,7 @@ import {
   CheckCircle2,
   FileText,
 } from "lucide-react";
+import { formatUsd, formatNumber, formatLots } from "../lib/formatters";
 
 interface Position {
   market: string;
@@ -78,22 +79,22 @@ export const BottomLedger: React.FC<BottomLedgerProps> = ({
 }) => {
   const { connected } = useWallet();
   const [activeTab, setActiveTab] = useState<TabKey>("balances");
-  const [hideOtherPairs, setHideOtherPairs] = useState(true);
 
   const equity =
     collateral + quotePosition + (position ? (position.sizeLots * position.markPrice) / 1000 : 0);
 
+  // Tab list (09 §6.1: badges come from real accounts and show nothing without a wallet)
   const tabList: Array<{ key: TabKey; label: string; count?: number }> = [
     { key: "balances", label: "Balances" },
     {
       key: "positions",
       label: "Positions",
-      count: position && position.sizeLots !== 0 ? 1 : 0,
+      count: connected && position && position.sizeLots !== 0 ? 1 : undefined,
     },
     {
       key: "orders",
       label: "Open Orders",
-      count: activeOrders.length,
+      count: connected && activeOrders.length > 0 ? activeOrders.length : undefined,
     },
     { key: "orderHistory", label: "Order History" },
     { key: "fills", label: "Trade History" },
@@ -128,25 +129,15 @@ export const BottomLedger: React.FC<BottomLedgerProps> = ({
           })}
         </div>
 
-        {/* Right Options: Hide other pairs & quick stats */}
+        {/* Right Options: Account Equity & Collateral (09 §3.4 clean controls) */}
         <div className="flex items-center gap-4 text-[11px] text-[#848e9c] shrink-0">
-          <label className="flex items-center gap-1.5 cursor-pointer hover:text-white">
-            <input
-              type="checkbox"
-              checked={hideOtherPairs}
-              onChange={(e) => setHideOtherPairs(e.target.checked)}
-              className="rounded bg-[#12161c] border bp-border text-white focus:ring-0 w-3 h-3"
-            />
-            <span className="hidden sm:inline">Hide other pairs</span>
-          </label>
-
           {connected && (
-            <div className="hidden xl:flex items-center gap-3 border-l bp-border pl-3 text-[11px]">
+            <div className="hidden xl:flex items-center gap-3 text-[11px]">
               <span>
-                Equity: <strong className="text-white">${equity.toFixed(2)}</strong>
+                Equity: <strong className="text-white tabular-nums">{formatUsd(equity, 2)}</strong>
               </span>
               <span>
-                Collateral: <strong className="text-[#0ecb81]">${collateral.toFixed(2)}</strong>
+                Collateral: <strong className="text-[#0ecb81] tabular-nums">{formatUsd(collateral, 2)}</strong>
               </span>
             </div>
           )}

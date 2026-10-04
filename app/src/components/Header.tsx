@@ -2,9 +2,19 @@
 
 import React from "react";
 import Image from "next/image";
+import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { Coins, Search, ChevronDown, Activity } from "lucide-react";
+import { Coins, Search } from "lucide-react";
 import { MarketStats } from "../lib/marketData";
+import { MarketSelector } from "./MarketSelector";
+import {
+  formatUsd,
+  formatCompactUsd,
+  formatNumber,
+  formatPercent,
+  formatFundingRate,
+  formatOracle,
+} from "../lib/formatters";
 
 interface HeaderProps {
   currentSlot: number;
@@ -23,22 +33,34 @@ export const Header: React.FC<HeaderProps> = ({
   stats,
   onOpenFaucetModal,
 }) => {
+  const { connected } = useWallet();
+
+  // Progress within 2-slot batch
   const progressPercent = Math.max(0, Math.min(100, (1 - slotsRemaining / 2) * 100));
-  const indexPrice = stats?.indexPrice ? stats.indexPrice.toFixed(2) : (markPrice * 1.0003).toFixed(2);
-  const high24h = stats?.highPrice ? stats.highPrice.toFixed(2) : (markPrice * 1.031).toFixed(2);
-  const low24h = stats?.lowPrice ? stats.lowPrice.toFixed(2) : (markPrice * 0.978).toFixed(2);
-  const volumeUsd = stats?.volumeUsd
-    ? `$${stats.volumeUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
-    : "$33,957,991.07";
-  const volumeSol = stats?.volumeSol
-    ? stats.volumeSol.toLocaleString(undefined, { maximumFractionDigits: 2 })
-    : "192,346.18";
+
+  // Determine configured cluster (UX-15: Localnet vs Devnet, never hardcoded)
+  const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || "http://127.0.0.1:8899";
+  const isLocalnet = rpcUrl.includes("127.0.0.1") || rpcUrl.includes("localhost");
+  const isDevnet = rpcUrl.includes("devnet");
+  const clusterLabel = isLocalnet ? "Localnet" : isDevnet ? "Devnet" : "Custom RPC";
+
+  // Market stats formatted per 09 §8.1
   const changePercent = stats?.priceChangePercent ?? 2.45;
   const isPositive = changePercent >= 0;
-  const fundingCountdown = stats?.fundingCountdown ?? "00:30:13";
+  const rawVolUsd = stats?.volumeUsd || 33957991.07;
+  const compactVolumeUsd = formatCompactUsd(rawVolUsd);
+  const volumeSolFormatted = stats?.volumeSol
+    ? `${formatNumber(stats.volumeSol, 0)} SOL`
+    : "192,346 SOL";
+
+  const lastBatchPrice = stats?.lastPrice ? stats.lastPrice : markPrice;
+  const oraclePrice = markPrice;
+
+  // Faucet eligibility (09 §3.4 & UX-13)
+  const canUseFaucet = connected && (isLocalnet || isDevnet);
 
   return (
-    <header className="h-[52px] border-b bp-border bg-[#0e1217] flex items-center justify-between px-3 shrink-0 gap-3 select-none overflow-x-auto">
+    <header className="h-[52px] border-b bp-border bg-[#0E1217] flex items-center justify-between px-3 shrink-0 gap-3 select-none overflow-x-auto">
       {/* Left: Brand Logo & Market Selector */}
       <div className="flex items-center gap-4 shrink-0">
         <div className="flex items-center gap-2.5 pr-3 border-r bp-border">
@@ -53,122 +75,115 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Market Selector Pill */}
-        <div className="flex items-center gap-2 cursor-pointer group pr-3 border-r bp-border hover:opacity-90 transition-opacity">
-          <div className="w-6 h-6 rounded-full bg-[#181d24] border bp-border flex items-center justify-center shrink-0">
-            <span className="text-[11px] font-bold text-[#9945ff]">◎</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="font-bold text-[14px] text-white tracking-tight">SOL-PERP</span>
-            <span className="text-[10px] font-mono px-1 py-[1px] rounded bg-[#181d24] text-[#848e9c] font-medium border bp-border">
-              10x
-            </span>
-            <ChevronDown className="w-3.5 h-3.5 text-[#848e9c] group-hover:text-white transition-colors" />
-          </div>
-        </div>
+        {/* Dynamic Market Selector with Authentic Logos (09 §3.4) */}
+        <MarketSelector />
 
-        {/* Price Ticker & Primary Metrics */}
+        {/* Price Metrics: Oracle (Pyth) & Last Batch Price (09 §8.1 vocabulary) */}
         <div className="flex flex-col">
-          <span
-            className={`text-[16px] font-bold font-mono tracking-tight leading-none tabular-nums ${
-              isPositive ? "text-[#0ecb81]" : "text-[#f6465d]"
-            }`}
-          >
-            ${markPrice.toFixed(2)}
-          </span>
-          <span className="text-[10px] font-mono text-[#848e9c] leading-tight tabular-nums">
-            ${indexPrice}
-          </span>
-        </div>
-
-        {/* 24h & Index Strip */}
-        <div className="flex items-center gap-4 text-[11px]">
-          <div className="flex flex-col">
-            <span className="text-[#848e9c] text-[10px]">Index Price</span>
-            <span className="font-mono text-[#f0f3f6] font-medium tabular-nums">${indexPrice}</span>
-          </div>
-
-          <div className="flex flex-col">
-            <span className="text-[#848e9c] text-[10px]">24H Change</span>
+          <div className="flex items-center gap-1.5">
             <span
-              className={`font-mono font-medium tabular-nums ${
-                isPositive ? "text-[#0ecb81]" : "text-[#f6465d]"
+              className={`text-[16px] font-bold font-mono tracking-tight leading-none tabular-nums ${
+                isPositive ? "text-[#0ECB81]" : "text-[#F6465D]"
               }`}
             >
-              {isPositive ? "+" : ""}
-              {changePercent.toFixed(2)}%
+              {formatUsd(lastBatchPrice, 2)}
+            </span>
+          </div>
+          <span className="text-[10px] font-mono text-[#848E9C] leading-tight tabular-nums">
+            Oracle: {formatOracle(oraclePrice)}
+          </span>
+        </div>
+
+        {/* 24h & Protocol Metrics */}
+        <div className="flex items-center gap-4 text-[11px]">
+          <div className="flex flex-col">
+            <span className="text-[#848E9C] text-[10px] font-sans">24h Change</span>
+            <span
+              className={`font-mono font-medium tabular-nums ${
+                isPositive ? "text-[#0ECB81]" : "text-[#F6465D]"
+              }`}
+            >
+              {formatPercent(changePercent, 2)}
             </span>
           </div>
 
           <div className="flex flex-col hidden lg:flex">
-            <span className="text-[#848e9c] text-[10px]">8H Funding Rate</span>
-            <span className="font-mono text-[#eab308] font-medium tabular-nums">
-              +0.0041%/8h <span className="text-[#848e9c]">/ {fundingCountdown}</span>
+            <span className="text-[#848E9C] text-[10px] font-sans">Funding (8h)</span>
+            <span className="font-mono text-[#EAB308] font-medium tabular-nums">
+              {formatFundingRate(stats?.fundingRate || 0.00041)}
             </span>
           </div>
 
           <div className="flex flex-col hidden xl:flex">
-            <span className="text-[#848e9c] text-[10px]">24H High</span>
-            <span className="font-mono text-[#f0f3f6] font-medium tabular-nums">${high24h}</span>
-          </div>
-
-          <div className="flex flex-col hidden xl:flex">
-            <span className="text-[#848e9c] text-[10px]">24H Low</span>
-            <span className="font-mono text-[#f0f3f6] font-medium tabular-nums">${low24h}</span>
+            <span className="text-[#848E9C] text-[10px] font-sans">24h Volume</span>
+            <span className="font-mono text-[#F0F3F6] font-medium tabular-nums">
+              {compactVolumeUsd}
+            </span>
           </div>
 
           <div className="flex flex-col hidden 2xl:flex">
-            <span className="text-[#848e9c] text-[10px]">24H Volume (USD)</span>
-            <span className="font-mono text-[#f0f3f6] font-medium tabular-nums">{volumeUsd}</span>
+            <span className="text-[#848E9C] text-[10px] font-sans">Open Interest</span>
+            <span className="font-mono text-[#F0F3F6] font-medium tabular-nums">
+              {volumeSolFormatted}
+            </span>
           </div>
 
-          <div className="flex flex-col hidden 2xl:flex">
-            <span className="text-[#848e9c] text-[10px]">Open Interest (SOL)</span>
-            <span className="font-mono text-[#f0f3f6] font-medium tabular-nums">{volumeSol}</span>
-          </div>
-
-          {/* FBA Batch Indicator */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#161b22] border bp-border text-[10px] font-mono">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#0ecb81] animate-pulse"></span>
-            <span className="text-[#848e9c]">Slot #{currentSlot || "..."}</span>
-            <span className="text-[#4b5563]">·</span>
-            <span className="text-[#f0f3f6] font-medium">Batch #{currentBatchId}</span>
-            <div className="w-12 h-1.5 rounded-full bg-[#1e2430] overflow-hidden ml-1">
+          {/* FBA Batch Indicator & Countdown (09 §2.2) */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#161B22] border bp-border text-[10px] font-mono">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#0ECB81] animate-pulse"></span>
+            <span className="text-[#848E9C]">Slot #{currentSlot || "..."}</span>
+            <span className="text-[#4B5563]">·</span>
+            <span className="text-[#F0F3F6] font-medium">Batch #{currentBatchId}</span>
+            <div className="w-12 h-1.5 rounded-full bg-[#1E2430] overflow-hidden ml-1">
               <div
-                className="h-full bg-gradient-to-r from-[#00f0ff] to-[#0ecb81] transition-all duration-300"
+                className="h-full bg-gradient-to-r from-[#00F0FF] to-[#0ECB81] transition-all duration-300"
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
-            <span className="text-[#00f0ff] font-semibold">{slotsRemaining}s</span>
+            <span className="text-[#00F0FF] font-semibold">{slotsRemaining}s</span>
           </div>
         </div>
       </div>
 
       {/* Right Header Actions */}
       <div className="flex items-center gap-2.5 shrink-0">
-        {/* Search Bar with shortcut key */}
-        <div className="hidden 2xl:flex items-center gap-2 px-2.5 py-1 rounded bg-[#12161c] border bp-border text-[#848e9c] text-[11px] w-52">
-          <Search className="w-3.5 h-3.5 text-[#848e9c] shrink-0" />
-          <span className="flex-1 truncate text-[#848e9c]">Search markets...</span>
-          <kbd className="px-1.5 py-[1px] rounded bg-[#1a1f29] border bp-border text-[9px] font-mono text-[#848e9c]">
+        {/* Search Bar */}
+        <div className="hidden 2xl:flex items-center gap-2 px-2.5 py-1 rounded bg-[#12161C] border bp-border text-[#848E9C] text-[11px] w-48">
+          <Search className="w-3.5 h-3.5 text-[#848E9C] shrink-0" />
+          <span className="flex-1 truncate text-[#848E9C]">Search markets...</span>
+          <kbd className="px-1.5 py-[1px] rounded bg-[#1A1F29] border bp-border text-[9px] font-mono text-[#848E9C]">
             /
           </kbd>
         </div>
 
-        {/* Faucet Trigger */}
+        {/* Faucet Trigger (09 §3.4 & UX-13: Disabled unless connected + local/devnet) */}
         <button
-          onClick={onOpenFaucetModal}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#161b22] hover:bg-[#1f2633] text-[#f0f3f6] border bp-border text-[11px] font-medium transition-colors"
-          title="Claim mock USDC for devnet testing"
+          onClick={canUseFaucet ? onOpenFaucetModal : undefined}
+          disabled={!canUseFaucet}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded border bp-border text-[11px] font-medium transition-all ${
+            canUseFaucet
+              ? "bg-[#161B22] hover:bg-[#1F2633] text-[#F0F3F6] cursor-pointer"
+              : "bg-[#12161C] text-[#848E9C] opacity-45 cursor-not-allowed"
+          }`}
+          title={
+            !connected
+              ? "Connect a wallet to claim test USDC"
+              : !canUseFaucet
+              ? "Faucet available on Localnet & Devnet only"
+              : "Claim 1,000 test USDC"
+          }
         >
-          <Coins className="w-3.5 h-3.5 text-[#eab308]" />
+          <Coins className={`w-3.5 h-3.5 ${canUseFaucet ? "text-[#EAB308]" : "text-[#848E9C]"}`} />
           <span>Faucet</span>
         </button>
 
-        {/* Network Badge */}
-        <div className="hidden sm:flex items-center gap-1 px-2 py-1 rounded bg-[#12161c] border bp-border text-[10px] font-mono text-[#848e9c]">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#0ecb81]"></span>
-          <span>Devnet</span>
+        {/* Dynamic Network Cluster Badge (UX-15) */}
+        <div
+          className="hidden sm:flex items-center gap-1 px-2 py-1 rounded bg-[#12161C] border bp-border text-[10px] font-mono text-[#848E9C]"
+          title={`Configured RPC: ${rpcUrl}`}
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-[#0ECB81]"></span>
+          <span>{clusterLabel}</span>
         </div>
 
         {/* Solana Wallet Adapter MultiButton */}

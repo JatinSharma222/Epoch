@@ -360,7 +360,7 @@ export function priceToOffset(
   oraclePriceUsd: number,
   tickBps: number = 1,
   kHalf: number = 50
-): { offsetBps: number; effectivePriceUsd: number; clamped: boolean } {
+): { offsetBps: number; rawOffsetBps: number; effectivePriceUsd: number; clamped: boolean } {
   const rawOffset = Math.round(
     (10_000 * (limitPriceUsd - oraclePriceUsd)) / oraclePriceUsd
   );
@@ -377,7 +377,7 @@ export function priceToOffset(
   const effectivePriceUsd =
     Math.round(oraclePriceUsd * (1 + effectiveOffsetBps / 10_000) * 1000) / 1000;
 
-  return { offsetBps: effectiveOffsetBps, effectivePriceUsd, clamped };
+  return { offsetBps: effectiveOffsetBps, rawOffsetBps: rawOffset, effectivePriceUsd, clamped };
 }
 
 /**

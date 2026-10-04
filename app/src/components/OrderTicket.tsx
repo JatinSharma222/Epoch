@@ -9,6 +9,7 @@ import {
   priceToOffset,
   computeLiquidationPrice,
 } from "../lib/clearingEngine";
+import { formatUsd, formatNumber } from "../lib/formatters";
 
 interface OrderTicketProps {
   currentBatchId: number;
@@ -65,13 +66,13 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
   const lots = Math.max(1, Math.round(numQty * 1000));
   const notionalUsd = numPrice * numQty;
 
-  // 09 §4.2: Price-to-offset conversion
+  // 09 §4.2 & D.1: Price-to-offset conversion (allows values outside valid band, displays real offset)
   const offsetInfo = useMemo(() => {
     if (orderType === "market") {
       // Market order sent as band edge (09 §4.1)
       const edge = side === "BUY" ? 50 : -50;
       const effectiveP = oraclePrice * (1 + edge / 10_000);
-      return { offsetBps: edge, effectivePriceUsd: effectiveP, clamped: false };
+      return { offsetBps: edge, rawOffsetBps: edge, effectivePriceUsd: effectiveP, clamped: false };
     }
     return priceToOffset(numPrice, oraclePrice, 1, 50);
   }, [numPrice, oraclePrice, orderType, side]);
@@ -127,10 +128,11 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
     return pLiqMicro > 0 ? (pLiqMicro / 1_000_000).toFixed(2) : "-";
   }, [availableEquity, userPositionLots, lots, side]);
 
-  // Validations per 09 §4.2
+  // Validations per 09 §4.2 & D.1
   const validationError = useMemo(() => {
     if (orderType === "limit" && offsetInfo.clamped) {
-      return "Limit orders must be within ±0.50% of the oracle. Use Market instead.";
+      const sign = offsetInfo.rawOffsetBps > 0 ? "+" : "";
+      return `Exceeds ±50 bps collar (${sign}${offsetInfo.rawOffsetBps} bps). Limit orders must be within ±0.50% of oracle.`;
     }
     if (notionalUsd < 10) {
       return "Order notional below minimum ($10.00).";
@@ -261,20 +263,37 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
                   step="0.01"
                   value={priceStr}
                   onChange={(e) => setPriceStr(e.target.value)}
-                  className="w-full bg-[#12161c] border bp-border focus:border-[#00f0ff] rounded px-3 py-2 text-white font-mono text-[13px] outline-none"
+                  className={`w-full bg-[#12161c] border rounded px-3 py-2 text-white font-mono text-[13px] outline-none transition-colors ${
+                    offsetInfo.clamped
+                      ? "border-[#F6465D] focus:border-[#F6465D]"
+                      : "bp-border focus:border-[#00f0ff]"
+                  }`}
                   placeholder="0.00"
                 />
                 <span className="absolute right-3 text-[#848e9c] font-mono text-[11px]">USDC</span>
               </div>
-              {/* Pegged offset explainer (09 §2.2 & §4.1) */}
-              <div className="p-1.5 rounded bg-[#181d24] border bp-border text-[10px] flex items-center justify-between text-[#848e9c]">
+              {/* Pegged offset explainer (09 §2.2, §4.1, and D.1) */}
+              <div
+                className={`p-1.5 rounded border text-[10px] flex items-center justify-between transition-colors ${
+                  offsetInfo.clamped
+                    ? "bg-[#29171A] border-[#F6465D]/50 text-[#F6465D]"
+                    : "bg-[#181d24] bp-border text-[#848e9c]"
+                }`}
+              >
                 <span>
                   Pegged:{" "}
-                  <strong className="text-white font-mono">
-                    {offsetInfo.offsetBps >= 0 ? `+${offsetInfo.offsetBps}` : offsetInfo.offsetBps} bps
+                  <strong className={`font-mono ${offsetInfo.clamped ? "text-[#F6465D]" : "text-white"}`}>
+                    {offsetInfo.rawOffsetBps >= 0 ? `+${offsetInfo.rawOffsetBps}` : offsetInfo.rawOffsetBps} bps
                   </strong>
+                  {offsetInfo.clamped && (
+                    <span className="ml-1 text-[9px] text-[#F6465D] font-semibold">
+                      (Exceeds ±50 bps collar)
+                    </span>
+                  )}
                 </span>
-                <span className="text-[9px] text-[#00f0ff]">Moves with oracle</span>
+                <span className={`text-[9px] font-semibold ${offsetInfo.clamped ? "text-[#F6465D]" : "text-[#00f0ff]"}`}>
+                  {offsetInfo.clamped ? "Outside Collar" : "Moves with oracle"}
+                </span>
               </div>
             </div>
           ) : (
