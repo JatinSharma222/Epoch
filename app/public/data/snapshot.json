@@ -1,0 +1,109 @@
+{
+  "title": "Epoch Protocol — Batch Clearance Snapshot",
+  "network": "devnet",
+  "programId": "CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap",
+  "exported_at": "2026-10-04T14:24:55.671Z",
+  "batch_count": 8,
+  "batches": [
+    {
+      "batchId": 6608,
+      "clearingPrice": 121.7339,
+      "matchedLots": 10,
+      "offsetBps": 0,
+      "oraclePrice": 121.7339,
+      "oracleConf": 8200,
+      "status": "SETTLED",
+      "cuConsumed": 16560,
+      "clearingTick": 50,
+      "signature": "4hQ4okvPTRYqN3gNUaxMVMyFk2KFxznxwJbuiw9Nk6akhPKFfeDeWiHJ65UngNDTe8K62jCDPhTLDZY8zjEwr5ZG",
+      "slot": 507385888,
+      "timestamp": "2026-10-04T13:53:24.683Z"
+    },
+    {
+      "batchId": 6579,
+      "clearingPrice": 121.795,
+      "matchedLots": 10,
+      "offsetBps": 5,
+      "oraclePrice": 121.7339,
+      "oracleConf": 8200,
+      "status": "SETTLED",
+      "cuConsumed": 17267,
+      "clearingTick": 55,
+      "signature": "3Yok6mkHUW3kx4cfUZeb22ftF1LtZqxDQ5Yu63dMiusgvk8gQ5tV6smSDwwPwzXws3xbXJqa1rv2dmyAvF7RdCW6",
+      "slot": 507385831,
+      "timestamp": "2026-10-04T13:53:24.683Z"
+    },
+    {
+      "batchId": 4308,
+      "clearingPrice": 121.574,
+      "matchedLots": 10,
+      "offsetBps": -12,
+      "oraclePrice": 121.71963,
+      "oracleConf": 11634,
+      "status": "SETTLED",
+      "cuConsumed": 17267,
+      "clearingTick": 38,
+      "timestamp": "2026-10-04T14:24:54.436Z"
+    },
+    {
+      "batchId": 7,
+      "clearingPrice": 121.280936,
+      "matchedLots": 0,
+      "offsetBps": 0,
+      "oraclePrice": 121.280936,
+      "oracleConf": 9064,
+      "status": "VOID",
+      "cuConsumed": 14210,
+      "clearingTick": 50,
+      "timestamp": "2026-10-04T14:24:55.670Z"
+    },
+    {
+      "batchId": 6,
+      "clearingPrice": 121.280936,
+      "matchedLots": 0,
+      "offsetBps": 0,
+      "oraclePrice": 121.280936,
+      "oracleConf": 9064,
+      "status": "VOID",
+      "cuConsumed": 14210,
+      "clearingTick": 50,
+      "timestamp": "2026-10-04T14:24:55.187Z"
+    },
+    {
+      "batchId": 5,
+      "clearingPrice": 121.280936,
+      "matchedLots": 0,
+      "offsetBps": 0,
+      "oraclePrice": 121.280936,
+      "oracleConf": 9064,
+      "status": "VOID",
+      "cuConsumed": 14210,
+      "clearingTick": 50,
+      "timestamp": "2026-10-04T14:24:54.798Z"
+    },
+    {
+      "batchId": 2,
+      "clearingPrice": 121.274975,
+      "matchedLots": 0,
+      "offsetBps": 0,
+      "oraclePrice": 121.274975,
+      "oracleConf": 15025,
+      "status": "VOID",
+      "cuConsumed": 14210,
+      "clearingTick": 50,
+      "timestamp": "2026-10-04T14:24:53.663Z"
+    },
+    {
+      "batchId": 1,
+      "clearingPrice": 121.274975,
+      "matchedLots": 0,
+      "offsetBps": 0,
+      "oraclePrice": 121.274975,
+      "oracleConf": 15025,
+      "status": "VOID",
+      "cuConsumed": 14210,
+      "clearingTick": 50,
+      "timestamp": "2026-10-04T14:24:53.227Z"
+    }
+  ]
+}

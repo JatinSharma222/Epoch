@@ -1,0 +1,118 @@
+{
+  "gate": "Gate G3 Live Devnet Verification",
+  "timestamp": "2026-10-04T13:53:24.683Z",
+  "network": "devnet",
+  "programId": "CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap",
+  "transactions": [
+    {
+      "step": "Fund User1 & User2 SOL",
+      "signature": "x33bVjCbQh7Jcx7CEF2wQHuTG2hzLanVy4e6MYr9csZLGwezyDEmQ8EFxCdKA7WZe7ZLxBgQ53ChHeR9SfHt6Ft",
+      "slot": 507385700,
+      "cu": 300,
+      "explorerUrl": "https://explorer.solana.com/tx/x33bVjCbQh7Jcx7CEF2wQHuTG2hzLanVy4e6MYr9csZLGwezyDEmQ8EFxCdKA7WZe7ZLxBgQ53ChHeR9SfHt6Ft?cluster=devnet"
+    },
+    {
+      "step": "Create User1 & User2 Quote ATAs",
+      "signature": "2cN1C5R8JVWqKPjZcLew9u9fMTYZfus9tixcjTtcH18stFHmTg3eZzgGyn1LQDYnx2e9Ng8tUJ2u24X4EcdQfpwL",
+      "slot": 507385711,
+      "cu": 26960,
+      "explorerUrl": "https://explorer.solana.com/tx/2cN1C5R8JVWqKPjZcLew9u9fMTYZfus9tixcjTtcH18stFHmTg3eZzgGyn1LQDYnx2e9Ng8tUJ2u24X4EcdQfpwL?cluster=devnet"
+    },
+    {
+      "step": "Faucet User 1 (5,000 USDC)",
+      "signature": "vV8HtTVewi34WPGJ89JsKuaJMYCLyhT8JLhNEXM1Xm8BcyUDCPNWL9hNLwJd4k2HbXNfks8683azPEqb4mNtLXE",
+      "slot": 507385732,
+      "cu": 15199,
+      "explorerUrl": "https://explorer.solana.com/tx/vV8HtTVewi34WPGJ89JsKuaJMYCLyhT8JLhNEXM1Xm8BcyUDCPNWL9hNLwJd4k2HbXNfks8683azPEqb4mNtLXE?cluster=devnet"
+    },
+    {
+      "step": "Faucet User 2 (5,000 USDC)",
+      "signature": "4iSkVQXQc8Ub7UTLHz3KYTbZRAZXGZkpoECMQLKkRoDgBpWF2y4QBzKzPbLzJDoDUXnpHZpGcD77FUR7hKwnzSsw",
+      "slot": 507385740,
+      "cu": 15199,
+      "explorerUrl": "https://explorer.solana.com/tx/4iSkVQXQc8Ub7UTLHz3KYTbZRAZXGZkpoECMQLKkRoDgBpWF2y4QBzKzPbLzJDoDUXnpHZpGcD77FUR7hKwnzSsw?cluster=devnet"
+    },
+    {
+      "step": "Create User 1 Account PDA",
+      "signature": "3DD8DsSZbqX7KsC1xkHNhw7P1wrLxdUCVKfr3GXn39gS2AiTfmtmBzML73DTqMmvi8Sv4bzHtXz16LaKnFmU1skS",
+      "slot": 507385753,
+      "cu": 10536,
+      "explorerUrl": "https://explorer.solana.com/tx/3DD8DsSZbqX7KsC1xkHNhw7P1wrLxdUCVKfr3GXn39gS2AiTfmtmBzML73DTqMmvi8Sv4bzHtXz16LaKnFmU1skS?cluster=devnet"
+    },
+    {
+      "step": "Create User 2 Account PDA",
+      "signature": "4bHZQfn93stPGLd9h5ZiuvxYkioqpuM6u5X2PbGyVcrF114YSzjDuvHmaF1GWkcAYNEym2D6S91WiFxU5DiLusvE",
+      "slot": 507385767,
+      "cu": 9036,
+      "explorerUrl": "https://explorer.solana.com/tx/4bHZQfn93stPGLd9h5ZiuvxYkioqpuM6u5X2PbGyVcrF114YSzjDuvHmaF1GWkcAYNEym2D6S91WiFxU5DiLusvE?cluster=devnet"
+    },
+    {
+      "step": "Deposit User 1 ($1,000 USDC)",
+      "signature": "5Y1Pch5G784EJVY5oLsZt9VFRqwhysc42WvqAPefjyLUKG4sh8qaLWcx687o7FGQ7PtDwtouL2PViQnKqA4d7iz3",
+      "slot": 507385778,
+      "cu": 14869,
+      "explorerUrl": "https://explorer.solana.com/tx/5Y1Pch5G784EJVY5oLsZt9VFRqwhysc42WvqAPefjyLUKG4sh8qaLWcx687o7FGQ7PtDwtouL2PViQnKqA4d7iz3?cluster=devnet"
+    },
+    {
+      "step": "Deposit User 2 ($1,000 USDC)",
+      "signature": "4sQ1joyU2qQXoeNWS73G778o35RX1gWaQhX9mNkq799vfaUz7qWb8hxnmxk2mdYJtgxrWLWuQDSH85yd442BF5k5",
+      "slot": 507385791,
+      "cu": 13369,
+      "explorerUrl": "https://explorer.solana.com/tx/4sQ1joyU2qQXoeNWS73G778o35RX1gWaQhX9mNkq799vfaUz7qWb8hxnmxk2mdYJtgxrWLWuQDSH85yd442BF5k5?cluster=devnet"
+    },
+    {
+      "step": "Bundle: Vault Quote + User 1 BUY + User 2 SELL (Batch #6579)",
+      "signature": "2p5APTN9fChDAcTnaapNcNg3DUa3w7EgXaPhViHjuQQjK4PMpkqmeVmbUNdRYbmr9aVV65gSn2WhENWzxkSmvKMN",
+      "slot": 507385811,
+      "cu": 37849,
+      "explorerUrl": "https://explorer.solana.com/tx/2p5APTN9fChDAcTnaapNcNg3DUa3w7EgXaPhViHjuQQjK4PMpkqmeVmbUNdRYbmr9aVV65gSn2WhENWzxkSmvKMN?cluster=devnet"
+    },
+    {
+      "step": "Clear Batch #6579 (NONZERO FILLS)",
+      "signature": "3Yok6mkHUW3kx4cfUZeb22ftF1LtZqxDQ5Yu63dMiusgvk8gQ5tV6smSDwwPwzXws3xbXJqa1rv2dmyAvF7RdCW6",
+      "slot": 507385831,
+      "cu": 17267,
+      "explorerUrl": "https://explorer.solana.com/tx/3Yok6mkHUW3kx4cfUZeb22ftF1LtZqxDQ5Yu63dMiusgvk8gQ5tV6smSDwwPwzXws3xbXJqa1rv2dmyAvF7RdCW6?cluster=devnet"
+    },
+    {
+      "step": "Settle Users (User1, User2, VaultUser, Batch #6579)",
+      "signature": "289ehs5W6AqSaXjEvgfKCFNsaKv6Xx558SP6RJVk762VXauFvgnyCGUkYYxX7svdk51ho2tLQ1DxywofyoRoMseW",
+      "slot": 507385844,
+      "cu": 16998,
+      "explorerUrl": "https://explorer.solana.com/tx/289ehs5W6AqSaXjEvgfKCFNsaKv6Xx558SP6RJVk762VXauFvgnyCGUkYYxX7svdk51ho2tLQ1DxywofyoRoMseW?cluster=devnet"
+    },
+    {
+      "step": "Bundle: Vault Quote + User 1 Flatten SELL (Batch #6608)",
+      "signature": "27uXZAznk3yHcGP6nCHq4BKYpRT2mvXSsRGndnimVydp3kka1AXqqWcczRXvKSWzW8tC4JZMbMktJ8p2me4JT3a7",
+      "slot": 507385867,
+      "cu": 26915,
+      "explorerUrl": "https://explorer.solana.com/tx/27uXZAznk3yHcGP6nCHq4BKYpRT2mvXSsRGndnimVydp3kka1AXqqWcczRXvKSWzW8tC4JZMbMktJ8p2me4JT3a7?cluster=devnet"
+    },
+    {
+      "step": "Clear Batch #6608 (Flattening)",
+      "signature": "4hQ4okvPTRYqN3gNUaxMVMyFk2KFxznxwJbuiw9Nk6akhPKFfeDeWiHJ65UngNDTe8K62jCDPhTLDZY8zjEwr5ZG",
+      "slot": 507385888,
+      "cu": 16560,
+      "explorerUrl": "https://explorer.solana.com/tx/4hQ4okvPTRYqN3gNUaxMVMyFk2KFxznxwJbuiw9Nk6akhPKFfeDeWiHJ65UngNDTe8K62jCDPhTLDZY8zjEwr5ZG?cluster=devnet"
+    },
+    {
+      "step": "Settle Users (Batch #6608)",
+      "signature": "4ma6wZbxahzda56a3Sp66ydVXh6L5yGYPjaNx54FjTVBLb7jkC4Za92EJmsqzWEfgLttf77oRHZYxgdyBEEpG68",
+      "slot": 507385901,
+      "cu": 14791,
+      "explorerUrl": "https://explorer.solana.com/tx/4ma6wZbxahzda56a3Sp66ydVXh6L5yGYPjaNx54FjTVBLb7jkC4Za92EJmsqzWEfgLttf77oRHZYxgdyBEEpG68?cluster=devnet"
+    },
+    {
+      "step": "User 1 Withdraw ($500 USDC)",
+      "signature": "2D145Kmk6nPvUwubcxwdNnpeiGGDYaXxicsxPWdpgH3g2ekJH87Ez3LpAHn5Ays7NBN7jNScbWFqyJywzerg2De4",
+      "slot": 507385915,
+      "cu": 15181,
+      "explorerUrl": "https://explorer.solana.com/tx/2D145Kmk6nPvUwubcxwdNnpeiGGDYaXxicsxPWdpgH3g2ekJH87Ez3LpAHn5Ays7NBN7jNScbWFqyJywzerg2De4?cluster=devnet"
+    }
+  ],
+  "cleared_batches": 3,
+  "empty_cleared_batches": 0,
+  "filled_cleared_batches": 3,
+  "void_batches": 5,
+  "lifecycle_verified": true
+}

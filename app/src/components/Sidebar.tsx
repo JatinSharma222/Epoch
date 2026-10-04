@@ -5,14 +5,7 @@ import Image from "next/image";
 import {
   Home,
   ArrowLeftRight,
-  Percent,
-  Sparkles,
   LayoutGrid,
-  Bookmark,
-  SlidersHorizontal,
-  BarChart3,
-  Calendar,
-  Clock,
   ChevronLeft,
   ChevronRight,
   MessageCircle,
@@ -20,11 +13,12 @@ import {
   FileText,
   ShieldCheck,
   History,
+  GitCompare,
 } from "lucide-react";
 
 interface SidebarProps {
-  activeTab: "trade" | "batches" | "evidence";
-  onSelectTab: (tab: "trade" | "batches" | "evidence") => void;
+  activeTab: "trade" | "batches" | "evidence" | "compare";
+  onSelectTab: (tab: "trade" | "batches" | "evidence" | "compare") => void;
   onOpenFaucetModal: () => void;
 }
 
@@ -60,7 +54,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Main Navigation */}
         <nav className="space-y-0.5">
-          {/* Home (placeholder, navigates to trade) */}
+          {/* Home (navigates to trade) */}
           <button
             onClick={() => onSelectTab("trade")}
             className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[#848e9c] hover:text-white hover:bg-[#161b22] transition-colors text-[12px] font-medium"
@@ -69,7 +63,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {!collapsed && <span>Home</span>}
           </button>
 
-          {/* Trade — Active with sub-items */}
+          {/* Trade */}
           <button
             onClick={() => onSelectTab("trade")}
             className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[12px] transition-colors ${
@@ -85,30 +79,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             />
             {!collapsed && <span>Trade</span>}
           </button>
-
-          {/* Trade Sub-Items (only when expanded and trade is active) */}
-          {!collapsed && activeTab === "trade" && (
-            <div className="pl-7 pr-2 py-0.5 space-y-0.5">
-              <span className="block py-1 text-[11px] text-[#848e9c] hover:text-white transition-colors cursor-pointer">
-                Spot
-              </span>
-              <div className="flex items-center justify-between py-1 text-[11px] text-white font-medium">
-                <span>Futures</span>
-              </div>
-              {/* Sub-pill: All / Crypto / TradFi */}
-              <div className="bg-[#12161c] p-0.5 rounded flex text-[10px] my-1">
-                <span className="px-2 py-0.5 rounded bg-[#1f2633] text-white font-medium flex-1 text-center">
-                  All
-                </span>
-                <span className="px-2 py-0.5 text-[#848e9c] hover:text-white flex-1 text-center cursor-pointer">
-                  Crypto
-                </span>
-                <span className="px-2 py-0.5 text-[#848e9c] hover:text-white flex-1 text-center cursor-pointer">
-                  TradFi
-                </span>
-              </div>
-            </div>
-          )}
 
           {/* Batch Log */}
           <button
@@ -144,6 +114,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {!collapsed && <span>Evidence</span>}
           </button>
 
+          {/* Compare (Task T-19) */}
+          <button
+            onClick={() => onSelectTab("compare")}
+            className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[12px] transition-colors ${
+              activeTab === "compare"
+                ? "text-white bg-[#181d24] font-semibold border-l-2 border-[#e54040] shadow-sm"
+                : "text-[#848e9c] hover:text-white hover:bg-[#161b22] font-medium"
+            }`}
+          >
+            <GitCompare
+              className={`w-4 h-4 shrink-0 ${
+                activeTab === "compare" ? "text-[#e54040]" : ""
+              }`}
+            />
+            {!collapsed && <span>Compare</span>}
+          </button>
+
           {/* Tools Section Header */}
           {!collapsed && (
             <div className="pt-3">
@@ -168,14 +155,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <FileText className="w-3 h-3 shrink-0" />
                   <span>Docs</span>
                 </a>
-                <button className="w-full flex items-center gap-2 px-2 py-1 text-[#848e9c] hover:text-white rounded transition-colors text-left">
-                  <BarChart3 className="w-3 h-3 shrink-0" />
-                  <span>Graphs</span>
-                </button>
-                <button className="w-full flex items-center gap-2 px-2 py-1 text-[#848e9c] hover:text-white rounded transition-colors text-left">
-                  <Clock className="w-3 h-3 shrink-0" />
-                  <span>Rates</span>
-                </button>
               </div>
             </div>
           )}

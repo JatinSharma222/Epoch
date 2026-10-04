@@ -1,6 +1,8 @@
 {
   "license": "ISC",
   "scripts": {
+    "export:snapshot": "bun run scripts/export_snapshot.ts",
+    "soak": "bun run scripts/soak_test.ts",
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
     "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check"
   },

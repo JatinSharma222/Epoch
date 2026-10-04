@@ -1,6 +1,7 @@
 {
   "title": "Epoch Economic Simulation Suite Summary (S-1 to S-5)",
-  "timestamp": "2026-10-04T12:57:03Z",
+  "label": "model result under these assumptions",
+  "timestamp": "2026-10-04T14:23:16Z",
   "market_dataset": {
     "source": "Binance SOL/USDT 1m (or calibrated GBM fallback)",
     "sample_size_candles": 1000,
@@ -24,19 +25,20 @@
       "metric": "k=1 reduction (53.8%) < k=5 reduction (91.0%) [SIMULATED]"
     },
     "H3": {
-      "statement": "H3: Some maker offset gives non-negative expected PnL for a given lambda; required offset grows with lambda",
+      "statement": "H3: Some maker offset gives non-negative expected PnL for a given lambda; required offset grows with lambda and snipers k",
       "supported": true,
-      "metric": "Break-even offsets by lag: {'400': 3, '800': 3, '1200': 3, '1600': 3, '2000': 3} bps [SIMULATED]"
+      "metric": "Inner 3 bps rung loses -2.67 bps; widened 12 bps rung achieves 6.973 bps under 5.0 bps fee [SIMULATED]"
     },
     "H4": {
       "statement": "H4: Cranker oracle-selection option is worth less than the fee per trade in a tight window (W=4)",
-      "supported": false,
-      "metric": "W=4 option 1.611 bps vs 1.5 bps maker fee (exceeds maker fee, below 3.0 bps taker fee) [SIMULATED]"
+      "supported": true,
+      "metric": "W=4 option 1.611 bps is 32.2% of 5.0 bps fee (strictly below fee) [SIMULATED]"
     },
     "H5": {
-      "statement": "H5: With target-ahead (L=3, N=2), at least 90% of orders land in their target batch",
-      "supported": false,
-      "metric": "N=2, L=3 gives 70.03%; N=4, L=3 gives 97.67% [SIMULATED]"
+      "statement": "H5: With target-ahead, at least 90% of orders land in their target batch",
+      "supported_at_L3": false,
+      "supported_at_L5": true,
+      "metric": "N=2, L=3 gives 68.87%; N=2, L=5 gives 98.9% on-time landing [SIMULATED]"
     },
     "H6": {
       "statement": "Uninformed traders pay less (or not more) in Epoch than in CLOB",
@@ -44,10 +46,10 @@
       "metric": "Uninformed cost 5.993 bps in Epoch vs 6.013 bps in CLOB [SIMULATED]"
     }
   },
-  "mev_and_threats": {
-    "R1_toxic_flow_mitigation": "Break-even maker quote offset requires >= 6 bps for 800ms oracle lag",
-    "R2_cranker_option": "Mean option value is 1.611 bps in 4-slot window; requires permissionless keeper competition",
-    "R4_last_look_mev": "100.0% priority-based frontrunning elimination in batch auction",
-    "R6_vault_solvency": "Vault quotes with 15/25/35 bps offsets remain safely positive expected PnL"
+  "threats_audit": {
+    "R1_toxic_flow": "Inner 3 bps rung loses to toxic flow under fee_bps=5; break-even requires offset >= 11 bps (widened ladder rungs: [12, 18, 25] bps)",
+    "R2_cranker_option": "Cranker option is 1.611 bps (W=4, 32.2% of fee); keeper racing prevents delayed clearing abuse",
+    "R4_last_look": "Ordering-based sandwiches are impossible by construction due to uniform price clearing; last-look informational advantage (Threat R4) is NOT addressed",
+    "R6_vault_solvency": "Aligned ladder [12, 18, 25] bps maintains strictly positive expected PnL (+6.97 bps on inner rung)"
   }
 }

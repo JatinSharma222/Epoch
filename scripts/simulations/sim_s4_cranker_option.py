@@ -3,8 +3,11 @@
 Scenario S-4: Cranker Oracle-Selection Option Value
 Tests Hypothesis H4, Threat R2, and Test X-02 as defined in 03-THREAT_MODEL.md and 05-TEST_AND_EVIDENCE_PLAN.md §7.5.
 
-Quantifies the option value of a keeper choosing among Pyth price updates posted within the allowable
-clearing window [close_slot, close_slot + max_clear_delay_slots] for window sizes W in {4, 20} slots.
+Calibrated to real protocol parameters:
+- Real protocol fee: fee_bps = 5.0 (on-chain MarketParams)
+- Window sizes W in {4, 20} slots (mainnet tight 1.6s vs devnet permissive 8.0s)
+- Measures absolute bps, relative %, and effect sizes against the 5.0 bps fee threshold.
+All findings labeled "model result under these assumptions".
 """
 
 import json
@@ -46,7 +49,7 @@ def run_s4_simulation():
     }
     
     window_results = {}
-    fee_per_trade_bps = 1.5 # Protocol maker fee (3.0 bps taker)
+    fee_per_trade_bps = 5.0 # Real on-chain protocol fee_bps
     
     for w_key, w_conf in windows.items():
         w_size = w_conf["slots"]
@@ -76,6 +79,10 @@ def run_s4_simulation():
         p90_opt = float(round(np.percentile(opt_arr, 90), 3))
         p99_opt = float(round(np.percentile(opt_arr, 99), 3))
         
+        # Effect size vs 5 bps fee
+        ratio_to_fee_pct = float(round((mean_opt / fee_per_trade_bps) * 100.0, 1))
+        delta_to_fee_bps = float(round(mean_opt - fee_per_trade_bps, 3))
+        
         window_results[w_key] = {
             "window_slots": w_size,
             "window_duration_seconds": w_size * 0.4,
@@ -85,6 +92,8 @@ def run_s4_simulation():
             "cranker_option_p50_bps": p50_opt,
             "cranker_option_p90_bps": p90_opt,
             "cranker_option_p99_bps": p99_opt,
+            "ratio_to_protocol_fee_pct": ratio_to_fee_pct,
+            "effect_size_vs_5bps_fee": delta_to_fee_bps,
             "mean_usd_value_per_100_sol_batch": float(round((mean_opt / 10000.0) * 100 * np.mean(slot_prices), 2)),
             "exceeds_protocol_fee": bool(mean_opt > fee_per_trade_bps),
         }
@@ -97,6 +106,7 @@ def run_s4_simulation():
     
     results = {
         "scenario": "S-4: Cranker Oracle-Selection Option Value",
+        "label": "model result under these assumptions",
         "hypothesis_tested": "H4",
         "threats_evaluated": ["R2 (Cranker Selection Option)", "X-02 (Sub-optimal Pyth Update)"],
         "assumptions": {
@@ -109,8 +119,17 @@ def run_s4_simulation():
             "hypothesis": "H4: Cranker oracle-selection option is worth less than the fee per trade in a tight window (W=4)",
             "supported_mainnet_w4": h4_w4_supported,
             "mean_option_w4_bps": w4_res["cranker_option_mean_bps"],
+            "ratio_w4_to_fee_pct": w4_res["ratio_to_protocol_fee_pct"],
             "mean_option_w20_bps": w20_res["cranker_option_mean_bps"],
-            "explanation": f"In a 4-slot window (mainnet), cranker option value averages {w4_res['cranker_option_mean_bps']} bps, strictly below the {fee_per_trade_bps} bps fee [SIMULATED]. In a 20-slot window (devnet), option value averages {w20_res['cranker_option_mean_bps']} bps, illustrating why permissionless keeper racing is required to keep delay minimal."
+            "ratio_w20_to_fee_pct": w20_res["ratio_to_protocol_fee_pct"],
+            "explanation": (
+                f"In a 4-slot window (mainnet), cranker option value averages {w4_res['cranker_option_mean_bps']} bps "
+                f"({w4_res['ratio_to_protocol_fee_pct']}% of the 5.0 bps protocol fee, effect size: {w4_res['effect_size_vs_5bps_fee']} bps) "
+                f"[SIMULATED, model result under these assumptions], strictly below the protocol fee. "
+                f"In a 20-slot window (devnet), option value averages {w20_res['cranker_option_mean_bps']} bps "
+                f"({w20_res['ratio_to_protocol_fee_pct']}% of fee, effect size: {w20_res['effect_size_vs_5bps_fee']} bps), "
+                f"illustrating why permissionless keeper racing is required to keep delay minimal."
+            )
         }
     }
     
@@ -122,7 +141,8 @@ def run_s4_simulation():
 if __name__ == "__main__":
     res = run_s4_simulation()
     print("=== S-4 Simulation Complete ===")
+    print(f"Label: {res['label']}")
     print(f"H4 Supported (W=4 slots): {res['verdict']['supported_mainnet_w4']}")
-    print(f"Mainnet (W=4 slots): Option Mean = {res['windows']['mainnet_w4']['cranker_option_mean_bps']} bps [SIMULATED]")
-    print(f"Devnet (W=20 slots): Option Mean = {res['windows']['devnet_w20']['cranker_option_mean_bps']} bps [SIMULATED]")
+    print(f"Mainnet (W=4 slots): Option Mean = {res['windows']['mainnet_w4']['cranker_option_mean_bps']} bps ({res['windows']['mainnet_w4']['ratio_to_protocol_fee_pct']}% of fee) [SIMULATED]")
+    print(f"Devnet (W=20 slots): Option Mean = {res['windows']['devnet_w20']['cranker_option_mean_bps']} bps ({res['windows']['devnet_w20']['ratio_to_protocol_fee_pct']}% of fee) [SIMULATED]")
     print(f"Saved to: {OUTPUT_FILE}")

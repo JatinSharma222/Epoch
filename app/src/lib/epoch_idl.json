@@ -1429,6 +1429,32 @@
       ]
     },
     {
+      "name": "OrderCancelled",
+      "discriminator": [
+        108,
+        56,
+        128,
+        68,
+        168,
+        113,
+        168,
+        239
+      ]
+    },
+    {
+      "name": "OrderPlaced",
+      "discriminator": [
+        96,
+        130,
+        204,
+        234,
+        169,
+        219,
+        216,
+        227
+      ]
+    },
+    {
       "name": "PositionLiquidated",
       "discriminator": [
         40,
@@ -1626,6 +1652,11 @@
       "code": 6028,
       "name": "SelfLiquidation",
       "msg": "Cannot liquidate vault against itself"
+    },
+    {
+      "code": 6029,
+      "name": "ReduceOnlyExceedsPosition",
+      "msg": "Reduce-only order exceeds current opposite position"
     }
   ],
   "types": [
@@ -2427,6 +2458,72 @@
                 10
               ]
             }
+          }
+        ]
+      }
+    },
+    {
+      "name": "OrderCancelled",
+      "docs": [
+        "Emitted when an order is cancelled from a batch buffer."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "batch_id",
+            "type": "u64"
+          },
+          {
+            "name": "slot_id",
+            "type": "u8"
+          },
+          {
+            "name": "lots",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OrderPlaced",
+      "docs": [
+        "Emitted when an order is placed into a batch buffer."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "batch_id",
+            "type": "u64"
+          },
+          {
+            "name": "slot_id",
+            "type": "u8"
+          },
+          {
+            "name": "side",
+            "type": "u8"
+          },
+          {
+            "name": "tick",
+            "type": "u16"
+          },
+          {
+            "name": "lots",
+            "type": "u64"
+          },
+          {
+            "name": "flags",
+            "type": "u8"
           }
         ]
       }

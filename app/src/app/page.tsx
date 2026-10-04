@@ -22,6 +22,7 @@ import { OrderTicket } from "../components/OrderTicket";
 import { BottomLedger } from "../components/BottomLedger";
 import { BatchLogView } from "../components/BatchLogView";
 import { EvidenceView } from "../components/EvidenceView";
+import { ComparisonView } from "../components/ComparisonView";
 import { FaucetModal } from "../components/FaucetModal";
 import { DepositWithdrawModal } from "../components/DepositWithdrawModal";
 import { ReferencePriceStrip } from "../components/ReferencePriceStrip";
@@ -33,7 +34,7 @@ export default function Home() {
   const { publicKey, connected } = walletContext;
 
   // Navigation State
-  const [activeTab, setActiveTab] = useState<"trade" | "batches" | "evidence">("trade");
+  const [activeTab, setActiveTab] = useState<"trade" | "batches" | "evidence" | "compare">("trade");
 
   // Modals
   const [isFaucetOpen, setIsFaucetOpen] = useState(false);
@@ -98,7 +99,7 @@ export default function Home() {
     return arr;
   });
 
-  // Recent Historical Batches
+  // Recent Historical Batches (loaded from real on-chain snapshot)
   const [recentBatches, setRecentBatches] = useState<
     Array<{
       batchId: number;
@@ -109,49 +110,20 @@ export default function Home() {
       oracleConf: number;
       status: "CLEARED" | "VOID" | "SETTLED";
       cuConsumed?: number;
+      signature?: string;
     }>
-  >([
-    {
-      batchId: 165970139,
-      clearingPrice: 119.615,
-      matchedLots: 1420,
-      offsetBps: 1,
-      oraclePrice: 119.60,
-      oracleConf: 12000,
-      status: "SETTLED",
-      cuConsumed: 18728,
-    },
-    {
-      batchId: 165970138,
-      clearingPrice: 119.595,
-      matchedLots: 980,
-      offsetBps: -1,
-      oraclePrice: 119.60,
-      oracleConf: 10500,
-      status: "SETTLED",
-      cuConsumed: 16174,
-    },
-    {
-      batchId: 165970137,
-      clearingPrice: 119.60,
-      matchedLots: 1650,
-      offsetBps: 0,
-      oraclePrice: 119.60,
-      oracleConf: 9800,
-      status: "SETTLED",
-      cuConsumed: 22890,
-    },
-    {
-      batchId: 165970136,
-      clearingPrice: 119.60,
-      matchedLots: 0,
-      offsetBps: 0,
-      oraclePrice: 119.60,
-      oracleConf: 500000,
-      status: "VOID",
-      cuConsumed: 6592,
-    },
-  ]);
+  >([]);
+
+  useEffect(() => {
+    fetch("/data/snapshot.json")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && Array.isArray(data.batches) && data.batches.length > 0) {
+          setRecentBatches(data.batches);
+        }
+      })
+      .catch((err) => console.warn("Failed to load /data/snapshot.json:", err));
+  }, []);
 
   // 1. LIVE MARKET DATA POLLING LOOP (Every 2.5 seconds)
   useEffect(() => {
@@ -594,6 +566,8 @@ export default function Home() {
         {activeTab === "batches" && <BatchLogView batches={recentBatches} />}
 
         {activeTab === "evidence" && <EvidenceView />}
+
+        {activeTab === "compare" && <ComparisonView />}
       </div>
 
       {/* Modals */}

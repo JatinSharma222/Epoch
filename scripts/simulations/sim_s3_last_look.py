@@ -105,8 +105,9 @@ def run_s3_simulation():
         "clob_uninformed_slippage_mean_bps": float(round(np.mean(clob_slip_arr), 3)),
         "epoch_uninformed_slippage_mean_bps": float(round(np.mean(epoch_slip_arr), 3)),
         "verdict": {
-            "finding": "Uniform price clearing completely neutralizes within-batch sandwich attacks and priority-based frontrunning.",
-            "mev_elimination": f"{mev_reduction_pct}% reduction in priority MEV extraction [SIMULATED]",
+            "finding": "Ordering-based sandwiches within the batch are impossible by construction due to uniform price clearing; the last-look informational advantage (Threat R4) is not addressed.",
+            "ordering_mev_elimination": "100.0% elimination of within-batch priority sandwiching [SIMULATED]",
+            "r4_status": "Threat R4 (last-look informational advantage) is NOT addressed by uniform pricing: informed actors observing external venue price movements right before close_slot retain an informational advantage.",
             "mechanism_rationale": "Because all buy and sell orders within a batch execute at the exact same uniform clearing price (spec §5), a late order cannot buy at a low tick and sell at a high tick inside the same batch."
         }
     }
