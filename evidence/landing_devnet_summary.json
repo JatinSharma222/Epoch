@@ -1,0 +1,28 @@
+{
+  "title": "Epoch Landing Latency Benchmark (T-17 / L-1)",
+  "network": "devnet",
+  "date": "2026-10-04T13:04:32.149Z",
+  "sample_size": 15,
+  "landing_slots": {
+    "min": 5,
+    "p50": 6,
+    "p90": 7,
+    "p99": 14,
+    "max": 14,
+    "mean": 6.33,
+    "label": "MEASURED"
+  },
+  "latency_wall_clock_ms": {
+    "min": 2034,
+    "p50": 3036,
+    "p90": 3943,
+    "p99": 3980,
+    "max": 3980,
+    "mean": 3089.13,
+    "label": "MEASURED"
+  },
+  "compute_units": {
+    "mean": 27471,
+    "label": "MEASURED"
+  }
+}
