@@ -1,15 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import {
-  Home,
   ArrowLeftRight,
   LayoutGrid,
   ChevronLeft,
   ChevronRight,
-  MessageCircle,
-  Coins,
   FileText,
   ShieldCheck,
   History,
@@ -19,15 +16,27 @@ import {
 interface SidebarProps {
   activeTab: "trade" | "batches" | "evidence" | "compare";
   onSelectTab: (tab: "trade" | "batches" | "evidence" | "compare") => void;
-  onOpenFaucetModal: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   onSelectTab,
-  onOpenFaucetModal,
 }) => {
-  const [collapsed, setCollapsed] = useState(false);
+  // 09 §3.5 rule 9: Sidebar icon-only by default below 1440px
+  const [collapsed, setCollapsed] = useState(true);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setCollapsed(window.innerWidth < 1440);
+      const handleResize = () => {
+        if (window.innerWidth < 1440) {
+          setCollapsed(true);
+        }
+      };
+      window.addEventListener("resize", handleResize);
+      return () => window.removeEventListener("resize", handleResize);
+    }
+  }, []);
 
   return (
     <aside
@@ -41,9 +50,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           href="#"
           className="flex items-center gap-2.5 px-2.5 py-1.5 mb-2 hover:opacity-90 transition-opacity"
           onClick={(e) => { e.preventDefault(); onSelectTab("trade"); }}
+          title="Epoch Protocol"
         >
           <div className="w-6 h-6 rounded-md bg-[#e54040] flex items-center justify-center shadow-sm shrink-0 overflow-hidden">
-            <Image src="/logo.png" alt="E" width={24} height={24} className="object-cover" />
+            <Image src="/logo.png" alt="Epoch" width={24} height={24} className="object-cover" />
           </div>
           {!collapsed && (
             <span className="font-bold text-[15px] text-white tracking-tight">
@@ -52,20 +62,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
         </a>
 
-        {/* Main Navigation */}
+        {/* Main Navigation (09 §3.5 rule 8: 'Home' removed as it duplicates Trade) */}
         <nav className="space-y-0.5">
-          {/* Home (navigates to trade) */}
-          <button
-            onClick={() => onSelectTab("trade")}
-            className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[#848e9c] hover:text-white hover:bg-[#161b22] transition-colors text-[12px] font-medium"
-          >
-            <Home className="w-4 h-4 shrink-0" />
-            {!collapsed && <span>Home</span>}
-          </button>
-
           {/* Trade */}
           <button
             onClick={() => onSelectTab("trade")}
+            title="Trade"
             className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[12px] transition-colors ${
               activeTab === "trade"
                 ? "text-white bg-[#181d24] font-semibold border-l-2 border-[#e54040] shadow-sm"
@@ -83,6 +85,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* Batch Log */}
           <button
             onClick={() => onSelectTab("batches")}
+            title="Batch Log"
             className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[12px] transition-colors ${
               activeTab === "batches"
                 ? "text-white bg-[#181d24] font-semibold border-l-2 border-[#e54040] shadow-sm"
@@ -100,6 +103,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* Evidence */}
           <button
             onClick={() => onSelectTab("evidence")}
+            title="Evidence"
             className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[12px] transition-colors ${
               activeTab === "evidence"
                 ? "text-white bg-[#181d24] font-semibold border-l-2 border-[#e54040] shadow-sm"
@@ -117,6 +121,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* Compare (Task T-19) */}
           <button
             onClick={() => onSelectTab("compare")}
+            title="Compare"
             className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[12px] transition-colors ${
               activeTab === "compare"
                 ? "text-white bg-[#181d24] font-semibold border-l-2 border-[#e54040] shadow-sm"
@@ -131,21 +136,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {!collapsed && <span>Compare</span>}
           </button>
 
-          {/* Tools Section Header */}
-          {!collapsed && (
+          {/* Tools Section */}
+          {!collapsed ? (
             <div className="pt-3">
               <div className="px-2.5 pb-1 text-[11px] font-semibold text-[#848e9c] flex items-center gap-1.5">
                 <LayoutGrid className="w-3.5 h-3.5" />
                 <span>Tools</span>
               </div>
               <div className="space-y-0.5 text-[11px] pl-2">
-                <button
-                  onClick={onOpenFaucetModal}
-                  className="w-full flex items-center gap-2 px-2 py-1 text-[#848e9c] hover:text-white rounded transition-colors text-left"
-                >
-                  <Coins className="w-3 h-3 shrink-0 text-[#eab308]" />
-                  <span>Faucet</span>
-                </button>
                 <a
                   href="https://github.com/JatinSharma222/Epoch"
                   target="_blank"
@@ -157,15 +155,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </a>
               </div>
             </div>
+          ) : (
+            <div className="pt-3 border-t bp-border flex justify-center">
+              <a
+                href="https://github.com/JatinSharma222/Epoch"
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Documentation"
+                className="p-1.5 text-[#848e9c] hover:text-white rounded transition-colors"
+              >
+                <FileText className="w-4 h-4" />
+              </a>
+            </div>
           )}
         </nav>
       </div>
 
-      {/* Bottom: Collapse & Support */}
+      {/* Bottom: Collapse Button */}
       <div className="flex flex-col gap-0.5 border-t bp-border pt-2 text-[#848e9c]">
         <button
           onClick={() => setCollapsed(!collapsed)}
           className="flex items-center gap-2 px-2.5 py-1.5 rounded hover:text-white hover:bg-[#161b22] text-[11px] w-full text-left transition-colors"
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           {collapsed ? (
             <ChevronRight className="w-4 h-4 shrink-0" />
@@ -176,12 +187,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </>
           )}
         </button>
-        {!collapsed && (
-          <button className="flex items-center gap-2 px-2.5 py-1.5 rounded hover:text-white hover:bg-[#161b22] text-[11px] w-full text-left transition-colors">
-            <MessageCircle className="w-4 h-4 shrink-0" />
-            <span>Support</span>
-          </button>
-        )}
       </div>
     </aside>
   );

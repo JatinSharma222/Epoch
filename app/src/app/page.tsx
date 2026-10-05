@@ -6,7 +6,6 @@ import { PublicKey } from "@solana/web3.js";
 import { AnchorProvider, Program, BN } from "@coral-xyz/anchor";
 import epochIdl from "../lib/epoch_idl.json";
 import {
-  PROGRAM_ID,
   getMarketPda,
   getBatchPda,
   getUserPda,
@@ -48,7 +47,6 @@ export default function Home() {
   const [marketStats, setMarketStats] = useState<MarketStats | null>(null);
   const [dynamicBids, setDynamicBids] = useState<BookRow[]>([]);
   const [dynamicAsks, setDynamicAsks] = useState<BookRow[]>([]);
-  const [dynamicBidRatio, setDynamicBidRatio] = useState<number>(60);
   const [selectedPrice, setSelectedPrice] = useState<number>(119.60);
   const [selectedOffsetBps, setSelectedOffsetBps] = useState<number>(0);
   const [isPlacingOrder, setIsPlacingOrder] = useState<boolean>(false);
@@ -82,22 +80,9 @@ export default function Home() {
     }>
   >([]);
 
-  // Synthetic Tick Aggregates for K=101 fallback
-  const [bidQty, setBidQty] = useState<number[]>(() => {
-    const arr = new Array(101).fill(0);
-    for (let i = 0; i <= 50; i++) {
-      arr[i] = Math.floor(Math.sin((i / 50) * Math.PI) * 45 + 15);
-    }
-    return arr;
-  });
-
-  const [askQty, setAskQty] = useState<number[]>(() => {
-    const arr = new Array(101).fill(0);
-    for (let i = 50; i < 101; i++) {
-      arr[i] = Math.floor(Math.sin(((100 - i) / 50) * Math.PI) * 45 + 15);
-    }
-    return arr;
-  });
+  // 09 §3.5 rule 11 & C.6: On-chain batch aggregates only (no synthetic sine-wave data)
+  const [bidQty, setBidQty] = useState<number[]>(() => new Array(101).fill(0));
+  const [askQty, setAskQty] = useState<number[]>(() => new Array(101).fill(0));
 
   // Recent Historical Batches (loaded from real on-chain snapshot)
   const [recentBatches, setRecentBatches] = useState<
@@ -155,7 +140,6 @@ export default function Home() {
         if (mounted && depth) {
           setDynamicBids(depth.bids);
           setDynamicAsks(depth.asks);
-          setDynamicBidRatio(depth.bidRatio);
         }
       } catch (err) {
         console.error("Live market polling failed:", err);
@@ -171,7 +155,7 @@ export default function Home() {
     };
   }, []);
 
-  // 2. LIVE SOLANA SLOT & BATCH CYCLE (Every 800ms ~ 2 slots per batch)
+  // 2. LIVE SOLANA SLOT & BATCH CYCLE (09 §3.5 rule 14 & B.5: No local reactive simulation on RPC failure)
   useEffect(() => {
     let mounted = true;
 
@@ -186,40 +170,10 @@ export default function Home() {
           setSlotsRemaining(2 - (slot % 2));
         }
       } catch {
-        setIsDevnetOutage(true);
-        // Fallback local simulation if RPC times out
-        setCurrentSlot((prev) => {
-          const next = prev + 1;
-          setSlotsRemaining((rem) => {
-            if (rem <= 1) {
-              setCurrentBatchId((b) => {
-                const newBatchId = b + 1;
-                const offset = Math.floor(Math.random() * 5) - 2;
-                const clPrice = markPrice * (1 + offset / 10_000);
-                const matched = Math.floor(Math.random() * 800 + 400);
-
-                setRecentBatches((old) => [
-                  {
-                    batchId: b,
-                    clearingPrice: clPrice,
-                    matchedLots: matched,
-                    offsetBps: offset,
-                    oraclePrice: markPrice,
-                    oracleConf: 12000,
-                    status: "CLEARED",
-                    cuConsumed: Math.floor(Math.random() * 5000 + 16000),
-                  },
-                  ...old.slice(0, 19),
-                ]);
-
-                return newBatchId;
-              });
-              return 2;
-            }
-            return rem - 1;
-          });
-          return next;
-        });
+        if (mounted) {
+          // B.5: Remove local reactive simulation; show outage banner and freeze widgets
+          setIsDevnetOutage(true);
+        }
       }
     };
 
@@ -228,7 +182,50 @@ export default function Home() {
       mounted = false;
       clearInterval(interval);
     };
-  }, [connection, markPrice]);
+  }, [connection]);
+
+  // 2b. ON-CHAIN BATCH AGGREGATES SYNC (09 §3.5 rule 11 & C.6)
+  useEffect(() => {
+    let mounted = true;
+
+    const syncBatchAccount = async () => {
+      try {
+        const ringIndex = currentBatchId % 8;
+        const [batchPda] = getBatchPda(ringIndex);
+        const accInfo = await connection.getAccountInfo(batchPda);
+        if (accInfo && mounted) {
+          const dummyWallet = {
+            publicKey: PublicKey.default,
+            signTransaction: async (tx: any) => tx,
+            signAllTransactions: async (txs: any) => txs,
+          };
+          const provider = new AnchorProvider(connection, dummyWallet as any, { commitment: "confirmed" });
+          const program = new Program(epochIdl as any, provider);
+          const batchAcc = await (program.account as any).batch.fetch(batchPda);
+          if (mounted && batchAcc) {
+            if (batchAcc.batchId && batchAcc.batchId.toNumber() === currentBatchId) {
+              const bArr = batchAcc.bidQty.map((x: any) => x.toNumber());
+              const aArr = batchAcc.askQty.map((x: any) => x.toNumber());
+              setBidQty(bArr);
+              setAskQty(aArr);
+            } else {
+              setBidQty(new Array(101).fill(0));
+              setAskQty(new Array(101).fill(0));
+            }
+          }
+        }
+      } catch {
+        // Keep existing on-chain data or empty
+      }
+    };
+
+    syncBatchAccount();
+    const interval = setInterval(syncBatchAccount, 1600);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [connection, currentBatchId]);
 
   // 3. LIVE SOLANA WALLET BALANCE
   useEffect(() => {
@@ -342,6 +339,15 @@ export default function Home() {
     } catch {
       return null;
     }
+  };
+
+  // Disconnect handler to purge all account state (UX-18)
+  const handleDisconnectPurge = () => {
+    setSolBalance(null);
+    setCollateral(0);
+    setQuotePosition(0);
+    setPosition(null);
+    setActiveOrders([]);
   };
 
   // Order Placement Handler (09-UX_SPEC.md §4 & §5)
@@ -554,19 +560,31 @@ export default function Home() {
     setCollateral((prev) => Math.max(0, prev - amountUsd));
   };
 
+  // 09 §3.5 rule 6: Header stats are Epoch's own on-chain data
+  const epochVolumeUsd = recentBatches.reduce(
+    (acc, b) => acc + b.matchedLots * 0.001 * b.clearingPrice,
+    0
+  );
+  const epochOpenInterestSol = position ? Math.abs(position.sizeLots * 0.001) : 0;
+
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-[#0b0e11] text-[#f0f3f6]">
       {/* 0. Top Scrolling Reference Prices Strip (09 §3.4 & B.1) */}
       <ReferencePriceStrip />
 
-      {/* 1. Top Header Navigation (Dynamic 24h stats, live price flash, funding countdown) */}
+      {/* 1. Top Header Navigation (09 §3.5: One line, single status pill, no search bar, Epoch stats) */}
       <Header
         currentSlot={currentSlot}
         currentBatchId={currentBatchId}
         slotsRemaining={slotsRemaining}
         markPrice={markPrice}
         stats={marketStats}
+        epochVolumeUsd={epochVolumeUsd}
+        epochOpenInterestSol={epochOpenInterestSol}
+        solBalance={solBalance}
+        collateralBalance={collateral}
         onOpenFaucetModal={() => setIsFaucetOpen(true)}
+        onDisconnect={handleDisconnectPurge}
         isKeeperOffline={isKeeperOffline}
         lastClearedAgeSec={lastClearedAgeSec}
       />
@@ -583,37 +601,37 @@ export default function Home() {
         </div>
       )}
 
-      {/* Devnet Outage / Degraded RPC Warning Banner (Item 8) */}
+      {/* Devnet Outage Warning Banner (09 §3.5 rule 14: No simulated data on RPC failure) */}
       {isDevnetOutage && (
         <div className="bg-[#EAB308]/15 border-b border-[#EAB308]/40 text-[#EAB308] px-4 py-1.5 text-xs flex items-center justify-between font-mono shrink-0">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-[#EAB308] animate-ping shrink-0" />
             <span className="font-semibold uppercase tracking-wider">DEVNET RPC OUTAGE:</span>
-            <span>Solana Devnet RPC cluster is unreachable. Running in offline degraded mode with cached state.</span>
+            <span>Solana Devnet RPC cluster is unreachable. Live widgets are frozen.</span>
           </div>
-          <span className="hidden sm:inline text-[11px] text-[#848E9C]">Fallback WebSocket active</span>
+          <span className="hidden sm:inline text-[11px] text-[#848E9C]">Reconnecting...</span>
         </div>
       )}
 
-      {/* 2. Main Workspace Layout */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar */}
+      {/* 2. Main Workspace Layout (Frozen/greyed if RPC outage) */}
+      <div className={`flex-1 flex overflow-hidden ${isDevnetOutage ? "opacity-60 pointer-events-none filter grayscale-[30%]" : ""}`}>
+        {/* Left Sidebar (09 §3.5 rule 8: Home removed, icon-only default below 1440px) */}
         <Sidebar
           activeTab={activeTab}
           onSelectTab={setActiveTab}
-          onOpenFaucetModal={() => setIsFaucetOpen(true)}
         />
 
         {/* Dynamic Center Viewport */}
         {activeTab === "trade" && (
           <div className="flex-1 flex flex-col min-w-0 bg-[#0b0e11] overflow-hidden">
             <div className="flex-1 flex min-h-0 overflow-hidden">
-              {/* Centerpiece: Authentic Candlestick TradingView Chart with dynamic klines + FBA Curve */}
+              {/* Candlestick TradingView Chart with Price, Batch curve, and Market info tabs */}
               <TradingChart
                 markPrice={markPrice}
                 batchId={currentBatchId}
                 bidQty={bidQty}
                 askQty={askQty}
+                stats={marketStats}
                 onSelectPrice={setSelectedPrice}
               />
 
@@ -642,6 +660,7 @@ export default function Home() {
                 askQty={askQty}
                 userPositionLots={position?.sizeLots || 0}
                 onPlaceOrder={handlePlaceOrder}
+                onOpenDeposit={() => setDepositWithdrawModal({ isOpen: true, mode: "deposit" })}
               />
             </div>
 

@@ -2,14 +2,13 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { Loader2, AlertCircle, ShieldAlert, Clock, ArrowRight } from "lucide-react";
+import { useWalletModal } from "@solana/wallet-adapter-react-ui";
+import { Loader2, AlertCircle, ShieldAlert, Clock } from "lucide-react";
 import {
   clear,
-  clearingPrice,
   priceToOffset,
   computeLiquidationPrice,
 } from "../lib/clearingEngine";
-import { formatUsd, formatNumber } from "../lib/formatters";
 
 interface OrderTicketProps {
   currentBatchId: number;
@@ -29,6 +28,7 @@ interface OrderTicketProps {
     lifetimeBatches: number;
     reduceOnly: boolean;
   }) => Promise<void>;
+  onOpenDeposit?: () => void;
 }
 
 export const OrderTicket: React.FC<OrderTicketProps> = ({
@@ -37,27 +37,40 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
   availableEquity,
   isPlacingOrder,
   selectedPrice,
-  selectedOffsetBps,
   bidQty = [],
   askQty = [],
   userPositionLots = 0,
   onPlaceOrder,
+  onOpenDeposit,
 }) => {
   const { connected } = useWallet();
+  const { setVisible } = useWalletModal();
+
   const [side, setSide] = useState<"BUY" | "SELL">("BUY");
   const [orderType, setOrderType] = useState<"market" | "limit">("limit");
+  const [userEditedPrice, setUserEditedPrice] = useState<boolean>(false);
+
+  // 09 §3.5 rule 10: limit price defaults to current oracle price (rounded to price tick) with no error on load
   const [priceStr, setPriceStr] = useState<string>(
-    selectedPrice ? selectedPrice.toFixed(2) : oraclePrice.toFixed(2)
+    selectedPrice ? selectedPrice.toFixed(2) : oraclePrice ? oraclePrice.toFixed(2) : "119.60"
   );
-  const [qtySol, setQtySol] = useState<string>("1.0");
+  const [qtySol, setQtySol] = useState<string>("1.00");
   const [sliderVal, setSliderVal] = useState<number>(25);
   const [lifetimeBatches, setLifetimeBatches] = useState<number>(1);
   const [reduceOnly, setReduceOnly] = useState<boolean>(false);
 
-  // Sync selected price from ladder
+  // Automatically track oracle price if user hasn't typed a custom limit price
+  useEffect(() => {
+    if (!userEditedPrice && oraclePrice > 0) {
+      setPriceStr(oraclePrice.toFixed(2));
+    }
+  }, [oraclePrice, userEditedPrice]);
+
+  // Sync selected price when clicked from ladder
   useEffect(() => {
     if (selectedPrice && selectedPrice > 0) {
       setPriceStr(selectedPrice.toFixed(2));
+      setUserEditedPrice(true);
     }
   }, [selectedPrice]);
 
@@ -66,10 +79,9 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
   const lots = Math.max(1, Math.round(numQty * 1000));
   const notionalUsd = numPrice * numQty;
 
-  // 09 §4.2 & D.1: Price-to-offset conversion (allows values outside valid band, displays real offset)
+  // 09 §4.2 & D.1: Price-to-offset conversion
   const offsetInfo = useMemo(() => {
     if (orderType === "market") {
-      // Market order sent as band edge (09 §4.1)
       const edge = side === "BUY" ? 50 : -50;
       const effectiveP = oraclePrice * (1 + edge / 10_000);
       return { offsetBps: edge, rawOffsetBps: edge, effectivePriceUsd: effectiveP, clamped: false };
@@ -77,7 +89,7 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
     return priceToOffset(numPrice, oraclePrice, 1, 50);
   }, [numPrice, oraclePrice, orderType, side]);
 
-  // Client-side indicative clearing preview (09 §4.1 & T-29)
+  // Client-side indicative clearing preview (09 §4.1)
   const indicativePreview = useMemo(() => {
     if (bidQty.length === 0 || askQty.length === 0) return null;
     const res = clear(bidQty, askQty);
@@ -117,6 +129,7 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
 
   // Estimated liquidation price (09 §7.5 formula)
   const estimatedLiqPrice = useMemo(() => {
+    if (userPositionLots === 0) return "—";
     const resultingLots = side === "BUY" ? userPositionLots + lots : userPositionLots - lots;
     const pLiqMicro = computeLiquidationPrice(
       Math.round(availableEquity * 1_000_000),
@@ -125,19 +138,22 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
       0,
       500 // 5% MMR
     );
-    return pLiqMicro > 0 ? (pLiqMicro / 1_000_000).toFixed(2) : "-";
+    return pLiqMicro > 0 ? (pLiqMicro / 1_000_000).toFixed(2) : "—";
   }, [availableEquity, userPositionLots, lots, side]);
 
-  // Validations per 09 §4.2 & D.1
+  // Validations per 09 §4.2 & §3.5 rule 10: Validation errors appear once, inline under the field
   const validationError = useMemo(() => {
     if (orderType === "limit" && offsetInfo.clamped) {
       const sign = offsetInfo.rawOffsetBps > 0 ? "+" : "";
       return `Exceeds ±50 bps collar (${sign}${offsetInfo.rawOffsetBps} bps). Limit orders must be within ±0.50% of oracle.`;
     }
+    if (numQty <= 0) {
+      return "Size must be greater than 0.";
+    }
     if (notionalUsd < 10) {
       return "Order notional below minimum ($10.00).";
     }
-    if (marginRequired > availableEquity && availableEquity > 0) {
+    if (connected && availableEquity > 0 && marginRequired > availableEquity) {
       const shortfall = (marginRequired - availableEquity).toFixed(2);
       return `Insufficient margin (shortfall $${shortfall}).`;
     }
@@ -153,7 +169,7 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
       }
     }
     return null;
-  }, [orderType, offsetInfo, notionalUsd, marginRequired, availableEquity, reduceOnly, side, userPositionLots, lots]);
+  }, [orderType, offsetInfo, numQty, notionalUsd, connected, availableEquity, marginRequired, reduceOnly, side, userPositionLots, lots]);
 
   const handleSliderMove = (val: number) => {
     setSliderVal(val);
@@ -163,9 +179,18 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
     setQtySol(calculated);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleFormAction = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!connected) {
+      setVisible(true);
+      return;
+    }
+    if (availableEquity <= 0) {
+      if (onOpenDeposit) onOpenDeposit();
+      return;
+    }
     if (validationError || isPlacingOrder || numQty <= 0) return;
+
     await onPlaceOrder({
       side,
       price: numPrice,
@@ -175,6 +200,30 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
       reduceOnly,
     });
   };
+
+  // 09 §3.5 rule 10: Button states
+  const buttonState = useMemo(() => {
+    if (!connected) {
+      return { text: "Connect wallet", disabled: false, type: "connect" };
+    }
+    if (availableEquity <= 0) {
+      return { text: "Deposit to trade", disabled: false, type: "deposit" };
+    }
+    if (marginRequired > availableEquity) {
+      return { text: "Insufficient margin", disabled: true, type: "disabled" };
+    }
+    if (validationError) {
+      return { text: "Invalid order", disabled: true, type: "disabled" };
+    }
+    if (isPlacingOrder) {
+      return { text: "Submitting...", disabled: true, type: "loading" };
+    }
+    return {
+      text: `${side === "BUY" ? "Buy / Long" : "Sell / Short"} ${numQty.toFixed(2)} SOL`,
+      disabled: false,
+      type: "ready",
+    };
+  }, [connected, availableEquity, marginRequired, validationError, isPlacingOrder, side, numQty]);
 
   return (
     <div className="w-[300px] xl:w-[320px] flex flex-col min-h-0 bg-[#0e1217] select-none text-[12px] overflow-y-auto border-l bp-border">
@@ -209,7 +258,7 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
       </div>
 
       {/* 2. Order Form */}
-      <form onSubmit={handleSubmit} className="p-3 space-y-3.5 flex-1 flex flex-col justify-between">
+      <form onSubmit={handleFormAction} className="p-3 space-y-3.5 flex-1 flex flex-col justify-between">
         <div className="space-y-3">
           {/* Order Type Tabs */}
           <div className="flex items-center justify-between">
@@ -243,7 +292,7 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
                   type="checkbox"
                   checked={reduceOnly}
                   onChange={(e) => setReduceOnly(e.target.checked)}
-                  className="rounded bg-[#12161c] border-white/20 text-[#00f0ff] focus:ring-0 w-3 h-3"
+                  className="rounded bg-[#12161c] border-white/20 text-[#00f0ff] focus:ring-0 w-3 h-3 cursor-pointer"
                 />
                 <span>Reduce-only</span>
               </label>
@@ -262,7 +311,10 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
                   type="number"
                   step="0.01"
                   value={priceStr}
-                  onChange={(e) => setPriceStr(e.target.value)}
+                  onChange={(e) => {
+                    setUserEditedPrice(true);
+                    setPriceStr(e.target.value);
+                  }}
                   className={`w-full bg-[#12161c] border rounded px-3 py-2 text-white font-mono text-[13px] outline-none transition-colors ${
                     offsetInfo.clamped
                       ? "border-[#F6465D] focus:border-[#F6465D]"
@@ -389,7 +441,7 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
             )}
           </div>
 
-          {/* Validation Alert (09 §4.2) */}
+          {/* Validation Alert (09 §3.5 rule 10: Validation errors appear once, inline) */}
           {validationError && (
             <div className="p-2 rounded bg-[#f6465d]/10 border border-[#f6465d]/30 text-[11px] text-[#f6465d] flex items-start gap-1.5">
               <ShieldAlert className="w-3.5 h-3.5 shrink-0 mt-0.5" />
@@ -411,11 +463,22 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
               <span>Req. Margin + Slip</span>
               <span className="text-white font-mono tabular-nums">${marginRequired.toFixed(2)}</span>
             </div>
+
+            {/* 09 §3.5 rule 10: No "$-" for liquidation price; show "—" with tooltip when no position */}
             <div className="flex justify-between text-[#848e9c]">
               <span>Est. Liq Price</span>
-              <span className="text-[#eab308] font-mono tabular-nums font-semibold">
-                ${estimatedLiqPrice}
-              </span>
+              {userPositionLots === 0 ? (
+                <span
+                  className="text-[#848e9c] font-mono tabular-nums cursor-help"
+                  title="No open position. Liquidation price is established after a position is filled."
+                >
+                  —
+                </span>
+              ) : (
+                <span className="text-[#eab308] font-mono tabular-nums font-semibold">
+                  {estimatedLiqPrice !== "—" ? `$${estimatedLiqPrice}` : "—"}
+                </span>
+              )}
             </div>
 
             {/* Indicative fill preview (09 §4.1) */}
@@ -430,32 +493,30 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
           </div>
         </div>
 
-        {/* Submit Button */}
+        {/* 09 §3.5 rule 10: Button states: "Connect wallet", "Deposit to trade", "Insufficient margin" (disabled with reason), "Buy / Long 1.00 SOL" */}
         <div className="pt-2">
           <button
             type="submit"
-            disabled={!connected || isPlacingOrder || Boolean(validationError)}
+            disabled={buttonState.disabled}
             className={`w-full py-2.5 rounded font-bold text-[13px] transition-all flex items-center justify-center gap-2 shadow-md ${
-              !connected
-                ? "bg-[#181d24] text-[#848e9c] cursor-not-allowed border bp-border"
-                : validationError
+              buttonState.type === "connect"
+                ? "bg-[#00f0ff] hover:bg-[#00d8e6] text-black cursor-pointer active:scale-95"
+                : buttonState.type === "deposit"
+                ? "bg-[#eab308] hover:bg-[#d99b04] text-black cursor-pointer active:scale-95"
+                : buttonState.disabled
                 ? "bg-[#181d24] text-[#848e9c] cursor-not-allowed border bp-border"
                 : side === "BUY"
-                ? "bg-[#00c087] hover:bg-[#00a372] text-[#0b0e11]"
-                : "bg-[#f23645] hover:bg-[#d92d3b] text-white"
+                ? "bg-[#00c087] hover:bg-[#00a372] text-[#0b0e11] active:scale-95 cursor-pointer"
+                : "bg-[#f23645] hover:bg-[#d92d3b] text-white active:scale-95 cursor-pointer"
             }`}
           >
-            {isPlacingOrder ? (
+            {buttonState.type === "loading" ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Submitting to Batch...</span>
+                <span>{buttonState.text}</span>
               </>
-            ) : !connected ? (
-              <span>Connect Wallet to Trade</span>
             ) : (
-              <span>
-                {side === "BUY" ? "Buy / Long" : "Sell / Short"} {numQty.toFixed(2)} SOL
-              </span>
+              <span>{buttonState.text}</span>
             )}
           </button>
           <p className="text-center text-[10px] text-[#848e9c] mt-1.5">

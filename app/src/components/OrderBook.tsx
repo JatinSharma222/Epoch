@@ -197,7 +197,7 @@ export const OrderBook: React.FC<OrderBookProps> = ({
                   P* ${indicativePrice.toFixed(3)}
                 </span>
               ) : (
-                <span>Bids below asks</span>
+                <span>{totalBatchLots === 0 ? "Batch empty" : "Bids below asks"}</span>
               )}
             </div>
           </div>

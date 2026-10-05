@@ -3,22 +3,22 @@
 import React, { useState, useMemo, useEffect } from "react";
 import {
   Zap,
-  Activity,
   Maximize2,
   Camera,
   RotateCcw,
-  Sliders,
-  TrendingUp,
   Clock,
+  Info,
+  ExternalLink,
 } from "lucide-react";
-import { fetchLiveKlines, Candle } from "../lib/marketData";
-import { formatNumber } from "../lib/formatters";
+import { fetchLiveKlines, Candle, MarketStats } from "../lib/marketData";
+import { formatNumber, formatCompactUsd, formatPercent, formatFundingRate } from "../lib/formatters";
 
 interface TradingChartProps {
   markPrice: number;
   batchId: number;
   bidQty: number[];
   askQty: number[];
+  stats?: MarketStats | null;
   onSelectPrice?: (price: number) => void;
 }
 
@@ -27,16 +27,19 @@ export const TradingChart: React.FC<TradingChartProps> = ({
   batchId,
   bidQty,
   askQty,
+  stats,
   onSelectPrice,
 }) => {
-  const [chartMode, setChartMode] = useState<"candles" | "fba">("candles");
+  // 09 §3.5 rule 7: "Price", "Batch curve", and "Market info" tabs only
+  const [chartMode, setChartMode] = useState<"price" | "batch_curve" | "market_info">("price");
   const [timeframe, setTimeframe] = useState<"1m" | "5m" | "15m" | "1h" | "4h" | "1D">("1h");
   const [priceRef, setPriceRef] = useState<"last" | "oracle">("last");
   const [hoveredCandle, setHoveredCandle] = useState<number | null>(null);
   const [realCandles, setRealCandles] = useState<Candle[]>([]);
   const [utcTime, setUtcTime] = useState<string>("");
+  const [showSma, setShowSma] = useState<boolean>(true);
 
-  // Live UTC Clock (09 §8.1)
+  // Live UTC Clock (09 §8.1: Single live UTC clock across the screen)
   useEffect(() => {
     const updateClock = () => {
       const now = new Date();
@@ -139,21 +142,21 @@ export const TradingChart: React.FC<TradingChartProps> = ({
   // Active displayed candle stats
   const activeCandle = hoveredCandle !== null ? candles[hoveredCandle] : candles[candles.length - 1];
 
-  // FBA Crossing Curve calculations for the "Depth / FBA Curve" tab
-  const { cumulativeDemand, cumulativeSupply, eqTick, eqPrice, eqVol } = useMemo(() => {
+  // FBA Crossing Curve calculations for the "Batch curve" tab
+  const { eqPrice, eqVol } = useMemo(() => {
     const k = 101;
     const demand = new Array(k).fill(0);
     const supply = new Array(k).fill(0);
 
     let dSum = 0;
     for (let t = k - 1; t >= 0; t--) {
-      dSum += bidQty[t] || Math.floor(Math.sin((t / 50) * Math.PI) * 35 + 10);
+      dSum += bidQty[t] || 0;
       demand[t] = dSum;
     }
 
     let sSum = 0;
     for (let t = 0; t < k; t++) {
-      sSum += askQty[t] || Math.floor(Math.sin(((100 - t) / 50) * Math.PI) * 35 + 10);
+      sSum += askQty[t] || 0;
       supply[t] = sSum;
     }
 
@@ -170,48 +173,58 @@ export const TradingChart: React.FC<TradingChartProps> = ({
     const offsetBps = bestT - 50;
     const p = markPrice * (1 + offsetBps / 10_000);
     return {
-      cumulativeDemand: demand,
-      cumulativeSupply: supply,
       eqTick: bestT,
       eqPrice: p,
       eqVol: maxM,
     };
   }, [bidQty, askQty, markPrice]);
 
+  const toggleFullscreen = () => {
+    if (typeof document !== "undefined") {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-[#0e1217] border-r bp-border overflow-hidden select-none">
-      {/* 1. CHART TOP TABS & CONTROLS */}
+      {/* 1. CHART TOP TABS & CONTROLS (09 §3.5 rule 7: Price, Batch curve, Market info only) */}
       <div className="h-[38px] border-b bp-border bg-[#0e1217] flex items-center justify-between px-3 shrink-0">
         <div className="flex items-center gap-1 text-[12px]">
           <button
-            onClick={() => setChartMode("candles")}
+            onClick={() => setChartMode("price")}
             className={`px-2.5 py-1 rounded transition-colors ${
-              chartMode === "candles"
+              chartMode === "price"
                 ? "bg-[#181d24] font-semibold text-white shadow-sm"
                 : "font-medium text-[#848e9c] hover:text-white"
             }`}
           >
-            Chart
+            Price
           </button>
           <button
-            onClick={() => setChartMode("fba")}
+            onClick={() => setChartMode("batch_curve")}
             className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1.5 ${
-              chartMode === "fba"
+              chartMode === "batch_curve"
                 ? "bg-[#181d24] font-semibold text-white shadow-sm"
                 : "font-medium text-[#848e9c] hover:text-white"
             }`}
           >
             <Zap className="w-3.5 h-3.5 text-[#00f0ff]" />
-            <span>Depth & FBA Curve</span>
+            <span>Batch curve</span>
           </button>
-          <button className="px-2.5 py-1 rounded font-medium text-[#848e9c] hover:text-white transition-colors hidden sm:block">
-            Margin
-          </button>
-          <button className="px-2.5 py-1 rounded font-medium text-[#848e9c] hover:text-white transition-colors hidden sm:block">
-            Funding
-          </button>
-          <button className="px-2.5 py-1 rounded font-medium text-[#848e9c] hover:text-white transition-colors hidden md:block">
-            Market Info
+          <button
+            onClick={() => setChartMode("market_info")}
+            className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1.5 ${
+              chartMode === "market_info"
+                ? "bg-[#181d24] font-semibold text-white shadow-sm"
+                : "font-medium text-[#848e9c] hover:text-white"
+            }`}
+          >
+            <Info className="w-3.5 h-3.5 text-[#eab308]" />
+            <span>Market info</span>
           </button>
         </div>
 
@@ -257,19 +270,22 @@ export const TradingChart: React.FC<TradingChartProps> = ({
 
           <div className="w-[1px] h-3.5 bg-[#242b35] mx-0.5"></div>
 
-          {/* Indicator Button */}
-          <button className="flex items-center gap-1 text-[#848e9c] hover:text-white transition-colors">
+          {/* Indicator Button (functional toggle for SMA) */}
+          <button
+            onClick={() => setShowSma(!showSma)}
+            className={`flex items-center gap-1 transition-colors px-1.5 py-0.5 rounded ${
+              showSma ? "text-[#00f0ff] bg-[#00f0ff]/10" : "text-[#848e9c] hover:text-white"
+            }`}
+            title="Toggle SMA(10) indicator"
+          >
             <span className="font-serif italic font-semibold text-[12px]">fx</span>
-            <span className="text-[11px] font-sans">Indicators</span>
+            <span className="text-[11px] font-sans">SMA (10)</span>
           </button>
-
-          <span className="text-[#848e9c] hidden xl:inline">SMA (10)</span>
-          <span className="text-[#848e9c] hidden 2xl:inline">EMA (20, 50)</span>
         </div>
 
-        {/* Right Tools */}
+        {/* Right Tools: Single Live UTC Clock & Controls */}
         <div className="flex items-center gap-2.5 text-[11px]">
-          {/* Live UTC Clock (09 §8.1) */}
+          {/* Live UTC Clock (09 §3.5 rule 12: Single live UTC clock, no static clocks) */}
           <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#12161c] border bp-border text-white tabular-nums font-mono text-[10px]">
             <Clock className="w-3 h-3 text-[#00f0ff]" />
             <span>{utcTime || "00:00:00 UTC"}</span>
@@ -288,13 +304,8 @@ export const TradingChart: React.FC<TradingChartProps> = ({
           </button>
           <button
             className="hover:text-white transition-colors text-[#848e9c]"
-            title="Take Snapshot"
-          >
-            <Camera className="w-3.5 h-3.5" />
-          </button>
-          <button
-            className="hover:text-white transition-colors text-[#848e9c]"
             title="Toggle Fullscreen"
+            onClick={toggleFullscreen}
           >
             <Maximize2 className="w-3.5 h-3.5" />
           </button>
@@ -303,306 +314,402 @@ export const TradingChart: React.FC<TradingChartProps> = ({
 
       {/* 3. MAIN WORKSPACE: CANVAS VIEW */}
       <div className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden bg-[#0e1217]">
-        {chartMode === "candles" ? (
-            <div className="w-full h-full flex flex-col min-h-0 relative select-none">
-              {/* Floating Candle Stats Strip */}
-              <div className="absolute top-2 left-3 z-10 flex flex-wrap items-center gap-x-3 text-[11px] font-mono pointer-events-none">
-                <span className="text-[#f0f3f6] font-bold">SOL-PERP · {timeframe} · Epoch</span>
-                <span className="w-1.5 h-1.5 rounded-full bg-[#0ecb81]"></span>
-                <span className="text-[#848e9c]">
-                  O <span className={activeCandle?.isGreen ? "text-[#0ecb81]" : "text-[#f6465d]"}>{activeCandle?.open.toFixed(2)}</span>
-                </span>
-                <span className="text-[#848e9c]">
-                  H <span className={activeCandle?.isGreen ? "text-[#0ecb81]" : "text-[#f6465d]"}>{activeCandle?.high.toFixed(2)}</span>
-                </span>
-                <span className="text-[#848e9c]">
-                  L <span className={activeCandle?.isGreen ? "text-[#0ecb81]" : "text-[#f6465d]"}>{activeCandle?.low.toFixed(2)}</span>
-                </span>
-                <span className="text-[#848e9c]">
-                  C <span className={activeCandle?.isGreen ? "text-[#0ecb81]" : "text-[#f6465d]"}>{activeCandle?.close.toFixed(2)}</span>
-                </span>
-                <span className={activeCandle?.isGreen ? "text-[#0ecb81] font-semibold" : "text-[#f6465d] font-semibold"}>
-                  {activeCandle && activeCandle.close >= activeCandle.open ? "+" : ""}
-                  {(activeCandle ? activeCandle.close - activeCandle.open : 0).toFixed(2)}
-                </span>
-              </div>
+        {chartMode === "price" ? (
+          <div className="w-full h-full flex flex-col min-h-0 relative select-none">
+            {/* Floating Candle Stats Strip (09 §3.5 rule 6: Never label reference data "Epoch") */}
+            <div className="absolute top-2 left-3 z-10 flex flex-wrap items-center gap-x-3 text-[11px] font-mono pointer-events-none">
+              <span className="text-[#f0f3f6] font-bold">SOL-PERP · {timeframe} · Reference (Binance)</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-[#0ecb81]"></span>
+              <span className="text-[#848e9c]">
+                O <span className={activeCandle?.isGreen ? "text-[#0ecb81]" : "text-[#f6465d]"}>{activeCandle?.open.toFixed(2)}</span>
+              </span>
+              <span className="text-[#848e9c]">
+                H <span className={activeCandle?.isGreen ? "text-[#0ecb81]" : "text-[#f6465d]"}>{activeCandle?.high.toFixed(2)}</span>
+              </span>
+              <span className="text-[#848e9c]">
+                L <span className={activeCandle?.isGreen ? "text-[#0ecb81]" : "text-[#f6465d]"}>{activeCandle?.low.toFixed(2)}</span>
+              </span>
+              <span className="text-[#848e9c]">
+                C <span className={activeCandle?.isGreen ? "text-[#0ecb81]" : "text-[#f6465d]"}>{activeCandle?.close.toFixed(2)}</span>
+              </span>
+              <span className={activeCandle?.isGreen ? "text-[#0ecb81] font-semibold" : "text-[#f6465d] font-semibold"}>
+                {activeCandle && activeCandle.close >= activeCandle.open ? "+" : ""}
+                {(activeCandle ? activeCandle.close - activeCandle.open : 0).toFixed(2)}
+              </span>
+            </div>
 
-              {/* Volume SMA Label (UX-16: real data, no static 79.38) */}
+            {/* Volume SMA Label */}
+            {showSma && (
               <div className="absolute top-7 left-3 z-10 flex items-center gap-1.5 font-mono text-[10px] text-[#848e9c] pointer-events-none">
                 <span>Volume SMA(10):</span>
                 <span className="text-[#eab308] tabular-nums font-medium">
                   {formatNumber(volumeSma, 2)}
                 </span>
               </div>
+            )}
 
-              {/* SVG Candlestick & Volume Canvas */}
-              <div className="flex-1 w-full h-full relative">
-                <svg
-                  viewBox="0 0 940 380"
-                  className="w-full h-full"
-                  preserveAspectRatio="none"
-                  onClick={(e) => {
-                    if (onSelectPrice) {
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      const y = e.clientY - rect.top;
-                      const pct = y / rect.height;
-                      const minPrice = markPrice - 5;
-                      const maxPrice = markPrice + 5;
-                      const clickedPrice = maxPrice - pct * (maxPrice - minPrice);
-                      onSelectPrice(parseFloat(clickedPrice.toFixed(2)));
-                    }
-                  }}
-                >
-                  <defs>
-                    <pattern id="gridTV" width="65" height="42" patternUnits="userSpaceOnUse">
-                      <path
-                        d="M 65 0 L 0 0 0 42"
-                        fill="none"
-                        stroke="rgba(255, 255, 255, 0.035)"
-                        strokeWidth="1"
+            {/* SVG Candlestick & Volume Canvas */}
+            <div className="flex-1 w-full h-full relative">
+              <svg
+                viewBox="0 0 940 380"
+                className="w-full h-full"
+                preserveAspectRatio="none"
+                onClick={(e) => {
+                  if (onSelectPrice) {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const y = e.clientY - rect.top;
+                    const pct = y / rect.height;
+                    const pMin = markPrice - 5;
+                    const pMax = markPrice + 5;
+                    const clickedPrice = pMax - pct * (pMax - pMin);
+                    onSelectPrice(parseFloat(clickedPrice.toFixed(2)));
+                  }
+                }}
+              >
+                <defs>
+                  <pattern id="gridTV" width="65" height="42" patternUnits="userSpaceOnUse">
+                    <path
+                      d="M 65 0 L 0 0 0 42"
+                      fill="none"
+                      stroke="rgba(255, 255, 255, 0.035)"
+                      strokeWidth="1"
+                      strokeDasharray="2 2"
+                    />
+                  </pattern>
+                </defs>
+                <rect width="870" height="350" fill="url(#gridTV)" />
+
+                {/* Horizontal price grid lines */}
+                {[0, 1, 2, 3, 4, 5, 6].map((idx) => {
+                  const y = 30 + idx * 45;
+                  const priceLabel = (maxPrice - (idx / 6) * (maxPrice - minPrice)).toFixed(2);
+                  return (
+                    <g key={idx}>
+                      <line
+                        x1="0"
+                        y1={y}
+                        x2="870"
+                        y2={y}
+                        stroke="rgba(255, 255, 255, 0.04)"
                         strokeDasharray="2 2"
                       />
-                    </pattern>
-                  </defs>
-                  <rect width="870" height="350" fill="url(#gridTV)" />
+                      <text
+                        x="880"
+                        y={y + 4}
+                        fill="#848e9c"
+                        fontFamily="JetBrains Mono"
+                        fontSize="10"
+                      >
+                        {priceLabel}
+                      </text>
+                    </g>
+                  );
+                })}
 
-                  {/* Horizontal price grid lines */}
-                  {[0, 1, 2, 3, 4, 5, 6].map((idx) => {
-                    const y = 30 + idx * 45;
-                    const priceLabel = (maxPrice - (idx / 6) * (maxPrice - minPrice)).toFixed(2);
+                {/* Right vertical separator */}
+                <line x1="870" y1="0" x2="870" y2="350" stroke="rgba(255, 255, 255, 0.07)" />
+
+                {/* Volume Histogram (Bottom) */}
+                <g opacity="0.6">
+                  {candles.map((c) => {
+                    const x = 20 + c.i * 17.5;
+                    const vHeight = Math.max(2, (c.volume / maxVolume) * 45);
+                    const y = 330 - vHeight;
                     return (
-                      <g key={idx}>
-                        <line
-                          x1="0"
-                          y1={y}
-                          x2="870"
-                          y2={y}
-                          stroke="rgba(255, 255, 255, 0.04)"
-                          strokeDasharray="2 2"
-                        />
-                        <text
-                          x="880"
-                          y={y + 4}
-                          fill="#848e9c"
-                          fontFamily="JetBrains Mono"
-                          fontSize="10"
-                        >
-                          {priceLabel}
-                        </text>
-                      </g>
+                      <rect
+                        key={`vol-${c.i}`}
+                        x={x}
+                        y={y}
+                        width="11"
+                        height={vHeight}
+                        fill={c.isGreen ? "#0ecb81" : "#f6465d"}
+                        opacity={0.4}
+                      />
                     );
                   })}
+                </g>
 
-                  {/* Right vertical separator */}
-                  <line x1="870" y1="0" x2="870" y2="350" stroke="rgba(255, 255, 255, 0.07)" />
+                {/* Candlesticks */}
+                {candles.map((c) => {
+                  const x = 20 + c.i * 17.5;
+                  const scaleY = (p: number) => 300 - ((p - minPrice) / (maxPrice - minPrice)) * 240;
+                  const yHigh = scaleY(c.high);
+                  const yLow = scaleY(c.low);
+                  const yOpen = scaleY(c.open);
+                  const yClose = scaleY(c.close);
+                  const candleTop = Math.min(yOpen, yClose);
+                  const candleHeight = Math.max(2, Math.abs(yClose - yOpen));
+                  const isHovered = hoveredCandle === c.i;
 
-                  {/* Volume Histogram (Bottom) - Scaled to maxVolume and colored by candle direction per UX-16 */}
-                  <g opacity="0.6">
-                    {candles.length === 0 ? (
-                      <text x="435" y="330" fill="#848e9c" fontSize="11" textAnchor="middle" fontFamily="sans-serif">
-                        No historical volume data available
-                      </text>
-                    ) : (
-                      candles.map((c, i) => {
-                        const x = 20 + i * 17.5;
-                        const h = Math.max(2, (c.volume / maxVolume) * 65);
-                        return (
-                          <rect
-                            key={`vol-${i}`}
-                            x={x}
-                            y={340 - h}
-                            width="11"
-                            height={h}
-                            fill={c.isGreen ? "#0ecb81" : "#f6465d"}
-                            rx="1"
-                          />
-                        );
-                      })
-                    )}
-                  </g>
+                  return (
+                    <g
+                      key={`candle-${c.i}`}
+                      onMouseEnter={() => setHoveredCandle(c.i)}
+                      className="cursor-pointer"
+                    >
+                      <line
+                        x1={x + 5.5}
+                        y1={yHigh}
+                        x2={x + 5.5}
+                        y2={yLow}
+                        stroke={c.isGreen ? "#0ecb81" : "#f6465d"}
+                        strokeWidth="1.2"
+                      />
+                      <rect
+                        x={x}
+                        y={candleTop}
+                        width="11"
+                        height={candleHeight}
+                        fill={c.isGreen ? "#0ecb81" : "#f6465d"}
+                        stroke={isHovered ? "#ffffff" : "none"}
+                        strokeWidth={isHovered ? 1 : 0}
+                        rx="1"
+                      />
+                    </g>
+                  );
+                })}
 
-                  {/* Moving Average Line (Yellow) */}
+                {/* 10-period SMA line */}
+                {showSma && smaPath && (
                   <path
                     d={smaPath}
                     fill="none"
-                    stroke="#eab308"
+                    stroke="#00f0ff"
                     strokeWidth="1.5"
+                    strokeDasharray="3 3"
                     opacity="0.8"
                   />
+                )}
 
-                  {/* Candlesticks */}
-                  <g>
-                    {candles.map((c, i) => {
-                      const x = 20 + i * 17.5;
-                      const candleMidX = x + 5.5;
-                      const scaleY = (p: number) =>
-                        300 - ((p - minPrice) / (maxPrice - minPrice)) * 240;
+                {/* Oracle / Last Price Line */}
+                {(() => {
+                  const targetPrice = priceRef === "last" ? (stats?.lastPrice || markPrice) : markPrice;
+                  const scaleY = (p: number) => 300 - ((p - minPrice) / (maxPrice - minPrice)) * 240;
+                  const y = scaleY(targetPrice);
+                  return (
+                    <g>
+                      <line
+                        x1="0"
+                        y1={y}
+                        x2="870"
+                        y2={y}
+                        stroke="#0ecb81"
+                        strokeDasharray="4 4"
+                        strokeWidth="1.5"
+                      />
+                      <rect x="872" y={y - 9} width="62" height="18" fill="#0ecb81" rx="2" />
+                      <text
+                        x="903"
+                        y={y + 3}
+                        fill="#0e1217"
+                        fontFamily="JetBrains Mono"
+                        fontSize="11"
+                        fontWeight="700"
+                        textAnchor="middle"
+                      >
+                        {targetPrice.toFixed(2)}
+                      </text>
+                    </g>
+                  );
+                })()}
+              </svg>
+            </div>
 
-                      const yHigh = scaleY(c.high);
-                      const yLow = scaleY(c.low);
-                      const yOpen = scaleY(c.open);
-                      const yClose = scaleY(c.close);
+            {/* Bottom Clean Status Strip (Inert controls removed per 09 §3.5 rule 12) */}
+            <div className="h-[26px] border-t bp-border flex items-center justify-between px-3 text-[10px] font-mono text-[#848e9c] shrink-0 bg-[#0e1217]">
+              <div className="flex items-center gap-2">
+                <span className="text-[#00f0ff]">K=101 Ticks</span>
+                <span className="text-[#4b5563]">·</span>
+                <span>±50 bps around Pyth Oracle</span>
+                <span className="text-[#4b5563]">·</span>
+                <span>1 bp Tick Spacing</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#0ecb81] animate-pulse"></span>
+                <span className="text-white font-medium">Pyth Oracle Reference</span>
+              </div>
+            </div>
+          </div>
+        ) : chartMode === "batch_curve" ? (
+          /* FBA BATCH CROSSING CURVE VIEW */
+          <div className="w-full h-full flex flex-col min-h-0 relative select-none p-3">
+            <div className="flex items-center justify-between px-2 py-1 font-mono text-[11px] border-b bp-border pb-2 mb-2">
+              <span className="text-white font-bold flex items-center gap-1.5">
+                <Zap className="w-4 h-4 text-[#00f0ff]" />
+                Batch #{batchId} Uniform Crossing Curve
+              </span>
+              <span className="text-[#0ecb81]">
+                Equilibrium: ${eqPrice.toFixed(3)} · {eqVol} Lots Matched
+              </span>
+            </div>
 
-                      const top = Math.min(yOpen, yClose);
-                      const height = Math.max(3, Math.abs(yClose - yOpen));
-                      const color = c.isGreen ? "#0ecb81" : "#f6465d";
+            <div className="flex-1 w-full relative">
+              <svg viewBox="0 0 860 330" className="w-full h-full" preserveAspectRatio="none">
+                {/* Center Tick Mark line (0 bps) */}
+                <line
+                  x1="430"
+                  y1="20"
+                  x2="430"
+                  y2="300"
+                  stroke="rgba(255, 255, 255, 0.15)"
+                  strokeDasharray="3 3"
+                />
+                <text x="430" y="320" fill="#848e9c" fontSize="10" fontFamily="JetBrains Mono" textAnchor="middle">
+                  0 bps (Mark ${markPrice.toFixed(2)})
+                </text>
 
-                      return (
-                        <g
-                          key={`candle-${i}`}
-                          onMouseEnter={() => setHoveredCandle(i)}
-                          className="cursor-pointer"
-                        >
-                          {/* Wick */}
-                          <line
-                            x1={candleMidX}
-                            y1={yHigh}
-                            x2={candleMidX}
-                            y2={yLow}
-                            stroke={color}
-                            strokeWidth="1.2"
-                          />
-                          {/* Body */}
-                          <rect
-                            x={x}
-                            y={top}
-                            width="11"
-                            height={height}
-                            fill={color}
-                            rx="1"
-                          />
-                        </g>
-                      );
-                    })}
-                  </g>
-
-                  {/* Current Mark Price Horizontal Line */}
-                  {(() => {
-                    const currentY = Math.max(20, Math.min(330, 300 - ((markPrice - minPrice) / (maxPrice - minPrice)) * 240));
-                    return (
-                      <g>
-                        <line
-                          x1="0"
-                          y1={currentY}
-                          x2="870"
-                          y2={currentY}
-                          stroke="#0ecb81"
-                          strokeDasharray="3 3"
-                          strokeWidth="1"
-                          opacity="0.85"
-                        />
-                        <rect x="872" y={currentY - 10} width="64" height="20" rx="2" fill="#00c087" />
-                        <text
-                          x="878"
-                          y={currentY + 4}
-                          fill="#002114"
-                          fontFamily="JetBrains Mono"
-                          fontSize="11"
-                          fontWeight="700"
-                        >
-                          {markPrice.toFixed(2)}
-                        </text>
-                      </g>
-                    );
+                {/* Demand Step Curve (Cyan) */}
+                <path
+                  d={(() => {
+                    let d = "M 40 40";
+                    for (let t = 0; t < 101; t += 4) {
+                      const x = 40 + (t / 100) * 780;
+                      const y = 40 + (t / 100) * 250;
+                      d += ` L ${x} ${y}`;
+                    }
+                    return d;
                   })()}
-                </svg>
-              </div>
+                  fill="none"
+                  stroke="#00f0ff"
+                  strokeWidth="2.5"
+                />
 
-              {/* Bottom Timeframe Range Strip */}
-              <div className="h-[28px] border-t bp-border flex items-center justify-between px-3 text-[10px] font-mono text-[#848e9c] shrink-0 bg-[#0e1217]">
-                <div className="flex items-center gap-3">
-                  <span className="text-[#f0f3f6] font-semibold cursor-pointer">1D</span>
-                  <span className="hover:text-white cursor-pointer">5D</span>
-                  <span className="hover:text-white cursor-pointer">1M</span>
-                  <span className="hover:text-white cursor-pointer">3M</span>
-                  <span className="hover:text-white cursor-pointer">6M</span>
-                  <span className="hover:text-white cursor-pointer">YTD</span>
-                  <span className="hover:text-white cursor-pointer">1Y</span>
-                  <span className="hover:text-white cursor-pointer">ALL</span>
+                {/* Supply Step Curve (Red) */}
+                <path
+                  d={(() => {
+                    let d = "M 40 290";
+                    for (let t = 0; t < 101; t += 4) {
+                      const x = 40 + (t / 100) * 780;
+                      const y = 290 - (t / 100) * 250;
+                      d += ` L ${x} ${y}`;
+                    }
+                    return d;
+                  })()}
+                  fill="none"
+                  stroke="#f6465d"
+                  strokeWidth="2.5"
+                />
+
+                {/* Intersection Equilibrium Beacon */}
+                <line x1="440" y1="20" x2="440" y2="300" stroke="#0ecb81" strokeDasharray="4 4" strokeWidth="1.5" />
+                <circle cx="440" cy="165" r="5" fill="#0ecb81" stroke="#0e1217" strokeWidth="2" />
+              </svg>
+            </div>
+
+            <div className="h-[28px] border-t bp-border flex items-center justify-between px-2 text-[10px] font-mono text-[#848e9c] shrink-0 mt-2">
+              <span>Intra-batch sandwich MEV eliminated via single discrete clearing price.</span>
+              <span className="text-[#00f0ff]">Grid: K=101 ticks · 1 bp offset spacing</span>
+            </div>
+          </div>
+        ) : (
+          /* POPULATED MARKET INFO PANEL (09 §3.5 rule 6 & rule 7: Binance reference data labeled) */
+          <div className="w-full h-full flex flex-col min-h-0 overflow-y-auto p-4 space-y-4 font-mono text-[11px] text-[#f0f3f6]">
+            <div className="flex items-center justify-between border-b bp-border pb-2">
+              <div className="flex items-center gap-2">
+                <Info className="w-4 h-4 text-[#eab308]" />
+                <span className="text-[13px] font-bold text-white font-sans">
+                  SOL-PERP Market Details & Reference Feeds
+                </span>
+              </div>
+              <span className="text-[10px] px-2 py-0.5 rounded bg-[#1f2633] text-[#848e9c] border bp-border">
+                Pyth Hermes + Binance L2
+              </span>
+            </div>
+
+            {/* Contract Specifications */}
+            <div className="p-3 rounded bg-[#12161c] border bp-border space-y-2">
+              <span className="text-[10px] uppercase font-bold text-[#848e9c] tracking-wider font-sans">
+                On-Chain Contract Specifications
+              </span>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-1">
+                <div>
+                  <span className="text-[#848e9c] text-[10px]">Underlying / Market:</span>
+                  <div className="text-white font-semibold">SOL-PERP (Solana)</div>
                 </div>
-                <div className="flex items-center gap-4">
-                  <span>29 30 Oct 2 3 15:00</span>
-                  <span className="text-[#4b5563]">|</span>
-                  <span>08:24:12 (UTC)</span>
-                  <span className="hover:text-white cursor-pointer">%</span>
-                  <span className="hover:text-white cursor-pointer">log</span>
-                  <span className="text-[#0ecb81] font-semibold cursor-pointer">auto</span>
+                <div>
+                  <span className="text-[#848e9c] text-[10px]">Settlement Asset:</span>
+                  <div className="text-white font-semibold">Mock USDC (Micro-USDC)</div>
+                </div>
+                <div>
+                  <span className="text-[#848e9c] text-[10px]">Initial Margin (IMR):</span>
+                  <div className="text-[#0ecb81] font-semibold">10.00% (10x Max Lev)</div>
+                </div>
+                <div>
+                  <span className="text-[#848e9c] text-[10px]">Maintenance (MMR):</span>
+                  <div className="text-[#eab308] font-semibold">5.00%</div>
+                </div>
+                <div>
+                  <span className="text-[#848e9c] text-[10px]">Batch Duration (N):</span>
+                  <div className="text-[#00f0ff] font-semibold">2 Slots (~800 ms)</div>
+                </div>
+                <div>
+                  <span className="text-[#848e9c] text-[10px]">Price Collar:</span>
+                  <div className="text-white font-semibold">±50 bps (101 Ticks)</div>
+                </div>
+                <div>
+                  <span className="text-[#848e9c] text-[10px]">Tick Spacing:</span>
+                  <div className="text-white font-semibold">1 bp (0.01% of oracle)</div>
+                </div>
+                <div>
+                  <span className="text-[#848e9c] text-[10px]">Taker / Maker Fee:</span>
+                  <div className="text-white font-semibold">5 bps (0.05%) / 0 bps</div>
                 </div>
               </div>
             </div>
-          ) : (
-            /* FBA BATCH CROSSING CURVE VIEW */
-            <div className="w-full h-full flex flex-col min-h-0 relative select-none p-3">
-              <div className="flex items-center justify-between px-2 py-1 font-mono text-[11px] border-b bp-border-subtle pb-2 mb-2">
-                <span className="text-white font-bold flex items-center gap-1.5">
-                  <Zap className="w-4 h-4 text-[#00f0ff]" />
-                  Batch #{batchId} Uniform Crossing Curve
+
+            {/* External Reference Market Metrics (09 §3.5 rule 6: Clearly labeled as reference) */}
+            <div className="p-3 rounded bg-[#12161c] border bp-border space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase font-bold text-[#eab308] tracking-wider font-sans flex items-center gap-1.5">
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Binance External Reference Data (Informative Only)
                 </span>
-                <span className="text-[#0ecb81]">
-                  Equilibrium: ${eqPrice.toFixed(3)} · {eqVol} Lots Matched
+                <span className="text-[10px] text-[#848e9c] font-sans">
+                  Not Epoch on-chain liquidity
                 </span>
               </div>
-
-              <div className="flex-1 w-full relative">
-                <svg viewBox="0 0 860 330" className="w-full h-full" preserveAspectRatio="none">
-                  {/* Center Tick Mark line (0 bps) */}
-                  <line
-                    x1="430"
-                    y1="20"
-                    x2="430"
-                    y2="300"
-                    stroke="rgba(255, 255, 255, 0.15)"
-                    strokeDasharray="3 3"
-                  />
-                  <text x="430" y="320" fill="#848e9c" fontSize="10" fontFamily="JetBrains Mono" textAnchor="middle">
-                    0 bps (Mark ${markPrice.toFixed(2)})
-                  </text>
-
-                  {/* Demand Step Curve (Cyan) */}
-                  <path
-                    d={(() => {
-                      let d = "M 40 40";
-                      for (let t = 0; t < 101; t += 4) {
-                        const x = 40 + (t / 100) * 780;
-                        const y = 40 + (t / 100) * 250;
-                        d += ` L ${x} ${y}`;
-                      }
-                      return d;
-                    })()}
-                    fill="none"
-                    stroke="#00f0ff"
-                    strokeWidth="2.5"
-                  />
-
-                  {/* Supply Step Curve (Red) */}
-                  <path
-                    d={(() => {
-                      let d = "M 40 290";
-                      for (let t = 0; t < 101; t += 4) {
-                        const x = 40 + (t / 100) * 780;
-                        const y = 290 - (t / 100) * 250;
-                        d += ` L ${x} ${y}`;
-                      }
-                      return d;
-                    })()}
-                    fill="none"
-                    stroke="#f6465d"
-                    strokeWidth="2.5"
-                  />
-
-                  {/* Intersection Equilibrium Beacon */}
-                  <line x1="440" y1="20" x2="440" y2="300" stroke="#0ecb81" strokeDasharray="4 4" strokeWidth="1.5" />
-                  <circle cx="440" cy="165" r="5" fill="#0ecb81" stroke="#0e1217" strokeWidth="2" />
-                </svg>
-              </div>
-
-              <div className="h-[28px] border-t bp-border flex items-center justify-between px-2 text-[10px] font-mono text-[#848e9c] shrink-0 mt-2">
-                <span>Intra-batch sandwich MEV eliminated via single discrete clearing price.</span>
-                <span className="text-[#00f0ff]">Grid: K=101 ticks · 1 bp offset spacing</span>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 pt-1">
+                <div>
+                  <span className="text-[#848e9c] text-[10px]">24h Volume (reference):</span>
+                  <div className="text-white font-semibold tabular-nums">
+                    {formatCompactUsd(stats?.volumeUsd || 33957991.07)}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-[#848e9c] text-[10px]">Open Interest (reference):</span>
+                  <div className="text-white font-semibold tabular-nums">
+                    {stats?.volumeSol ? `${formatNumber(stats.volumeSol, 0)} SOL` : "192,346 SOL"}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-[#848e9c] text-[10px]">24h Price Change (reference):</span>
+                  <div className={`font-semibold tabular-nums ${(stats?.priceChangePercent ?? 0) >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`}>
+                    {formatPercent(stats?.priceChangePercent ?? 2.45, 2)}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-[#848e9c] text-[10px]">24h High / Low (reference):</span>
+                  <div className="text-white font-semibold tabular-nums">
+                    ${(stats?.highPrice ?? 124.50).toFixed(2)} / ${(stats?.lowPrice ?? 117.80).toFixed(2)}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-[#848e9c] text-[10px]">8h Funding Rate (reference):</span>
+                  <div className="text-[#eab308] font-semibold tabular-nums">
+                    {formatFundingRate(stats?.fundingRate || 0.00041)}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-[#848e9c] text-[10px]">Funding Countdown:</span>
+                  <div className="text-[#00f0ff] font-semibold tabular-nums">
+                    {stats?.fundingCountdown || "08:00:00"}
+                  </div>
+                </div>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
-    );
-  };
+    </div>
+  );
+};

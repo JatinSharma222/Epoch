@@ -2,11 +2,9 @@
 
 import React from "react";
 import Image from "next/image";
-import { useWallet } from "@solana/wallet-adapter-react";
-import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { Coins, Search } from "lucide-react";
 import { MarketStats } from "../lib/marketData";
 import { MarketSelector } from "./MarketSelector";
+import { WalletMenu } from "./WalletMenu";
 import {
   formatUsd,
   formatCompactUsd,
@@ -22,7 +20,12 @@ interface HeaderProps {
   slotsRemaining: number;
   markPrice: number;
   stats?: MarketStats | null;
+  epochVolumeUsd?: number;
+  epochOpenInterestSol?: number;
+  solBalance?: number | null;
+  collateralBalance?: number;
   onOpenFaucetModal: () => void;
+  onDisconnect?: () => void;
   isKeeperOffline?: boolean;
   lastClearedAgeSec?: number;
 }
@@ -33,17 +36,20 @@ export const Header: React.FC<HeaderProps> = ({
   slotsRemaining,
   markPrice,
   stats,
+  epochVolumeUsd = 0,
+  epochOpenInterestSol = 0,
+  solBalance = null,
+  collateralBalance = 0,
   onOpenFaucetModal,
+  onDisconnect,
   isKeeperOffline = false,
   lastClearedAgeSec = 0,
 }) => {
-  const { connected } = useWallet();
-
   // Progress within 2-slot batch
   const progressPercent = Math.max(0, Math.min(100, (1 - slotsRemaining / 2) * 100));
 
   // Determine configured cluster (UX-15: Localnet vs Devnet, never hardcoded)
-  const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || "http://127.0.0.1:8899";
+  const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || "https://api.devnet.solana.com";
   const isLocalnet = rpcUrl.includes("127.0.0.1") || rpcUrl.includes("localhost");
   const isDevnet = rpcUrl.includes("devnet");
   const clusterLabel = isLocalnet ? "Localnet" : isDevnet ? "Devnet" : "Custom RPC";
@@ -51,23 +57,14 @@ export const Header: React.FC<HeaderProps> = ({
   // Market stats formatted per 09 §8.1
   const changePercent = stats?.priceChangePercent ?? 2.45;
   const isPositive = changePercent >= 0;
-  const rawVolUsd = stats?.volumeUsd || 33957991.07;
-  const compactVolumeUsd = formatCompactUsd(rawVolUsd);
-  const volumeSolFormatted = stats?.volumeSol
-    ? `${formatNumber(stats.volumeSol, 0)} SOL`
-    : "192,346 SOL";
-
   const lastBatchPrice = stats?.lastPrice ? stats.lastPrice : markPrice;
   const oraclePrice = markPrice;
 
-  // Faucet eligibility (09 §3.4 & UX-13)
-  const canUseFaucet = connected && (isLocalnet || isDevnet);
-
   return (
-    <header className="h-[52px] border-b bp-border bg-[#0E1217] flex items-center justify-between px-3 shrink-0 gap-3 select-none overflow-x-auto">
+    <header className="h-[52px] border-b bp-border bg-[#0E1217] flex items-center justify-between px-3 shrink-0 gap-3 select-none overflow-hidden">
       {/* Left: Brand Logo & Market Selector */}
-      <div className="flex items-center gap-4 shrink-0">
-        <div className="flex items-center gap-2.5 pr-3 border-r bp-border">
+      <div className="flex items-center gap-3.5 shrink-0 min-w-0">
+        <div className="flex items-center gap-2.5 pr-3 border-r bp-border shrink-0">
           <div className="relative w-24 h-7">
             <Image
               src="/logo.png"
@@ -83,10 +80,10 @@ export const Header: React.FC<HeaderProps> = ({
         <MarketSelector />
 
         {/* Price Metrics: Oracle (Pyth) & Last Batch Price (09 §8.1 vocabulary) */}
-        <div className="flex flex-col">
+        <div className="flex flex-col shrink-0">
           <div className="flex items-center gap-1.5">
             <span
-              className={`text-[16px] font-bold font-mono tracking-tight leading-none tabular-nums ${
+              className={`text-[15px] font-bold font-mono tracking-tight leading-none tabular-nums ${
                 isPositive ? "text-[#0ECB81]" : "text-[#F6465D]"
               }`}
             >
@@ -99,7 +96,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* 24h & Protocol Metrics */}
-        <div className="flex items-center gap-4 text-[11px]">
+        <div className="flex items-center gap-3.5 text-[11px] shrink-0">
           <div className="flex flex-col">
             <span className="text-[#848E9C] text-[10px] font-sans">24h Change</span>
             <span
@@ -121,27 +118,30 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
           </div>
 
-          <div className="flex flex-col hidden xl:flex">
-            <span className="text-[#848E9C] text-[10px] font-sans">24h Volume</span>
-            <span className="font-mono text-[#F0F3F6] font-medium tabular-nums">
-              {compactVolumeUsd}
-            </span>
-          </div>
+          {/* Secondary stats: collapse below 1500px per UX-17 and 09 §3.5 */}
+          <div className="hidden min-[1500px]:flex items-center gap-3.5">
+            <div className="flex flex-col">
+              <span className="text-[#848E9C] text-[10px] font-sans">24h Vol (Epoch)</span>
+              <span className="font-mono text-[#F0F3F6] font-medium tabular-nums">
+                {formatCompactUsd(epochVolumeUsd)}
+              </span>
+            </div>
 
-          <div className="flex flex-col hidden 2xl:flex">
-            <span className="text-[#848E9C] text-[10px] font-sans">Open Interest</span>
-            <span className="font-mono text-[#F0F3F6] font-medium tabular-nums">
-              {volumeSolFormatted}
-            </span>
+            <div className="flex flex-col">
+              <span className="text-[#848E9C] text-[10px] font-sans">Open Interest (Epoch)</span>
+              <span className="font-mono text-[#F0F3F6] font-medium tabular-nums">
+                {formatNumber(epochOpenInterestSol, 1)} SOL
+              </span>
+            </div>
           </div>
 
           {/* FBA Batch Indicator & Countdown (09 §2.2) */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#161B22] border bp-border text-[10px] font-mono">
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-[#161B22] border bp-border text-[10px] font-mono">
             <span className="w-1.5 h-1.5 rounded-full bg-[#0ECB81] animate-pulse"></span>
-            <span className="text-[#848E9C]">Slot #{currentSlot || "..."}</span>
-            <span className="text-[#4B5563]">·</span>
+            <span className="text-[#848E9C] hidden sm:inline">Slot #{currentSlot || "..."}</span>
+            <span className="text-[#4B5563] hidden sm:inline">·</span>
             <span className="text-[#F0F3F6] font-medium">Batch #{currentBatchId}</span>
-            <div className="w-12 h-1.5 rounded-full bg-[#1E2430] overflow-hidden ml-1">
+            <div className="w-10 h-1.5 rounded-full bg-[#1E2430] overflow-hidden ml-1">
               <div
                 className="h-full bg-gradient-to-r from-[#00F0FF] to-[#0ECB81] transition-all duration-300"
                 style={{ width: `${progressPercent}%` }}
@@ -153,67 +153,31 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Right Header Actions */}
-      <div className="flex items-center gap-2.5 shrink-0">
-        {/* Search Bar */}
-        <div className="hidden 2xl:flex items-center gap-2 px-2.5 py-1 rounded bg-[#12161C] border bp-border text-[#848E9C] text-[11px] w-48">
-          <Search className="w-3.5 h-3.5 text-[#848E9C] shrink-0" />
-          <span className="flex-1 truncate text-[#848E9C]">Search markets...</span>
-          <kbd className="px-1.5 py-[1px] rounded bg-[#1A1F29] border bp-border text-[9px] font-mono text-[#848E9C]">
-            /
-          </kbd>
-        </div>
-
-        {/* Faucet Trigger (09 §3.4 & UX-13: Disabled unless connected + local/devnet) */}
-        <button
-          onClick={canUseFaucet ? onOpenFaucetModal : undefined}
-          disabled={!canUseFaucet}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded border bp-border text-[11px] font-medium transition-all ${
-            canUseFaucet
-              ? "bg-[#161B22] hover:bg-[#1F2633] text-[#F0F3F6] cursor-pointer"
-              : "bg-[#12161C] text-[#848E9C] opacity-45 cursor-not-allowed"
-          }`}
-          title={
-            !connected
-              ? "Connect a wallet to claim test USDC"
-              : !canUseFaucet
-              ? "Faucet available on Localnet & Devnet only"
-              : "Claim 1,000 test USDC"
-          }
-        >
-          <Coins className={`w-3.5 h-3.5 ${canUseFaucet ? "text-[#EAB308]" : "text-[#848E9C]"}`} />
-          <span>Faucet</span>
-        </button>
-
-        {/* Dynamic Network Cluster Badge (UX-15) */}
+      <div className="flex items-center gap-2 shrink-0 ml-auto">
+        {/* Single Dynamic Status Pill (09 §3.5 rule 3: cluster + keeper in one pill) */}
         <div
-          className="hidden sm:flex items-center gap-1 px-2 py-1 rounded bg-[#12161C] border bp-border text-[10px] font-mono text-[#848E9C]"
-          title={`Configured RPC: ${rpcUrl}`}
-        >
-          <span className="w-1.5 h-1.5 rounded-full bg-[#0ECB81]"></span>
-          <span>{clusterLabel}</span>
-        </div>
-
-        {/* Dynamic Keeper Liveness Badge (Item 7) */}
-        <div
-          className={`hidden md:flex items-center gap-1 px-2 py-1 rounded bg-[#12161C] border text-[10px] font-mono transition-colors ${
-            isKeeperOffline ? "border-[#F23645]/40 text-[#F6465D]" : "bp-border text-[#848E9C]"
-          }`}
-          title={
-            isKeeperOffline
-              ? `Keeper offline! Last batch cleared ${lastClearedAgeSec}s ago (>15s threshold)`
-              : `Keeper online. Last batch cleared ${lastClearedAgeSec}s ago`
-          }
+          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#12161C] border bp-border text-[11px] font-mono text-[#848E9C] cursor-default"
+          title={`Cluster: ${clusterLabel} (${rpcUrl})\nKeeper: ${isKeeperOffline ? "Offline" : "Online"} (last cleared ${lastClearedAgeSec}s ago)`}
         >
           <span
             className={`w-1.5 h-1.5 rounded-full ${
               isKeeperOffline ? "bg-[#F6465D] animate-ping" : "bg-[#0ECB81]"
             }`}
           />
-          <span>Keeper: {isKeeperOffline ? "Offline" : "Online"}</span>
+          <span className="text-[#F0F3F6] font-medium">{clusterLabel}</span>
+          <span className="text-[#4B5563]">·</span>
+          <span className={isKeeperOffline ? "text-[#F6465D]" : "text-[#0ECB81]"}>
+            Keeper {isKeeperOffline ? "offline" : "online"}
+          </span>
         </div>
 
-        {/* Solana Wallet Adapter MultiButton */}
-        <WalletMultiButton />
+        {/* Custom WalletMenu: Full features, Hydration-safe, Disconnect purging, No horizontal scroll */}
+        <WalletMenu
+          solBalance={solBalance}
+          collateralBalance={collateralBalance}
+          onOpenFaucet={onOpenFaucetModal}
+          onDisconnect={onDisconnect}
+        />
       </div>
     </header>
   );

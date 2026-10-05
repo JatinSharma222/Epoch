@@ -5,18 +5,18 @@ import Image from "next/image";
 import { fetchLiveTickers, MarketTicker } from "../lib/marketData";
 
 const ICON_MAP: Record<string, string> = {
-  "SOL-PERP": "/icons/sol.svg",
-  "BTC-PERP": "/icons/btc.svg",
-  "ETH-PERP": "/icons/eth.svg",
-  "JUP-PERP": "/icons/jup.svg",
-  "PYTH-PERP": "/icons/pyth.svg",
-  "JTO-PERP": "/icons/jto.svg",
-  "TIA-PERP": "/icons/tia.svg",
-  "SUI-PERP": "/icons/sui.svg",
-  "INJ-PERP": "/icons/inj.svg",
-  "NEAR-PERP": "/icons/near.svg",
-  "RENDER-PERP": "/icons/render.svg",
-  "WIF-PERP": "/icons/sol.svg",
+  "SOL": "/icons/sol.svg",
+  "BTC": "/icons/btc.svg",
+  "ETH": "/icons/eth.svg",
+  "JUP": "/icons/jup.svg",
+  "PYTH": "/icons/pyth.svg",
+  "JTO": "/icons/jto.svg",
+  "TIA": "/icons/tia.svg",
+  "SUI": "/icons/sui.svg",
+  "INJ": "/icons/inj.svg",
+  "NEAR": "/icons/near.svg",
+  "RENDER": "/icons/render.svg",
+  "WIF": "/icons/sol.svg",
 };
 
 export const ReferencePriceStrip: React.FC = () => {
@@ -83,12 +83,14 @@ export const ReferencePriceStrip: React.FC = () => {
         )}
       </div>
 
-      {/* Scrolling / Static Ticker Strip (09 §3.4) */}
+      {/* Scrolling / Static Ticker Strip (09 §3.4 & §3.5 rule 8: Plain symbols SOL, NEAR, etc.) */}
       <div className="flex-1 overflow-hidden whitespace-nowrap">
         <div className="flex items-center gap-6 animate-marquee motion-reduce:animate-none hover:[animation-play-state:paused] py-0.5">
           {doubledTickers.map((t, idx) => {
-            const isSol = t.symbol === "SOL-PERP";
-            const iconPath = ICON_MAP[t.symbol] || "/icons/sol.svg";
+            const rawSymbol = t.symbol || "";
+            const plainSymbol = rawSymbol.replace("-PERP", "");
+            const isSol = plainSymbol === "SOL";
+            const iconPath = ICON_MAP[plainSymbol] || "/icons/sol.svg";
 
             return (
               <div
@@ -96,7 +98,7 @@ export const ReferencePriceStrip: React.FC = () => {
                 title={
                   isSol
                     ? "Active Epoch Market (SOL-PERP)"
-                    : "Reference only. Epoch v0 trades SOL-PERP."
+                    : `Reference only. Epoch v0 trades SOL-PERP.`
                 }
                 className={`inline-flex items-center gap-2 px-2 py-0.5 rounded transition-colors font-mono text-[11px] ${
                   isSol
@@ -107,14 +109,14 @@ export const ReferencePriceStrip: React.FC = () => {
                 <div className="relative w-3.5 h-3.5 rounded-full overflow-hidden shrink-0">
                   <Image
                     src={iconPath}
-                    alt={t.symbol}
+                    alt={plainSymbol}
                     width={14}
                     height={14}
                     className="object-contain"
                   />
                 </div>
                 <span className={`font-semibold ${isSol ? "text-white" : "text-[#B7BDC6]"}`}>
-                  {t.symbol}
+                  {plainSymbol}
                 </span>
                 <span className={`tabular-nums font-medium ${isStale ? "text-[#848E9C]" : "text-white"}`}>
                   {t.price}

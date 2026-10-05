@@ -225,20 +225,6 @@ export const ComparisonView: React.FC = () => {
                 </td>
               </tr>
               <tr>
-                <td className="py-2.5 px-4 font-sans font-medium text-white">Session Cumulative Maker Saving</td>
-                <td className="py-2.5 px-4 text-[#F6465D] tabular-nums font-semibold">
-                  Baseline (0 bps)
-                </td>
-                <td className="py-2.5 px-4 text-[#0ECB81] tabular-nums font-semibold">
-                  +8.45 bps (+84.50 / $100k)<br />
-                  <span className="text-[10px] text-[#848E9C] font-normal">~265 jumps active session</span>
-                </td>
-                <td className="py-2.5 px-4 text-[#00F0FF] tabular-nums font-semibold">
-                  +4.82 bps (+48.20 / $100k)<br />
-                  <span className="text-[10px] text-[#848E9C] font-normal">~250 jumps active session</span>
-                </td>
-              </tr>
-              <tr>
                 <td className="py-2.5 px-4 font-sans font-medium text-white">Priority MEV (Intra-Batch Sandwich)</td>
                 <td className="py-2.5 px-4 text-[#F6465D] tabular-nums font-semibold">
                   3.00 bps ($30.00 / $100k)
