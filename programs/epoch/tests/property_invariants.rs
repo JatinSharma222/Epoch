@@ -54,9 +54,8 @@ impl ProtocolState {
             }
         }
 
-        let system_total = total_collateral_plus_quote
-            + self.fee_pool as i128
-            + self.insurance_fund as i128;
+        let system_total =
+            total_collateral_plus_quote + self.fee_pool as i128 + self.insurance_fund as i128;
 
         assert_eq!(
             system_total, self.vault_balance as i128,
@@ -94,7 +93,12 @@ fn test_worked_ledger_i1_conservation() {
     // User 1 deposits $1,000
     // User 2 (Backstop Vault) deposits $10,000
     // User 3 (Liquidator) deposits $2,000
-    let deposits = [1_000_000_000u64, 1_000_000_000, 10_000_000_000, 2_000_000_000];
+    let deposits = [
+        1_000_000_000u64,
+        1_000_000_000,
+        10_000_000_000,
+        2_000_000_000,
+    ];
     for (i, &dep) in deposits.iter().enumerate() {
         users[i].collateral += dep as i64;
         state.vault_balance += dep;

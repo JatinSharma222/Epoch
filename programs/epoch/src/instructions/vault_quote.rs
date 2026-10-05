@@ -106,7 +106,11 @@ pub fn handle_vault_quote(ctx: Context<VaultQuote>, params: VaultQuoteParams) ->
         market.last_oracle_price
     };
     require!(oracle_price > 0, EpochError::OracleStale);
-    if !is_oracle_confident(params.oracle_conf, oracle_price, market.vault_params.max_conf_bps) {
+    if !is_oracle_confident(
+        params.oracle_conf,
+        oracle_price,
+        market.vault_params.max_conf_bps,
+    ) {
         emit!(VaultQuoteSkipped {
             target_batch,
             ring_index,
@@ -312,7 +316,8 @@ mod tests {
     fn test_symmetric_quotes_at_zero_inventory() {
         let quote_offset_bps = [3, 6, 10];
         let quote_lots = [10, 20, 30];
-        let (shift_bps, quotes) = compute_vault_ladder(0, 1000, 10, 101, quote_offset_bps, quote_lots);
+        let (shift_bps, quotes) =
+            compute_vault_ladder(0, 1000, 10, 101, quote_offset_bps, quote_lots);
 
         assert_eq!(shift_bps, 0);
         // Bids: center (50) - offset
@@ -384,8 +389,7 @@ mod tests {
     #[test]
     fn test_tick_clamping_at_boundaries() {
         // Extreme offsets should never produce tick < 0 or tick > K-1 (100)
-        let (shift, quotes) =
-            compute_vault_ladder(1000, 1000, 60, 101, [45, 50, 55], [10, 20, 30]);
+        let (shift, quotes) = compute_vault_ladder(1000, 1000, 60, 101, [45, 50, 55], [10, 20, 30]);
         assert_eq!(shift, 60);
         for q in quotes {
             assert!(q.2 <= 100);

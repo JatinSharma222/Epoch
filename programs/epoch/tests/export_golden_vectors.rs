@@ -1,6 +1,4 @@
-use epoch::instructions::clear_batch::execute_batch_auction;
-use epoch::state::constants::{CENTER_TICK, K_TICKS, MAX_ORDERS, PRICE_TICK};
-use epoch::state::{Batch, BatchStatus, Order, OrderSide, OrderStatus};
+use epoch::state::constants::{CENTER_TICK, K_TICKS, PRICE_TICK};
 use epoch_ref::{allocate_order_fills, clear, clearing_price, OrderRef};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -28,14 +26,46 @@ fn export_golden_vectors_t29() {
     worked_ask_qty[(c + 6) as usize] = 10;
 
     let worked_orders = vec![
-        OrderRef { side: 0, tick: c + 5, lots: 10 },
-        OrderRef { side: 0, tick: c + 3, lots: 20 },
-        OrderRef { side: 0, tick: c, lots: 15 },
-        OrderRef { side: 0, tick: c - 2, lots: 30 },
-        OrderRef { side: 1, tick: c - 4, lots: 12 },
-        OrderRef { side: 1, tick: c, lots: 18 },
-        OrderRef { side: 1, tick: c + 3, lots: 25 },
-        OrderRef { side: 1, tick: c + 6, lots: 10 },
+        OrderRef {
+            side: 0,
+            tick: c + 5,
+            lots: 10,
+        },
+        OrderRef {
+            side: 0,
+            tick: c + 3,
+            lots: 20,
+        },
+        OrderRef {
+            side: 0,
+            tick: c,
+            lots: 15,
+        },
+        OrderRef {
+            side: 0,
+            tick: c - 2,
+            lots: 30,
+        },
+        OrderRef {
+            side: 1,
+            tick: c - 4,
+            lots: 12,
+        },
+        OrderRef {
+            side: 1,
+            tick: c,
+            lots: 18,
+        },
+        OrderRef {
+            side: 1,
+            tick: c + 3,
+            lots: 25,
+        },
+        OrderRef {
+            side: 1,
+            tick: c + 6,
+            lots: 10,
+        },
     ];
 
     let worked_res = clear(&worked_bid_qty, &worked_ask_qty).unwrap();
@@ -69,7 +99,10 @@ fn export_golden_vectors_t29() {
         worked_ask_qty,
         worked_orders
             .iter()
-            .map(|o| format!(r#"{{"side":{},"tick":{},"lots":{}}}"#, o.side, o.tick, o.lots))
+            .map(|o| format!(
+                r#"{{"side":{},"tick":{},"lots":{}}}"#,
+                o.side, o.tick, o.lots
+            ))
             .collect::<Vec<_>>()
             .join(","),
         worked_res.tick,
@@ -138,7 +171,10 @@ fn export_golden_vectors_t29() {
                     ask_qty,
                     orders
                         .iter()
-                        .map(|o| format!(r#"{{"side":{},"tick":{},"lots":{}}}"#, o.side, o.tick, o.lots))
+                        .map(|o| format!(
+                            r#"{{"side":{},"tick":{},"lots":{}}}"#,
+                            o.side, o.tick, o.lots
+                        ))
                         .collect::<Vec<_>>()
                         .join(","),
                     oracle_price,
@@ -147,7 +183,8 @@ fn export_golden_vectors_t29() {
             }
             Some(res) => {
                 let fills = allocate_order_fills(&orders, &res);
-                let price = clearing_price(oracle_price, res.tick, K_TICKS as u16, tick_bps, PRICE_TICK);
+                let price =
+                    clearing_price(oracle_price, res.tick, K_TICKS as u16, tick_bps, PRICE_TICK);
                 vectors_json.push(format!(
                     r#"{{
     "id": "random_{}",
@@ -178,7 +215,10 @@ fn export_golden_vectors_t29() {
                     ask_qty,
                     orders
                         .iter()
-                        .map(|o| format!(r#"{{"side":{},"tick":{},"lots":{}}}"#, o.side, o.tick, o.lots))
+                        .map(|o| format!(
+                            r#"{{"side":{},"tick":{},"lots":{}}}"#,
+                            o.side, o.tick, o.lots
+                        ))
                         .collect::<Vec<_>>()
                         .join(","),
                     res.tick,
@@ -202,5 +242,8 @@ fn export_golden_vectors_t29() {
         let _ = fs::create_dir_all(parent);
     }
     fs::write(evidence_path, &final_json).expect("Failed to write golden vectors");
-    println!("Exported {} golden vectors to evidence/golden_vectors.json", vectors_json.len());
+    println!(
+        "Exported {} golden vectors to evidence/golden_vectors.json",
+        vectors_json.len()
+    );
 }
