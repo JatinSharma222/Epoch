@@ -307,6 +307,64 @@
       ]
     },
     {
+      "name": "expire_and_release",
+      "docs": [
+        "Voids a stale batch and clears users' pending lots/active_orders and releases margin."
+      ],
+      "discriminator": [
+        248,
+        225,
+        139,
+        167,
+        18,
+        51,
+        93,
+        51
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "batch",
+          "writable": true
+        },
+        {
+          "name": "caller",
+          "docs": [
+            "Permissionless cranker, keeper, or affected user invoking expire_and_release"
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "batch_id",
+          "type": "u64"
+        },
+        {
+          "name": "ring_index",
+          "type": "u8"
+        }
+      ]
+    },
+    {
       "name": "faucet",
       "docs": [
         "Mint mock USDC to caller for testing on devnet / localnet (capped per call)."
@@ -1657,6 +1715,11 @@
       "code": 6029,
       "name": "ReduceOnlyExceedsPosition",
       "msg": "Reduce-only order exceeds current opposite position"
+    },
+    {
+      "code": 6030,
+      "name": "BatchNotStale",
+      "msg": "Batch is not stale yet"
     }
   ],
   "types": [

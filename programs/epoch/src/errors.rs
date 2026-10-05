@@ -2,6 +2,7 @@ use anchor_lang::prelude::*;
 
 /// Epoch program error codes.
 #[error_code]
+#[derive(PartialEq, Eq)]
 pub enum EpochError {
     /// Caller is not authorized for this operation.
     #[msg("Unauthorized")]
@@ -122,4 +123,8 @@ pub enum EpochError {
     /// Reduce-only order exceeds current opposite position.
     #[msg("Reduce-only order exceeds current opposite position")]
     ReduceOnlyExceedsPosition,
+
+    /// Batch is not stale yet and cannot be expired.
+    #[msg("Batch is not stale yet")]
+    BatchNotStale,
 }

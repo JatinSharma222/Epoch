@@ -123,6 +123,15 @@ pub mod epoch {
     pub fn liquidate(ctx: Context<Liquidate>, params: LiquidateParams) -> Result<()> {
         handle_liquidate(ctx, params)
     }
+
+    /// Voids a stale batch and clears users' pending lots/active_orders and releases margin.
+    pub fn expire_and_release<'info>(
+        ctx: Context<'_, '_, 'info, 'info, ExpireAndRelease<'info>>,
+        batch_id: u64,
+        ring_index: u8,
+    ) -> Result<()> {
+        handle_expire_and_release(ctx, batch_id, ring_index)
+    }
 }
 
 #[cfg(test)]

@@ -1,0 +1,82 @@
+{
+  "network": "Solana Devnet",
+  "programId": "CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap",
+  "marketPda": "9XoVtk3h7EbNnJPQU8JrN8cQwHoLdswZasi4wYojwFCP",
+  "stuckUser": "C1L4Ng1GKqVfyUcX5NC3x8Pod5DTTmSYMLZfWnANXeGU",
+  "stuckUserPda": "6w96pvCRWXSCWXRLsBrTj7tPXesNEKzkzxtVXi6VfK6F",
+  "batchId": 167333,
+  "ringIndex": 5,
+  "error6003Reproduced": true,
+  "error6007RingSlotBusyReproduced": true,
+  "releasedSuccessfully": true,
+  "withdrawnSuccessfully": true,
+  "invariantsPassed": {
+    "I1_vault_balance": true,
+    "I4_fill_balance": true,
+    "I12_order_settlement": true
+  },
+  "transactions": [
+    {
+      "name": "Fund Stuck User SOL",
+      "signature": "35PbpPdTRWUypx537X3thx4KUX2g6vRigNBnyBUYU73aJCYmfrGn7V5qux5Y2YPXf3QygSLgNXW7KhTTntKqTYAC",
+      "slot": 507707247,
+      "cu": 300,
+      "explorerUrl": "https://explorer.solana.com/tx/35PbpPdTRWUypx537X3thx4KUX2g6vRigNBnyBUYU73aJCYmfrGn7V5qux5Y2YPXf3QygSLgNXW7KhTTntKqTYAC?cluster=devnet",
+      "notes": "Transferred 0.05 SOL from admin"
+    },
+    {
+      "name": "Create User Mock USDC ATA",
+      "signature": "5iJvgLYYWKYoKoxLrei8Cydu2rFmWt8pMjmhGiZV5rB2h8aBdLNcyAY1ub5CpCpoMGDFNWycQLHirK6wCtjnGKbc",
+      "slot": 507707259,
+      "cu": 13630,
+      "explorerUrl": "https://explorer.solana.com/tx/5iJvgLYYWKYoKoxLrei8Cydu2rFmWt8pMjmhGiZV5rB2h8aBdLNcyAY1ub5CpCpoMGDFNWycQLHirK6wCtjnGKbc?cluster=devnet"
+    },
+    {
+      "name": "Faucet Claim 200 USDC",
+      "signature": "4fRdrB1VcgJAKToywqRPvT6Em8owPU7BSZLwMAxn6JYW4uLMQsBJY4n99geLxjA6o7MhMKSc8wMCai62H6nYsTQD",
+      "slot": 507707265,
+      "cu": 15344,
+      "explorerUrl": "https://explorer.solana.com/tx/4fRdrB1VcgJAKToywqRPvT6Em8owPU7BSZLwMAxn6JYW4uLMQsBJY4n99geLxjA6o7MhMKSc8wMCai62H6nYsTQD?cluster=devnet",
+      "notes": "Minted 200 test USDC"
+    },
+    {
+      "name": "Create UserAccount PDA",
+      "signature": "2VzEwN698XhxLR27UFqUa5EAHvVxMUW8kHMa5siYnwG2iBt6hP4bakuH2RmhLhcpdZz3AuLZTU6befa3Cf3bqJtp",
+      "slot": 507707309,
+      "cu": 9186,
+      "explorerUrl": "https://explorer.solana.com/tx/2VzEwN698XhxLR27UFqUa5EAHvVxMUW8kHMa5siYnwG2iBt6hP4bakuH2RmhLhcpdZz3AuLZTU6befa3Cf3bqJtp?cluster=devnet"
+    },
+    {
+      "name": "Deposit 100 USDC Collateral",
+      "signature": "5w6j7CCsMdifoerTJkwpeLtBTP5f2cFaVEbvwB3bL5Jvc5GVPWYuAhfyAHMDXcapPrpqk8B3G5ReDXGoKPkDmsEN",
+      "slot": 507707315,
+      "cu": 13508,
+      "explorerUrl": "https://explorer.solana.com/tx/5w6j7CCsMdifoerTJkwpeLtBTP5f2cFaVEbvwB3bL5Jvc5GVPWYuAhfyAHMDXcapPrpqk8B3G5ReDXGoKPkDmsEN?cluster=devnet"
+    },
+    {
+      "name": "Place Order in Batch B",
+      "signature": "5EqXDbrWumDwEAm7wQgY8PPubhDjnk6jfYr4dpXhYBWRva4Qy7mzvZdz4zuPBJt6XWa8zqDWtwbH7CDjuaRQv9qD",
+      "slot": 507707323,
+      "cu": 11335,
+      "explorerUrl": "https://explorer.solana.com/tx/5EqXDbrWumDwEAm7wQgY8PPubhDjnk6jfYr4dpXhYBWRva4Qy7mzvZdz4zuPBJt6XWa8zqDWtwbH7CDjuaRQv9qD?cluster=devnet",
+      "notes": "Target Batch #167333"
+    },
+    {
+      "name": "Permissionless expire_and_release",
+      "signature": "2c1bTXx4p3B6ESJtj7154MkTEL74qEq5Qz8EnrAT7ErBUWRjWM2StDNhMaaryF3oyfkBdjpCnedmWNvo7bod3zhV",
+      "slot": 507707400,
+      "cu": 12425,
+      "explorerUrl": "https://explorer.solana.com/tx/2c1bTXx4p3B6ESJtj7154MkTEL74qEq5Qz8EnrAT7ErBUWRjWM2StDNhMaaryF3oyfkBdjpCnedmWNvo7bod3zhV?cluster=devnet",
+      "notes": "Voided stale batch #167333, released stuck user pending lots"
+    },
+    {
+      "name": "Successful Withdrawal After Release",
+      "signature": "2QTHYCZ7BTfZXXaNZFRGc8D1hpDr4jvrr2PH4vD2ZbBsUuWC8WHtQzxvZsu6kQr9Jdt6qXaHYYkK79G3K7uxisd6",
+      "slot": 507707408,
+      "cu": 13648,
+      "explorerUrl": "https://explorer.solana.com/tx/2QTHYCZ7BTfZXXaNZFRGc8D1hpDr4jvrr2PH4vD2ZbBsUuWC8WHtQzxvZsu6kQr9Jdt6qXaHYYkK79G3K7uxisd6?cluster=devnet",
+      "notes": "Withdrew 50 USDC collateral cleanly"
+    }
+  ],
+  "timestamp": "2026-10-05T10:52:08.518Z"
+}

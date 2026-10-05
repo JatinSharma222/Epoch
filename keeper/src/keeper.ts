@@ -574,6 +574,153 @@ export class EpochKeeper {
   }
 
   /**
+   * Voids a stale batch and clears users' pending lots/active_orders and releases margin.
+   * Permissionless crank called by the keeper or stuck users for stale batches.
+   */
+  public async expireAndRelease(
+    batchId: number,
+    ringIndex: number,
+    pageSize: number = 10
+  ): Promise<{ releasedPages: number; totalCu: number; success: boolean }> {
+    const batchPda = this.getBatchPda(ringIndex);
+    let batch: any;
+    try {
+      batch = await (this.program.account as any).batch.fetch(batchPda);
+    } catch {
+      return { releasedPages: 0, totalCu: 0, success: false };
+    }
+
+    if (batch.batchId.toNumber() !== batchId) {
+      return { releasedPages: 0, totalCu: 0, success: false };
+    }
+
+    if (batch.status === 4) {
+      // SETTLED
+      return { releasedPages: 0, totalCu: 0, success: true };
+    }
+
+    // Collect distinct unsettled user PDAs
+    const unsettledUsers: PublicKey[] = [];
+    const seenUsers = new Set<string>();
+
+    for (let i = 0; i < batch.numOrders; i++) {
+      const order = batch.orders[i];
+      if (order.status !== 5 && order.status !== 3) {
+        // Not SETTLED (5) and not CANCELLED (3)
+        const userPdaStr = order.userPda.toBase58();
+        if (!seenUsers.has(userPdaStr)) {
+          seenUsers.add(userPdaStr);
+          unsettledUsers.push(order.userPda);
+        }
+      }
+    }
+
+    let releasedPages = 0;
+    let totalCu = 0;
+
+    if (unsettledUsers.length === 0) {
+      // Invoke expireAndRelease with 0 remaining accounts so the batch is marked VOID/SETTLED
+      const submitSlot = await this.connection.getSlot();
+      try {
+        const txSig = await (this.program.methods as any)
+          .expireAndRelease(new anchor.BN(batchId), ringIndex)
+          .accounts({
+            market: this.marketPda,
+            batch: batchPda,
+            caller: this.wallet.publicKey,
+          })
+          .rpc({ skipPreflight: true });
+
+        const txInfo = await this.connection.getTransaction(txSig, {
+          commitment: "confirmed",
+          maxSupportedTransactionVersion: 0,
+        });
+        const cuConsumed = txInfo?.meta?.computeUnitsConsumed || 0;
+        totalCu += cuConsumed;
+        releasedPages++;
+
+        this.logger.logTx({
+          signature: txSig,
+          kind: "expire_and_release",
+          source: "keeper",
+          network: this.config.network || "devnet",
+          submit_slot: submitSlot,
+          landed_slot: txInfo?.slot || submitSlot,
+          cu: cuConsumed,
+          success: true,
+          created_at: new Date().toISOString(),
+          batch_id: batchId,
+          ring_index: ringIndex,
+        });
+      } catch (err: any) {
+        this.logger.warn(`[keeper] expire_and_release empty batch ${batchId} error:`, err.toString());
+      }
+      return { releasedPages, totalCu, success: releasedPages > 0 };
+    }
+
+    // Chunk into pages of pageSize users
+    for (let i = 0; i < unsettledUsers.length; i += pageSize) {
+      const chunk = unsettledUsers.slice(i, i + pageSize);
+      const submitSlot = await this.connection.getSlot();
+
+      try {
+        const txSig = await (this.program.methods as any)
+          .expireAndRelease(new anchor.BN(batchId), ringIndex)
+          .accounts({
+            market: this.marketPda,
+            batch: batchPda,
+            caller: this.wallet.publicKey,
+          })
+          .remainingAccounts(
+            chunk.map((pubkey) => ({
+              pubkey,
+              isWritable: true,
+              isSigner: false,
+            }))
+          )
+          .rpc({ skipPreflight: true });
+
+        const txInfo = await this.connection.getTransaction(txSig, {
+          commitment: "confirmed",
+          maxSupportedTransactionVersion: 0,
+        });
+
+        const landedSlot = txInfo?.slot || (await this.connection.getSlot());
+        const cuConsumed = txInfo?.meta?.computeUnitsConsumed || 0;
+        totalCu += cuConsumed;
+        releasedPages++;
+
+        this.logger.logTx({
+          signature: txSig,
+          kind: "expire_and_release",
+          source: "keeper",
+          network: this.config.network || "devnet",
+          submit_slot: submitSlot,
+          landed_slot: landedSlot,
+          cu: cuConsumed,
+          success: true,
+          created_at: new Date().toISOString(),
+          batch_id: batchId,
+          ring_index: ringIndex,
+        });
+
+        this.logger.info(
+          `[keeper] expire_and_release: batch ${batchId} page ${releasedPages} released ${chunk.length} users (CU: ${cuConsumed}) [MEASURED]`
+        );
+      } catch (err: any) {
+        const errStr = err.toString();
+        this.logger.warn(
+          `[keeper] expire_and_release page error for batch ${batchId}:`,
+          errStr
+        );
+        break;
+      }
+    }
+
+    return { releasedPages, totalCu, success: releasedPages > 0 };
+  }
+
+  /**
    * Permissionlessly places Backstop Vault automated quotes into a target batch.
    */
   public async vaultQuote(
@@ -833,8 +980,18 @@ export class EpochKeeper {
     let liquidatedCount = 0;
 
     for (const b of summaries) {
-      // 1. Check for clearing + settlement bundling
-      if (b.status === 1 && currentSlot >= b.closeSlot) {
+      const maxClearDelay = market.params.maxClearDelaySlots || 20;
+      const isStale = currentSlot > b.closeSlot + maxClearDelay;
+
+      // 1. If batch is OPEN and stale, or VOID with unsettled orders: call expireAndRelease
+      if ((b.status === 1 && isStale) || (b.status === 3 && b.settledOrders < b.numOrders)) {
+        this.logger.warn(
+          `[keeper] Batch ${b.batchId} is stale/void with unsettled orders (${b.settledOrders}/${b.numOrders}). Expiring and releasing...`
+        );
+        const res = await this.expireAndRelease(b.batchId, b.ringIndex, this.config.pageSize || 10);
+        if (res.releasedPages > 0) settledCount += res.releasedPages;
+      } else if (b.status === 1 && currentSlot >= b.closeSlot) {
+        // Normal clear & settle bundling
         const res = await this.clearAndSettleBatch(b.batchId, b.ringIndex);
         if (res.success) {
           clearedCount++;
@@ -842,10 +999,7 @@ export class EpochKeeper {
             settledCount++;
           }
         }
-      }
-
-      // 2. Check for leftover settlement (for unbundled or partially settled batches)
-      if (
+      } else if (
         (b.status === 2 || b.status === 3) &&
         b.settledOrders < b.numOrders
       ) {

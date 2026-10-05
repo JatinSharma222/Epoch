@@ -124,13 +124,15 @@ pub fn handle_place_order(ctx: Context<PlaceOrder>, args: PlaceOrderArgs) -> Res
     );
 
     // 3. Batch ring account lifecycle & reuse
+    // Never reuse a ring slot that holds unsettled orders (reject with RingSlotBusy)
     let mut batch = ctx.accounts.batch.load_mut()?;
     if batch.batch_id != target_batch {
-        if batch.status == BatchStatus::EMPTY
+        let is_reusable = batch.status == BatchStatus::EMPTY
             || batch.status == BatchStatus::SETTLED
-            || batch.status == BatchStatus::VOID
             || batch.num_orders == 0
-        {
+            || (batch.settled_orders >= batch.num_orders);
+
+        if is_reusable {
             batch.reset_for_batch(target_batch);
         } else {
             return err!(EpochError::RingSlotBusy);

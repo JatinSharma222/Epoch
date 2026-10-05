@@ -14,6 +14,7 @@ pub mod update_market_params;
 pub mod update_vault_params;
 pub mod vault_quote;
 pub mod withdraw;
+pub mod expire_and_release;
 
 pub use cancel_order::*;
 pub use clear_batch::*;
@@ -31,3 +32,4 @@ pub use update_market_params::*;
 pub use update_vault_params::*;
 pub use vault_quote::*;
 pub use withdraw::*;
+pub use expire_and_release::*;
