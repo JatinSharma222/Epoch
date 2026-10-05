@@ -202,6 +202,143 @@ export class EpochKeeper {
   }
 
   /**
+   * Bundles clear_batch + settle_users in ONE transaction when users fit one page (spec Item 1).
+   * Idempotent: returns cleanly if batch was already cleared or settled.
+   */
+  public async clearAndSettleBatch(
+    batchId: number,
+    ringIndex: number,
+    maxPageUsers: number = 16
+  ): Promise<{ success: boolean; signature?: string; cu?: number; bundled: boolean; error?: string }> {
+    const batchPda = this.getBatchPda(ringIndex);
+    const batch = await (this.program.account as any).batch.fetch(batchPda);
+
+    if (batch.status !== 1) {
+      // Already cleared / settled / void
+      return { success: true, bundled: false };
+    }
+
+    // Collect distinct unsettled users
+    const distinctUsers: PublicKey[] = [];
+    const seenUsers = new Set<string>();
+
+    for (let i = 0; i < batch.numOrders; i++) {
+      const order = batch.orders[i];
+      if (order.status !== 5 && order.status !== 3) {
+        const userPdaStr = order.userPda.toBase58();
+        if (!seenUsers.has(userPdaStr)) {
+          seenUsers.add(userPdaStr);
+          distinctUsers.push(order.userPda);
+        }
+      }
+    }
+
+    // If users exceed one page limit, fall back to unbundled clearBatch + settleUsers
+    if (distinctUsers.length > maxPageUsers) {
+      const clearRes = await this.clearBatch(batchId, ringIndex);
+      return { ...clearRes, bundled: false };
+    }
+
+    const market = await this.getMarket();
+    const currentSlot = await this.connection.getSlot();
+    const submitSlot = currentSlot;
+
+    const startSlot = market.startSlot.toNumber();
+    const batchSlots = market.params.batchSlots;
+    const closeSlot = startSlot + (batchId + 1) * batchSlots;
+
+    const oraclePrice = await this.oracle.getLatestPrice(
+      market.lastOraclePrice.toNumber() || 150_000_000
+    );
+    const postedSlot = oraclePrice.isFallback
+      ? new anchor.BN(closeSlot)
+      : oraclePrice.postedSlot;
+
+    try {
+      const clearIx = await this.program.methods
+        .clearBatch(new anchor.BN(batchId), ringIndex, {
+          oraclePrice: oraclePrice.price,
+          oracleConf: oraclePrice.conf,
+          oraclePostedSlot: postedSlot,
+          oracleTimestamp: oraclePrice.publishTime,
+        })
+        .accounts({
+          market: this.marketPda,
+          batch: batchPda,
+          cranker: this.wallet.publicKey,
+        })
+        .instruction();
+
+      const settleIx = await this.program.methods
+        .settleUsers(new anchor.BN(batchId), ringIndex)
+        .accounts({
+          market: this.marketPda,
+          batch: batchPda,
+        })
+        .remainingAccounts(
+          distinctUsers.map((pubkey) => ({
+            pubkey,
+            isWritable: true,
+            isSigner: false,
+          }))
+        )
+        .instruction();
+
+      const tx = new Transaction().add(
+        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 500_000 }),
+        clearIx,
+        settleIx
+      );
+
+      const txSig = await this.provider.sendAndConfirm(tx, [], {
+        skipPreflight: true,
+        commitment: "confirmed",
+      });
+
+      const txInfo = await this.connection.getTransaction(txSig, {
+        commitment: "confirmed",
+        maxSupportedTransactionVersion: 0,
+      });
+
+      const landedSlot = txInfo?.slot || (await this.connection.getSlot());
+      const cuConsumed = txInfo?.meta?.computeUnitsConsumed || 0;
+
+      const logEntry: TxLogEntry = {
+        signature: txSig,
+        kind: "clear_and_settle",
+        source: "keeper",
+        network: this.config.network || "devnet",
+        submit_slot: submitSlot,
+        landed_slot: landedSlot,
+        cu_consumed: cuConsumed,
+        success: true,
+        error: null,
+        created_at: new Date().toISOString(),
+        batch_id: batchId,
+        ring_index: ringIndex,
+      };
+      this.logger.logTx(logEntry);
+
+      return { success: true, signature: txSig, cu: cuConsumed, bundled: true };
+    } catch (err: any) {
+      const errStr = err.toString();
+      if (
+        errStr.includes("BatchNotOpen") ||
+        errStr.includes("BatchIdMismatch") ||
+        errStr.includes("AlreadyProcessed")
+      ) {
+        return { success: true, bundled: true };
+      }
+
+      this.logger.warn(`[keeper] clear_and_settle error for batch ${batchId}:`, errStr);
+      // Fallback: try unbundled clearBatch
+      const clearRes = await this.clearBatch(batchId, ringIndex);
+      return { ...clearRes, bundled: false };
+    }
+  }
+
+  /**
    * Clears an eligible OPEN batch whose close slot has passed.
    * Idempotent: returns cleanly if batch was already cleared.
    */
@@ -696,13 +833,18 @@ export class EpochKeeper {
     let liquidatedCount = 0;
 
     for (const b of summaries) {
-      // 1. Check for clearing
+      // 1. Check for clearing + settlement bundling
       if (b.status === 1 && currentSlot >= b.closeSlot) {
-        const res = await this.clearBatch(b.batchId, b.ringIndex);
-        if (res.success) clearedCount++;
+        const res = await this.clearAndSettleBatch(b.batchId, b.ringIndex);
+        if (res.success) {
+          clearedCount++;
+          if (res.bundled) {
+            settledCount++;
+          }
+        }
       }
 
-      // 2. Check for settlement
+      // 2. Check for leftover settlement (for unbundled or partially settled batches)
       if (
         (b.status === 2 || b.status === 3) &&
         b.settledOrders < b.numOrders

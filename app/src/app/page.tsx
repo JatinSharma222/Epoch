@@ -114,12 +114,26 @@ export default function Home() {
     }>
   >([]);
 
+  // Keeper liveness tracking (Item 7: >15s without clearing triggers offline alarm)
+  const [lastClearedBatchTs, setLastClearedBatchTs] = useState<number>(Date.now());
+  const [now, setNow] = useState<number>(Date.now());
+  const [isDevnetOutage, setIsDevnetOutage] = useState<boolean>(false);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const lastClearedAgeSec = Math.max(0, Math.floor((now - lastClearedBatchTs) / 1000));
+  const isKeeperOffline = lastClearedAgeSec > 15;
+
   useEffect(() => {
     fetch("/data/snapshot.json")
       .then((res) => res.json())
       .then((data) => {
         if (data && Array.isArray(data.batches) && data.batches.length > 0) {
           setRecentBatches(data.batches);
+          setLastClearedBatchTs(Date.now());
         }
       })
       .catch((err) => console.warn("Failed to load /data/snapshot.json:", err));
@@ -165,12 +179,14 @@ export default function Home() {
       try {
         const slot = await connection.getSlot("processed");
         if (mounted && slot > 0) {
+          setIsDevnetOutage(false);
           setCurrentSlot(slot);
           const bId = Math.floor(slot / 2);
           setCurrentBatchId(bId);
           setSlotsRemaining(2 - (slot % 2));
         }
       } catch {
+        setIsDevnetOutage(true);
         // Fallback local simulation if RPC times out
         setCurrentSlot((prev) => {
           const next = prev + 1;
@@ -240,6 +256,61 @@ export default function Home() {
       clearInterval(interval);
     };
   }, [connected, publicKey, connection]);
+
+  // 3b. LIVE ON-CHAIN USER ACCOUNT (Collateral, Quote, Positions)
+  useEffect(() => {
+    if (!connected || !publicKey) {
+      setCollateral(0);
+      setQuotePosition(0);
+      setPosition(null);
+      return;
+    }
+
+    let mounted = true;
+    const fetchUserAccount = async () => {
+      try {
+        const [userPda] = getUserPda(publicKey);
+        const accInfo = await connection.getAccountInfo(userPda);
+        if (accInfo && mounted) {
+          const dummyWallet = {
+            publicKey,
+            signTransaction: async (tx: any) => tx,
+            signAllTransactions: async (txs: any) => txs,
+          };
+          const provider = new AnchorProvider(connection, dummyWallet as any, { commitment: "confirmed" });
+          const program = new Program(epochIdl as any, provider);
+          const userAcc = await (program.account as any).userAccount.fetch(userPda);
+          if (mounted && userAcc) {
+            setCollateral(userAcc.collateral.toNumber() / 1_000_000);
+            setQuotePosition(userAcc.quotePosition.toNumber() / 1_000_000);
+            const basePos = userAcc.basePosition.toNumber();
+            if (basePos !== 0) {
+              setPosition({
+                market: "SOL-PERP",
+                sizeLots: basePos,
+                entryPrice: markPrice || 119.80,
+                markPrice: markPrice || 119.80,
+                unrealizedPnl: 0,
+                marginRatio: 10.0,
+                liqPrice: (markPrice || 119.80) * 0.8,
+              });
+            } else {
+              setPosition(null);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("User account sync error:", e);
+      }
+    };
+
+    fetchUserAccount();
+    const interval = setInterval(fetchUserAccount, 2000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [connected, publicKey, connection, markPrice]);
 
   // 4. DYNAMIC POSITION MARK-TO-MARKET UPDATE
   useEffect(() => {
@@ -496,7 +567,33 @@ export default function Home() {
         markPrice={markPrice}
         stats={marketStats}
         onOpenFaucetModal={() => setIsFaucetOpen(true)}
+        isKeeperOffline={isKeeperOffline}
+        lastClearedAgeSec={lastClearedAgeSec}
       />
+
+      {/* Keeper Offline Emergency Warning Banner (Item 7: age > 15s) */}
+      {isKeeperOffline && (
+        <div className="bg-[#F23645]/15 border-b border-[#F23645]/40 text-[#F6465D] px-4 py-1.5 text-xs flex items-center justify-between font-mono shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-[#F6465D] animate-ping shrink-0" />
+            <span className="font-semibold uppercase tracking-wider">Keeper Offline:</span>
+            <span>Last batch cleared {lastClearedAgeSec}s ago (&gt;15s threshold). Automated clearing and user settlements are delayed.</span>
+          </div>
+          <span className="hidden sm:inline text-[11px] text-[#848E9C]">Target batch duration: 2 slots (800ms)</span>
+        </div>
+      )}
+
+      {/* Devnet Outage / Degraded RPC Warning Banner (Item 8) */}
+      {isDevnetOutage && (
+        <div className="bg-[#EAB308]/15 border-b border-[#EAB308]/40 text-[#EAB308] px-4 py-1.5 text-xs flex items-center justify-between font-mono shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-[#EAB308] animate-ping shrink-0" />
+            <span className="font-semibold uppercase tracking-wider">DEVNET RPC OUTAGE:</span>
+            <span>Solana Devnet RPC cluster is unreachable. Running in offline degraded mode with cached state.</span>
+          </div>
+          <span className="hidden sm:inline text-[11px] text-[#848E9C]">Fallback WebSocket active</span>
+        </div>
+      )}
 
       {/* 2. Main Workspace Layout */}
       <div className="flex-1 flex overflow-hidden">

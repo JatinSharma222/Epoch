@@ -25,7 +25,7 @@ export interface OraclePriceData {
 
 export interface TxLogEntry {
   signature: string;
-  kind: "clear_batch" | "settle_users" | "place_order" | "vault_quote" | "liquidate";
+  kind: "clear_batch" | "settle_users" | "place_order" | "vault_quote" | "liquidate" | "clear_and_settle";
   source: "keeper" | "loadgen" | "landing_test";
   network: string;
   method?: string;

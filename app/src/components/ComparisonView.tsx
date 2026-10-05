@@ -3,29 +3,37 @@
 import React, { useState } from "react";
 import { GitCompare, ShieldAlert, Cpu, ArrowUpRight, Scale, Info, CheckCircle2 } from "lucide-react";
 import { formatUsd, formatNumber } from "../lib/formatters";
+import s1Data from "../../../evidence/simulations/sim_s1_adverse_selection.json";
+import summaryData from "../../../evidence/simulations/summary.json";
 
 export const ComparisonView: React.FC = () => {
   // Standard notional for dollar calculations
   const standardNotional = 100_000;
 
+  const k5Raw = s1Data.snipers_sweep.k_5;
+  const k1Raw = s1Data.snipers_sweep.k_1;
+
   const dataK5 = {
     title: "Competitive Latency Snipers (k = 5)",
     description: "Bertrand competition between 5 latency snipers in high-volatility windows.",
-    clobMakerLossBps: 13.91,
-    clobMakerLossUsd: (13.91 / 10_000) * standardNotional, // $139.10
-    epochMakerLossBps: 1.25,
-    epochMakerLossUsd: (1.25 / 10_000) * standardNotional, // $12.50
-    diffBps: 12.66,
-    diffUsd: (12.66 / 10_000) * standardNotional, // $126.60
-    reductionPct: 91.0,
-    ci95Bps: [10.2, 15.1],
-    ci95Usd: [(10.2 / 10_000) * standardNotional, (15.1 / 10_000) * standardNotional],
-    clobUninformedCostBps: 6.01,
-    clobUninformedCostUsd: (6.01 / 10_000) * standardNotional, // $60.10
-    epochUninformedCostBps: 5.99,
-    epochUninformedCostUsd: (5.99 / 10_000) * standardNotional, // $59.90
+    clobMakerLossBps: k5Raw.clob_maker_adverse_loss_mean_bps, // 0.035 bps per jump
+    clobMakerLossUsd: (k5Raw.clob_maker_adverse_loss_mean_bps / 10_000) * standardNotional, // $0.35 / $100k
+    epochMakerLossBps: k5Raw.epoch_maker_adverse_loss_mean_bps, // 0.003 bps per jump
+    epochMakerLossUsd: (k5Raw.epoch_maker_adverse_loss_mean_bps / 10_000) * standardNotional, // $0.03 / $100k
+    diffBps: parseFloat((k5Raw.clob_maker_adverse_loss_mean_bps - k5Raw.epoch_maker_adverse_loss_mean_bps).toFixed(4)), // 0.032 bps per jump
+    diffUsd: ((k5Raw.clob_maker_adverse_loss_mean_bps - k5Raw.epoch_maker_adverse_loss_mean_bps) / 10_000) * standardNotional, // $0.32 / $100k
+    reductionPct: k5Raw.maker_loss_reduction_pct, // 91.0%
+    ci95Bps: k5Raw.difference_bootstrap_95ci, // [0.028, 0.035] bps
+    ci95Usd: [
+      (k5Raw.difference_bootstrap_95ci[0] / 10_000) * standardNotional,
+      (k5Raw.difference_bootstrap_95ci[1] / 10_000) * standardNotional,
+    ],
+    clobUninformedCostBps: k5Raw.clob_uninformed_cost_mean_bps, // 6.013 bps
+    clobUninformedCostUsd: (k5Raw.clob_uninformed_cost_mean_bps / 10_000) * standardNotional,
+    epochUninformedCostBps: k5Raw.epoch_uninformed_cost_mean_bps, // 5.993 bps
+    epochUninformedCostUsd: (k5Raw.epoch_uninformed_cost_mean_bps / 10_000) * standardNotional,
     priorityMevBps: 3.0,
-    priorityMevUsd: (3.0 / 10_000) * standardNotional, // $30.00
+    priorityMevUsd: (3.0 / 10_000) * standardNotional,
     epochPriorityMevBps: 0.0,
     epochPriorityMevUsd: 0.0,
   };
@@ -33,21 +41,24 @@ export const ComparisonView: React.FC = () => {
   const dataK1 = {
     title: "Single Monopoly Sniper (k = 1)",
     description: "Single dominant latency sniper without rival latency competition.",
-    clobMakerLossBps: 6.84,
-    clobMakerLossUsd: (6.84 / 10_000) * standardNotional, // $68.40
-    epochMakerLossBps: 3.16,
-    epochMakerLossUsd: (3.16 / 10_000) * standardNotional, // $31.60
-    diffBps: 3.68,
-    diffUsd: (3.68 / 10_000) * standardNotional, // $36.80
-    reductionPct: 53.8,
-    ci95Bps: [2.8, 4.6],
-    ci95Usd: [(2.8 / 10_000) * standardNotional, (4.6 / 10_000) * standardNotional],
-    clobUninformedCostBps: 6.01,
-    clobUninformedCostUsd: (6.01 / 10_000) * standardNotional, // $60.10
-    epochUninformedCostBps: 5.99,
-    epochUninformedCostUsd: (5.99 / 10_000) * standardNotional, // $59.90
+    clobMakerLossBps: k1Raw.clob_maker_adverse_loss_mean_bps, // 0.035 bps per jump
+    clobMakerLossUsd: (k1Raw.clob_maker_adverse_loss_mean_bps / 10_000) * standardNotional, // $0.35 / $100k
+    epochMakerLossBps: k1Raw.epoch_maker_adverse_loss_mean_bps, // 0.016 bps per jump
+    epochMakerLossUsd: (k1Raw.epoch_maker_adverse_loss_mean_bps / 10_000) * standardNotional, // $0.16 / $100k
+    diffBps: parseFloat((k1Raw.clob_maker_adverse_loss_mean_bps - k1Raw.epoch_maker_adverse_loss_mean_bps).toFixed(4)), // 0.019 bps per jump
+    diffUsd: ((k1Raw.clob_maker_adverse_loss_mean_bps - k1Raw.epoch_maker_adverse_loss_mean_bps) / 10_000) * standardNotional, // $0.19 / $100k
+    reductionPct: k1Raw.maker_loss_reduction_pct, // 53.8%
+    ci95Bps: k1Raw.difference_bootstrap_95ci, // [0.017, 0.021] bps
+    ci95Usd: [
+      (k1Raw.difference_bootstrap_95ci[0] / 10_000) * standardNotional,
+      (k1Raw.difference_bootstrap_95ci[1] / 10_000) * standardNotional,
+    ],
+    clobUninformedCostBps: k1Raw.clob_uninformed_cost_mean_bps, // 6.012 bps
+    clobUninformedCostUsd: (k1Raw.clob_uninformed_cost_mean_bps / 10_000) * standardNotional,
+    epochUninformedCostBps: k1Raw.epoch_uninformed_cost_mean_bps, // 5.993 bps
+    epochUninformedCostUsd: (k1Raw.epoch_uninformed_cost_mean_bps / 10_000) * standardNotional,
     priorityMevBps: 3.0,
-    priorityMevUsd: (3.0 / 10_000) * standardNotional, // $30.00
+    priorityMevUsd: (3.0 / 10_000) * standardNotional,
     epochPriorityMevBps: 0.0,
     epochPriorityMevUsd: 0.0,
   };
@@ -102,24 +113,24 @@ export const ComparisonView: React.FC = () => {
               <div>
                 <span className="text-[#848E9C] block">Continuous Order Book (Model):</span>
                 <span className="text-[#F6465D] font-bold">
-                  {dataK5.clobMakerLossBps.toFixed(2)} bps (${dataK5.clobMakerLossUsd.toFixed(2)} / $100k)
+                  {dataK5.clobMakerLossBps.toFixed(3)} bps (${dataK5.clobMakerLossUsd.toFixed(2)} / $100k per jump)
                 </span>
               </div>
               <div>
                 <span className="text-[#848E9C] block">Epoch FBA (Batched):</span>
                 <span className="text-[#0ECB81] font-bold">
-                  {dataK5.epochMakerLossBps.toFixed(2)} bps (${dataK5.epochMakerLossUsd.toFixed(2)} / $100k)
+                  {dataK5.epochMakerLossBps.toFixed(3)} bps (${dataK5.epochMakerLossUsd.toFixed(2)} / $100k per jump)
                 </span>
               </div>
             </div>
             <div className="pt-2 border-t bp-border text-[11px] flex justify-between items-center">
-              <span className="text-[#848E9C]">Net Maker Benefit:</span>
+              <span className="text-[#848E9C]">Net Maker Benefit (Per Jump):</span>
               <span className="text-[#0ECB81] font-bold">
-                +{dataK5.diffBps.toFixed(2)} bps (+${dataK5.diffUsd.toFixed(2)} / $100k) [SIMULATED]
+                +{dataK5.diffBps.toFixed(3)} bps (+${dataK5.diffUsd.toFixed(2)} / $100k) [SIMULATED]
               </span>
             </div>
             <div className="text-[10px] text-[#848E9C]">
-              95% Bootstrap CI: [{dataK5.ci95Bps[0].toFixed(1)}, {dataK5.ci95Bps[1].toFixed(1)}] bps (${dataK5.ci95Usd[0].toFixed(2)} – ${dataK5.ci95Usd[1].toFixed(2)} per $100k)
+              95% Bootstrap CI: [{dataK5.ci95Bps[0].toFixed(3)}, {dataK5.ci95Bps[1].toFixed(3)}] bps (${dataK5.ci95Usd[0].toFixed(2)} – ${dataK5.ci95Usd[1].toFixed(2)} per $100k per jump)
             </div>
           </div>
 
@@ -142,24 +153,24 @@ export const ComparisonView: React.FC = () => {
               <div>
                 <span className="text-[#848E9C] block">Continuous Order Book (Model):</span>
                 <span className="text-[#F6465D] font-bold">
-                  {dataK1.clobMakerLossBps.toFixed(2)} bps (${dataK1.clobMakerLossUsd.toFixed(2)} / $100k)
+                  {dataK1.clobMakerLossBps.toFixed(3)} bps (${dataK1.clobMakerLossUsd.toFixed(2)} / $100k per jump)
                 </span>
               </div>
               <div>
                 <span className="text-[#848E9C] block">Epoch FBA (Batched):</span>
                 <span className="text-[#0ECB81] font-bold">
-                  {dataK1.epochMakerLossBps.toFixed(2)} bps (${dataK1.epochMakerLossUsd.toFixed(2)} / $100k)
+                  {dataK1.epochMakerLossBps.toFixed(3)} bps (${dataK1.epochMakerLossUsd.toFixed(2)} / $100k per jump)
                 </span>
               </div>
             </div>
             <div className="pt-2 border-t bp-border text-[11px] flex justify-between items-center">
-              <span className="text-[#848E9C]">Net Maker Benefit:</span>
+              <span className="text-[#848E9C]">Net Maker Benefit (Per Jump):</span>
               <span className="text-[#0ECB81] font-bold">
-                +{dataK1.diffBps.toFixed(2)} bps (+${dataK1.diffUsd.toFixed(2)} / $100k) [SIMULATED]
+                +{dataK1.diffBps.toFixed(3)} bps (+${dataK1.diffUsd.toFixed(2)} / $100k) [SIMULATED]
               </span>
             </div>
             <div className="text-[10px] text-[#848E9C]">
-              95% Bootstrap CI: [{dataK1.ci95Bps[0].toFixed(1)}, {dataK1.ci95Bps[1].toFixed(1)}] bps (${dataK1.ci95Usd[0].toFixed(2)} – ${dataK1.ci95Usd[1].toFixed(2)} per $100k)
+              95% Bootstrap CI: [{dataK1.ci95Bps[0].toFixed(3)}, {dataK1.ci95Bps[1].toFixed(3)}] bps (${dataK1.ci95Usd[0].toFixed(2)} – ${dataK1.ci95Usd[1].toFixed(2)} per $100k per jump)
             </div>
           </div>
         </div>
@@ -172,7 +183,7 @@ export const ComparisonView: React.FC = () => {
               Comparative Execution Matrix: k = 5 vs k = 1 Regimes
             </div>
             <span className="text-[10px] text-[#848E9C]">
-              Model result under stated assumptions (Basis Points and USD per $100,000 Notional)
+              Model result under stated assumptions (Basis Points per Price Jump / Trade, $100k Notional)
             </span>
           </div>
 
@@ -199,18 +210,32 @@ export const ComparisonView: React.FC = () => {
                 <td className="py-2.5 px-4 text-[#00F0FF] font-semibold">Single uniform price P*</td>
               </tr>
               <tr>
-                <td className="py-2.5 px-4 font-sans font-medium text-white">Maker Adverse Selection Loss</td>
+                <td className="py-2.5 px-4 font-sans font-medium text-white">Maker Adverse Loss (per jump)</td>
                 <td className="py-2.5 px-4 text-[#F6465D] tabular-nums font-semibold">
-                  13.91 bps ($139.10) [k=5]<br />
-                  6.84 bps ($68.40) [k=1]
+                  0.035 bps ($0.35 / $100k)<br />
+                  <span className="text-[10px] text-[#848E9C] font-normal">Identical across k=1 and k=5</span>
                 </td>
                 <td className="py-2.5 px-4 text-[#0ECB81] tabular-nums font-semibold">
-                  1.25 bps ($12.50)<br />
-                  <span className="text-[10px] text-[#0ECB81] font-bold">-91.0% (-12.66 bps / -$126.60)</span>
+                  0.003 bps ($0.03 / $100k)<br />
+                  <span className="text-[10px] text-[#0ECB81] font-bold">-91.0% (-0.032 bps / -$0.32)</span>
                 </td>
                 <td className="py-2.5 px-4 text-[#00F0FF] tabular-nums font-semibold">
-                  3.16 bps ($31.60)<br />
-                  <span className="text-[10px] text-[#00F0FF] font-bold">-53.8% (-3.68 bps / -$36.80)</span>
+                  0.016 bps ($0.16 / $100k)<br />
+                  <span className="text-[10px] text-[#00F0FF] font-bold">-53.8% (-0.019 bps / -$0.19)</span>
+                </td>
+              </tr>
+              <tr>
+                <td className="py-2.5 px-4 font-sans font-medium text-white">Session Cumulative Maker Saving</td>
+                <td className="py-2.5 px-4 text-[#F6465D] tabular-nums font-semibold">
+                  Baseline (0 bps)
+                </td>
+                <td className="py-2.5 px-4 text-[#0ECB81] tabular-nums font-semibold">
+                  +8.45 bps (+84.50 / $100k)<br />
+                  <span className="text-[10px] text-[#848E9C] font-normal">~265 jumps active session</span>
+                </td>
+                <td className="py-2.5 px-4 text-[#00F0FF] tabular-nums font-semibold">
+                  +4.82 bps (+48.20 / $100k)<br />
+                  <span className="text-[10px] text-[#848E9C] font-normal">~250 jumps active session</span>
                 </td>
               </tr>
               <tr>
@@ -226,15 +251,15 @@ export const ComparisonView: React.FC = () => {
                 </td>
               </tr>
               <tr>
-                <td className="py-2.5 px-4 font-sans font-medium text-white">Uninformed Slippage</td>
+                <td className="py-2.5 px-4 font-sans font-medium text-white">Uninformed Cost (per trade)</td>
                 <td className="py-2.5 px-4 text-[#848E9C] tabular-nums">
-                  6.01 bps ($60.10 / $100k)
+                  6.013 bps ($60.13 / $100k)
                 </td>
                 <td className="py-2.5 px-4 text-[#0ECB81] tabular-nums font-semibold">
-                  5.99 bps ($59.90 / $100k)
+                  5.993 bps ($59.93 / $100k)
                 </td>
                 <td className="py-2.5 px-4 text-[#00F0FF] tabular-nums font-semibold">
-                  5.99 bps ($59.90 / $100k)
+                  5.993 bps ($59.93 / $100k)
                 </td>
               </tr>
               <tr>

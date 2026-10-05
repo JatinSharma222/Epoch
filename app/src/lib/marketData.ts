@@ -118,9 +118,11 @@ export async function fetchLiveTickers(): Promise<MarketTicker[]> {
  */
 export async function fetchSolStats(): Promise<MarketStats> {
   const now = new Date();
-  const minsToNextHour = 59 - now.getMinutes();
-  const secsToNextMin = 59 - now.getSeconds();
-  const countdown = `00:${String(minsToNextHour).padStart(2, "0")}:${String(secsToNextMin).padStart(2, "0")}`;
+  const currentHourUtc = now.getUTCHours();
+  const hoursToNextFunding = 7 - (currentHourUtc % 8);
+  const minsToNextFunding = 59 - now.getUTCMinutes();
+  const secsToNextFunding = 59 - now.getUTCSeconds();
+  const countdown = `${String(hoursToNextFunding).padStart(2, "0")}:${String(minsToNextFunding).padStart(2, "0")}:${String(secsToNextFunding).padStart(2, "0")}`;
 
   try {
     const res = await fetch("https://api.binance.com/api/v3/ticker/24hr?symbol=SOLUSDT", {

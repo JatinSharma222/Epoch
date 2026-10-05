@@ -23,6 +23,8 @@ interface HeaderProps {
   markPrice: number;
   stats?: MarketStats | null;
   onOpenFaucetModal: () => void;
+  isKeeperOffline?: boolean;
+  lastClearedAgeSec?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -32,6 +34,8 @@ export const Header: React.FC<HeaderProps> = ({
   markPrice,
   stats,
   onOpenFaucetModal,
+  isKeeperOffline = false,
+  lastClearedAgeSec = 0,
 }) => {
   const { connected } = useWallet();
 
@@ -108,7 +112,10 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           <div className="flex flex-col hidden lg:flex">
-            <span className="text-[#848E9C] text-[10px] font-sans">Funding (8h)</span>
+            <span className="text-[#848E9C] text-[10px] font-sans flex items-center gap-1">
+              Funding (8h)
+              <span className="text-[9px] text-[#848E9C] tabular-nums font-mono">({stats?.fundingCountdown || "08:00:00"})</span>
+            </span>
             <span className="font-mono text-[#EAB308] font-medium tabular-nums">
               {formatFundingRate(stats?.fundingRate || 0.00041)}
             </span>
@@ -184,6 +191,25 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <span className="w-1.5 h-1.5 rounded-full bg-[#0ECB81]"></span>
           <span>{clusterLabel}</span>
+        </div>
+
+        {/* Dynamic Keeper Liveness Badge (Item 7) */}
+        <div
+          className={`hidden md:flex items-center gap-1 px-2 py-1 rounded bg-[#12161C] border text-[10px] font-mono transition-colors ${
+            isKeeperOffline ? "border-[#F23645]/40 text-[#F6465D]" : "bp-border text-[#848E9C]"
+          }`}
+          title={
+            isKeeperOffline
+              ? `Keeper offline! Last batch cleared ${lastClearedAgeSec}s ago (>15s threshold)`
+              : `Keeper online. Last batch cleared ${lastClearedAgeSec}s ago`
+          }
+        >
+          <span
+            className={`w-1.5 h-1.5 rounded-full ${
+              isKeeperOffline ? "bg-[#F6465D] animate-ping" : "bg-[#0ECB81]"
+            }`}
+          />
+          <span>Keeper: {isKeeperOffline ? "Offline" : "Online"}</span>
         </div>
 
         {/* Solana Wallet Adapter MultiButton */}

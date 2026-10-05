@@ -21,8 +21,20 @@ interface Props {
 
 export const WalletContextProvider: FC<Props> = ({ children }) => {
   const endpoint = useMemo(() => {
-    return process.env.NEXT_PUBLIC_RPC_URL || clusterApiUrl("devnet");
+    return process.env.NEXT_PUBLIC_RPC_URL || "https://api.devnet.solana.com";
   }, []);
+
+  const wsEndpoint = useMemo(() => {
+    return process.env.NEXT_PUBLIC_WS_URL || "wss://api.devnet.solana.com";
+  }, []);
+
+  const config = useMemo(
+    () => ({
+      commitment: "confirmed" as const,
+      wsEndpoint,
+    }),
+    [wsEndpoint]
+  );
 
   const wallets = useMemo(
     () => [new PhantomWalletAdapter(), new SolflareWalletAdapter()],
@@ -30,7 +42,7 @@ export const WalletContextProvider: FC<Props> = ({ children }) => {
   );
 
   return (
-    <ConnectionProvider endpoint={endpoint}>
+    <ConnectionProvider endpoint={endpoint} config={config}>
       <WalletProvider wallets={wallets} autoConnect>
         <WalletModalProvider>{children}</WalletModalProvider>
       </WalletProvider>

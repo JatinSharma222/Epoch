@@ -29,6 +29,8 @@ dist/
 
 # Secrets and keypairs (NEVER commit)
 *.keypair.json
+*keypair*.json
+*wallet*.json
 id.json
 keys/
 
