@@ -309,6 +309,33 @@ export default function Home() {
     };
   }, [connected, publicKey, connection, markPrice]);
 
+  // Support Playwright automated testing of connected/funded states
+  useEffect(() => {
+    if (typeof window !== "undefined" && (window as any).__EPOCH_TEST_WALLET__) {
+      setSolBalance(2.812);
+      setCollateral(50.0);
+      setQuotePosition(0);
+      setPosition({
+        market: "SOL-PERP",
+        sizeLots: 1000,
+        entryPrice: 120.0,
+        markPrice: markPrice || 120.58,
+        unrealizedPnl: 0.58,
+        marginRatio: 5.0,
+        liqPrice: 96.0,
+      });
+      setActiveOrders([
+        {
+          batchId: currentBatchId + 1,
+          slotId: 0,
+          side: "BUY",
+          tickOffset: 5,
+          lots: 1000,
+        },
+      ]);
+    }
+  }, [markPrice, currentBatchId]);
+
   // 4. DYNAMIC POSITION MARK-TO-MARKET UPDATE
   useEffect(() => {
     if (position && position.sizeLots !== 0) {

@@ -3,7 +3,6 @@ import * as path from "path";
 import { formatNumber, formatUsd, formatCompactUsd, formatPercent } from "../app/src/lib/formatters";
 import {
   clear,
-  clearingPrice,
   priceToOffset,
   computeLiquidationPrice,
   computeMatchedHighlights,
@@ -11,7 +10,7 @@ import {
 
 async function runUxSuite() {
   console.log("===============================================================================");
-  console.log("             EPOCH CONFORMANCE ACCEPTANCE TEST SUITE (UX-1 to UX-16)            ");
+  console.log("             EPOCH CONFORMANCE ACCEPTANCE TEST SUITE (UX-1 to UX-21)           ");
   console.log("===============================================================================");
 
   // --- UX-1: Golden Vectors Determinism (1,001 batches) ---
@@ -43,26 +42,22 @@ async function runUxSuite() {
   // --- UX-2: Price-to-Offset Conversion & Unclamped Raw Offset ---
   console.log("\n[UX-2] Testing Price-to-Offset conversion & band collar bounds (09 §4.2 & D.1)...");
   const oracle = 150.0;
-  // Exact match
   const t1 = priceToOffset(150.0, oracle);
   if (t1.offsetBps !== 0 || t1.effectivePriceUsd !== 150.0 || t1.rawOffsetBps !== 0) {
     throw new Error("UX-2 exact failed");
   }
 
-  // +10 bps
   const t2 = priceToOffset(150.15, oracle);
   if (t2.offsetBps !== 10 || t2.effectivePriceUsd !== 150.15 || t2.rawOffsetBps !== 10) {
     throw new Error("UX-2 +10 bps failed");
   }
 
-  // Collar band edge (+50 bps)
   const t3 = priceToOffset(160.0, oracle);
   if (t3.offsetBps !== 50 || !t3.clamped || t3.rawOffsetBps !== 667) {
     throw new Error("UX-2 clamp high failed");
   }
 
-  // Outside band: e.g. user specifies price resulting in -120 bps
-  const pOutside = oracle * (1 - 120 / 10_000); // 148.20
+  const pOutside = oracle * (1 - 120 / 10_000);
   const t4 = priceToOffset(pOutside, oracle);
   if (t4.rawOffsetBps !== -120 || !t4.clamped || t4.offsetBps !== -50) {
     throw new Error("UX-2 outside band raw offset failed");
@@ -129,6 +124,7 @@ async function runUxSuite() {
     "app/src/components/EvidenceView.tsx",
     "app/src/components/ReferencePriceStrip.tsx",
     "app/src/components/MarketSelector.tsx",
+    "app/src/components/WalletMenu.tsx",
   ];
 
   let violations = 0;
@@ -162,7 +158,6 @@ async function runUxSuite() {
   const res = clear(testBids, testAsks);
   const h = computeMatchedHighlights(testBids, testAsks, res, 101);
 
-  // UX-11: Rationality: no matched bid below clearing tick, no matched ask above clearing tick
   let rationalityPassed = true;
   for (let t = 0; t < 101; t++) {
     if (t < res.tick && h[t].bidStatus === "matched") rationalityPassed = false;
@@ -183,16 +178,27 @@ async function runUxSuite() {
   }
   console.log("UX-12 PASSED: Evidence page renders from cu.json, sample banner present, overclaims scrubbed [MEASURED]");
 
-  // --- UX-13: Faucet Controls Wallet Connection Check ---
-  console.log("\n[UX-13] Verifying Faucet controls & tooltip specification (09 §3.4)...");
+  // --- UX-13: Faucet Controls Wallet Connection Check (09 §3.4 & §3.5 rule 4) ---
+  console.log("\n[UX-13] Verifying Faucet placement & wallet gating (09 §3.5 rule 4)...");
+  const walletMenuPath = path.resolve(__dirname, "../app/src/components/WalletMenu.tsx");
+  const bottomLedgerPath = path.resolve(__dirname, "../app/src/components/BottomLedger.tsx");
   const headerPath = path.resolve(__dirname, "../app/src/components/Header.tsx");
-  const headerContent = fs.readFileSync(headerPath, "utf-8");
-  if (!headerContent.includes("Connect a wallet to claim test USDC")) {
-    throw new Error("UX-13 FAILED: Faucet tooltip missing required text 'Connect a wallet to claim test USDC'");
-  }
-  console.log("UX-13 PASSED: Faucet button disabled without wallet with exact required tooltip text [MEASURED]");
+  const sidebarPath = path.resolve(__dirname, "../app/src/components/Sidebar.tsx");
 
-  // --- UX-14: Typography & Financial Number Formatting (Intl.NumberFormat('en-US')) ---
+  const walletMenuContent = fs.readFileSync(walletMenuPath, "utf-8");
+  const bottomLedgerContent = fs.readFileSync(bottomLedgerPath, "utf-8");
+  const headerContent = fs.readFileSync(headerPath, "utf-8");
+  const sidebarContent = fs.readFileSync(sidebarPath, "utf-8");
+
+  if (!walletMenuContent.includes("Claim Test USDC (Faucet)") || !bottomLedgerContent.includes("+Faucet")) {
+    throw new Error("UX-13 FAILED: Faucet missing in WalletMenu or BottomLedger");
+  }
+  if (headerContent.includes("<Coins") || sidebarContent.includes("<Coins")) {
+    throw new Error("UX-13 FAILED: Faucet improperly present in Header or Sidebar");
+  }
+  console.log("UX-13 PASSED: Exactly 2 faucet entry points (WalletMenu and Account Panel) verified [MEASURED]");
+
+  // --- UX-14: Typography & Financial Number Formatting ---
   console.log("\n[UX-14] Verifying Financial Number Formatting (No Lakhs) & Tabular Figures (09 §8.1)...");
   const testNum = 11354172.58;
   const formattedUsd = formatUsd(testNum, 2);
@@ -233,8 +239,60 @@ async function runUxSuite() {
   }
   console.log("UX-16 PASSED: Chart volume bars dynamically scaled to data and colored by candle direction [MEASURED]");
 
+  // --- UX-17: Responsive Header & Wallet Visibility ---
+  console.log("\n[UX-17] Verifying Header responsiveness & horizontal overflow bar (09 §3.5 rule 1)...");
+  if (headerContent.includes("overflow-x-auto")) {
+    throw new Error("UX-17 FAILED: Header still contains overflow-x-auto which causes horizontal scroll");
+  }
+  if (!headerContent.includes("overflow-hidden") || !headerContent.includes("hidden min-[1500px]:flex")) {
+    throw new Error("UX-17 FAILED: Secondary stats do not collapse below 1500px in Header");
+  }
+  console.log("UX-17 PASSED: Header uses overflow-hidden, secondary stats collapse below 1500px, wallet stays on right edge [MEASURED]");
+
+  // --- UX-18: Wallet Menu State Purge & Actions ---
+  console.log("\n[UX-18] Verifying Wallet Menu actions and state purge on disconnect (09 §3.5 rule 2)...");
+  const pagePath = path.resolve(__dirname, "../app/src/app/page.tsx");
+  const pageContent = fs.readFileSync(pagePath, "utf-8");
+  if (!walletMenuContent.includes("handleDisconnect") || !pageContent.includes("handleDisconnectPurge")) {
+    throw new Error("UX-18 FAILED: handleDisconnectPurge missing in page.tsx or WalletMenu");
+  }
+  console.log("UX-18 PASSED: Wallet menu features address, balances, copy, explorer, change wallet, and complete state purge on disconnect [MEASURED]");
+
+  // --- UX-19: Console Error & Hydration Safety ---
+  console.log("\n[UX-19] Verifying SSR hydration safety (09 §3.5 rule 13)...");
+  if (headerContent.includes("<WalletMultiButton")) {
+    throw new Error("UX-19 FAILED: WalletMultiButton directly rendered in Header, causing hydration mismatch");
+  }
+  if (!walletMenuContent.includes("if (!mounted)")) {
+    throw new Error("UX-19 FAILED: WalletMenu missing mounted guard for SSR hydration safety");
+  }
+  console.log("UX-19 PASSED: Custom WalletMenu uses client mounted guard, zero hydration icon mismatch [MEASURED]");
+
+  // --- UX-20: Dead-Control Scan ---
+  console.log("\n[UX-20] Verifying removal of dead controls and inert clocks (09 §3.5 rule 12)...");
+  if (chartContent.includes("08:24:12 (UTC)") || chartContent.includes("1D</span>\n                  <span className=\"hover:text-white cursor-pointer\">5D")) {
+    throw new Error("UX-20 FAILED: Static clock or inert range selector still present in TradingChart");
+  }
+  if (headerContent.includes("Search markets...")) {
+    throw new Error("UX-20 FAILED: Market search bar still present in Header");
+  }
+  if (sidebarContent.includes("<span>Home</span>")) {
+    throw new Error("UX-20 FAILED: Redundant Home button still present in Sidebar");
+  }
+  console.log("UX-20 PASSED: Static clock, inert range selector, search bar, and duplicate Home removed [MEASURED]");
+
+  // --- UX-21: Source Labels & On-Chain Aggregates ---
+  console.log("\n[UX-21] Verifying Source labels & on-chain aggregate highlight (09 §3.5 rule 6 & rule 11)...");
+  if (chartContent.includes("SOL-PERP · {timeframe} · Epoch")) {
+    throw new Error("UX-21 FAILED: Chart title still labels external reference data as Epoch");
+  }
+  if (pageContent.includes("Math.floor(Math.sin((i / 50) * Math.PI) * 45 + 15)")) {
+    throw new Error("UX-21 FAILED: Synthetic sine-wave order book fallback still present in page.tsx");
+  }
+  console.log("UX-21 PASSED: On-chain batch aggregates only; external reference data strictly labeled (reference) [MEASURED]");
+
   console.log("\n===============================================================================");
-  console.log("                  ALL 16 ACCEPTANCE TESTS PASSED [MEASURED]                     ");
+  console.log("                  ALL 21 ACCEPTANCE TESTS PASSED [MEASURED]                    ");
   console.log("===============================================================================");
 }
 

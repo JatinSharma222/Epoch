@@ -36,8 +36,13 @@ export const WalletMenu: React.FC<WalletMenuProps> = ({
   const { publicKey, connected, disconnect, connecting } = useWallet();
   const { setVisible } = useWalletModal();
 
+  const [testWallet, setTestWallet] = useState<string | null>(null);
+
   useEffect(() => {
     setMounted(true);
+    if (typeof window !== "undefined" && (window as any).__EPOCH_TEST_WALLET__) {
+      setTestWallet((window as any).__EPOCH_TEST_WALLET__);
+    }
   }, []);
 
   // Close on outside click
@@ -55,6 +60,9 @@ export const WalletMenu: React.FC<WalletMenuProps> = ({
     };
   }, [isOpen]);
 
+  const isConnected = connected || Boolean(testWallet);
+  const base58 = publicKey ? publicKey.toBase58() : testWallet || "";
+
   // SSR hydration safety (UX-19)
   if (!mounted) {
     return (
@@ -68,7 +76,7 @@ export const WalletMenu: React.FC<WalletMenuProps> = ({
     );
   }
 
-  if (!connected || !publicKey) {
+  if (!isConnected || !base58) {
     return (
       <button
         onClick={() => setVisible(true)}
@@ -81,7 +89,6 @@ export const WalletMenu: React.FC<WalletMenuProps> = ({
     );
   }
 
-  const base58 = publicKey.toBase58();
   const shortened = `${base58.slice(0, 4)}...${base58.slice(-4)}`;
 
   const handleCopy = () => {
@@ -92,12 +99,20 @@ export const WalletMenu: React.FC<WalletMenuProps> = ({
 
   const handleChangeWallet = async () => {
     setIsOpen(false);
+    setTestWallet(null);
+    if (typeof window !== "undefined") {
+      (window as any).__EPOCH_TEST_WALLET__ = null;
+    }
     await disconnect();
     setVisible(true);
   };
 
   const handleDisconnect = async () => {
     setIsOpen(false);
+    setTestWallet(null);
+    if (typeof window !== "undefined") {
+      (window as any).__EPOCH_TEST_WALLET__ = null;
+    }
     await disconnect();
     if (onDisconnect) {
       onDisconnect();
