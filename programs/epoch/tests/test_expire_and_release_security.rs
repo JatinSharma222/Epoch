@@ -178,8 +178,24 @@ fn test_cleared_batch_with_unsettled_fills_cannot_be_expired() {
         ..Default::default()
     };
 
-    place_simulated_order(&mut batch, &mut user_a, user_a_pda, OrderSide::BUY, 50, 50, 0);
-    place_simulated_order(&mut batch, &mut user_b, user_b_pda, OrderSide::SELL, 50, 50, 0);
+    place_simulated_order(
+        &mut batch,
+        &mut user_a,
+        user_a_pda,
+        OrderSide::BUY,
+        50,
+        50,
+        0,
+    );
+    place_simulated_order(
+        &mut batch,
+        &mut user_b,
+        user_b_pda,
+        OrderSide::SELL,
+        50,
+        50,
+        0,
+    );
     assert_eq!(batch.num_orders, 2);
 
     // Batch CLEARS at tick 50, matching 50 lots
@@ -218,7 +234,9 @@ fn test_cleared_batch_with_unsettled_fills_cannot_be_expired() {
     );
     assert_eq!(batch.status, BatchStatus::CLEARED);
     assert_eq!(batch.settled_orders, 1);
-    println!("Requirement A.1 PASSED: CLEARED batch with unsettled fills correctly rejected [MEASURED]");
+    println!(
+        "Requirement A.1 PASSED: CLEARED batch with unsettled fills correctly rejected [MEASURED]"
+    );
 }
 
 #[test]
@@ -243,7 +261,11 @@ fn test_pageable_expire_and_release_across_multiple_transactions() {
             &mut batch,
             user,
             *pda,
-            if i % 2 == 0 { OrderSide::BUY } else { OrderSide::SELL },
+            if i % 2 == 0 {
+                OrderSide::BUY
+            } else {
+                OrderSide::SELL
+            },
             10,
             50,
             0,
@@ -260,10 +282,8 @@ fn test_pageable_expire_and_release_across_multiple_transactions() {
 
     // PAGE 1: Users 0..5
     {
-        let mut slice: Vec<(&Pubkey, &mut UserAccount)> = users[0..5]
-            .iter_mut()
-            .map(|(p, u)| (&*p, u))
-            .collect();
+        let mut slice: Vec<(&Pubkey, &mut UserAccount)> =
+            users[0..5].iter_mut().map(|(p, u)| (&*p, u)).collect();
         let res = simulate_expire_and_release(
             &mut batch,
             current_slot,
@@ -273,16 +293,21 @@ fn test_pageable_expire_and_release_across_multiple_transactions() {
         );
         assert!(res.is_ok());
         assert_eq!(batch.settled_orders, 5);
-        assert_eq!(batch.status, BatchStatus::VOID, "Must remain VOID until all orders are settled");
-        assert!(!is_reusable(&batch), "Ring slot must NOT be reusable while settled_orders < num_orders");
+        assert_eq!(
+            batch.status,
+            BatchStatus::VOID,
+            "Must remain VOID until all orders are settled"
+        );
+        assert!(
+            !is_reusable(&batch),
+            "Ring slot must NOT be reusable while settled_orders < num_orders"
+        );
     }
 
     // PAGE 2: Users 5..10
     {
-        let mut slice: Vec<(&Pubkey, &mut UserAccount)> = users[5..10]
-            .iter_mut()
-            .map(|(p, u)| (&*p, u))
-            .collect();
+        let mut slice: Vec<(&Pubkey, &mut UserAccount)> =
+            users[5..10].iter_mut().map(|(p, u)| (&*p, u)).collect();
         let res = simulate_expire_and_release(
             &mut batch,
             current_slot,
@@ -298,10 +323,8 @@ fn test_pageable_expire_and_release_across_multiple_transactions() {
 
     // PAGE 3: Users 10..15
     {
-        let mut slice: Vec<(&Pubkey, &mut UserAccount)> = users[10..15]
-            .iter_mut()
-            .map(|(p, u)| (&*p, u))
-            .collect();
+        let mut slice: Vec<(&Pubkey, &mut UserAccount)> =
+            users[10..15].iter_mut().map(|(p, u)| (&*p, u)).collect();
         let res = simulate_expire_and_release(
             &mut batch,
             current_slot,
@@ -317,10 +340,8 @@ fn test_pageable_expire_and_release_across_multiple_transactions() {
 
     // PAGE 4: Users 15..20 (FINAL PAGE)
     {
-        let mut slice: Vec<(&Pubkey, &mut UserAccount)> = users[15..20]
-            .iter_mut()
-            .map(|(p, u)| (&*p, u))
-            .collect();
+        let mut slice: Vec<(&Pubkey, &mut UserAccount)> =
+            users[15..20].iter_mut().map(|(p, u)| (&*p, u)).collect();
         let res = simulate_expire_and_release(
             &mut batch,
             current_slot,
@@ -330,7 +351,11 @@ fn test_pageable_expire_and_release_across_multiple_transactions() {
         );
         assert!(res.is_ok());
         assert_eq!(batch.settled_orders, 20);
-        assert_eq!(batch.status, BatchStatus::SETTLED, "Must transition to SETTLED once all 20 orders released");
+        assert_eq!(
+            batch.status,
+            BatchStatus::SETTLED,
+            "Must transition to SETTLED once all 20 orders released"
+        );
         assert!(is_reusable(&batch), "Ring slot is now reusable!");
     }
 
@@ -357,7 +382,15 @@ fn test_reject_duplicate_and_unmatched_accounts() {
         ..Default::default()
     };
 
-    place_simulated_order(&mut batch, &mut user_a, user_a_pda, OrderSide::BUY, 10, 50, 0);
+    place_simulated_order(
+        &mut batch,
+        &mut user_a,
+        user_a_pda,
+        OrderSide::BUY,
+        10,
+        50,
+        0,
+    );
 
     let close_slot = 3000;
     let max_delay = 20;
@@ -365,12 +398,9 @@ fn test_reject_duplicate_and_unmatched_accounts() {
 
     // Subtest 1: Duplicate account in same call
     {
-        let mut batch_dup = batch.clone();
-        let mut user_a_copy = user_a.clone();
-        let mut dup_accounts = [
-            (&user_a_pda, &mut user_a),
-            (&user_a_pda, &mut user_a_copy),
-        ];
+        let mut batch_dup = batch;
+        let mut user_a_copy = user_a;
+        let mut dup_accounts = [(&user_a_pda, &mut user_a), (&user_a_pda, &mut user_a_copy)];
         let res = simulate_expire_and_release(
             &mut batch_dup,
             current_slot,
@@ -383,7 +413,7 @@ fn test_reject_duplicate_and_unmatched_accounts() {
 
     // Subtest 2: Account with 0 unsettled orders in this batch (unmatched account)
     {
-        let mut batch_unmatched = batch.clone();
+        let mut batch_unmatched = batch;
         let unmatched_pda = Pubkey::new_unique();
         let mut unmatched_user = create_mock_user();
         let mut accounts = [(&unmatched_pda, &mut unmatched_user)];
@@ -424,8 +454,14 @@ fn test_invariants_and_withdrawal_after_release() {
     ];
 
     // Assert initial I-1
-    let sum_cq: i128 = users.iter().map(|(_, u)| u.collateral as i128 + u.quote_position).sum();
-    assert_eq!(sum_cq + fee_pool as i128 + insurance_fund as i128, state_vault_balance as i128);
+    let sum_cq: i128 = users
+        .iter()
+        .map(|(_, u)| u.collateral as i128 + u.quote_position)
+        .sum();
+    assert_eq!(
+        sum_cq + fee_pool as i128 + insurance_fund as i128,
+        state_vault_balance as i128
+    );
 
     let sum_base: i64 = users.iter().map(|(_, u)| u.base_position).sum();
     assert_eq!(sum_base, 0);
@@ -436,22 +472,42 @@ fn test_invariants_and_withdrawal_after_release() {
         status: BatchStatus::OPEN,
         ..Default::default()
     };
-    place_simulated_order(&mut batch, &mut users[0].1, user_1_pda, OrderSide::BUY, 50, 50, 0);
-    place_simulated_order(&mut batch, &mut users[1].1, user_2_pda, OrderSide::SELL, 50, 50, 0);
+    place_simulated_order(
+        &mut batch,
+        &mut users[0].1,
+        user_1_pda,
+        OrderSide::BUY,
+        50,
+        50,
+        0,
+    );
+    place_simulated_order(
+        &mut batch,
+        &mut users[1].1,
+        user_2_pda,
+        OrderSide::SELL,
+        50,
+        50,
+        0,
+    );
 
     // Users have pending orders -> withdraw fails
-    assert_eq!(check_withdraw_allowed(&users[0].1), Err(EpochError::HasPendingOrders));
-    assert_eq!(check_withdraw_allowed(&users[1].1), Err(EpochError::HasPendingOrders));
+    assert_eq!(
+        check_withdraw_allowed(&users[0].1),
+        Err(EpochError::HasPendingOrders)
+    );
+    assert_eq!(
+        check_withdraw_allowed(&users[1].1),
+        Err(EpochError::HasPendingOrders)
+    );
 
     // Batch expires and releases
     let close_slot = 4000;
     let max_delay = 20;
     let current_slot = 4030;
     {
-        let mut slice: Vec<(&Pubkey, &mut UserAccount)> = users[0..2]
-            .iter_mut()
-            .map(|(p, u)| (&*p, u))
-            .collect();
+        let mut slice: Vec<(&Pubkey, &mut UserAccount)> =
+            users[0..2].iter_mut().map(|(p, u)| (&*p, u)).collect();
         let res = simulate_expire_and_release(
             &mut batch,
             current_slot,
@@ -463,7 +519,10 @@ fn test_invariants_and_withdrawal_after_release() {
     }
 
     // Invariant I-1 check:
-    let post_sum_cq: i128 = users.iter().map(|(_, u)| u.collateral as i128 + u.quote_position).sum();
+    let post_sum_cq: i128 = users
+        .iter()
+        .map(|(_, u)| u.collateral as i128 + u.quote_position)
+        .sum();
     assert_eq!(
         post_sum_cq + fee_pool as i128 + insurance_fund as i128,
         state_vault_balance as i128,
@@ -472,23 +531,34 @@ fn test_invariants_and_withdrawal_after_release() {
 
     // Sum base check:
     let post_sum_base: i64 = users.iter().map(|(_, u)| u.base_position).sum();
-    assert_eq!(post_sum_base, 0, "Base conservation violated after expire_and_release");
+    assert_eq!(
+        post_sum_base, 0,
+        "Base conservation violated after expire_and_release"
+    );
 
     // All users can withdraw cleanly:
     for (_, user) in users.iter_mut() {
-        assert!(check_withdraw_allowed(user).is_ok(), "User must be able to withdraw cleanly!");
+        assert!(
+            check_withdraw_allowed(user).is_ok(),
+            "User must be able to withdraw cleanly!"
+        );
         // Simulate withdrawal of 500 USDC
         user.collateral -= 500_000_000;
         state_vault_balance -= 500_000_000;
     }
 
     // Invariant I-1 check after withdrawals:
-    let final_sum_cq: i128 = users.iter().map(|(_, u)| u.collateral as i128 + u.quote_position).sum();
+    let final_sum_cq: i128 = users
+        .iter()
+        .map(|(_, u)| u.collateral as i128 + u.quote_position)
+        .sum();
     assert_eq!(
         final_sum_cq + fee_pool as i128 + insurance_fund as i128,
         state_vault_balance as i128,
         "Invariant I-1 violated after withdrawals"
     );
 
-    println!("Requirement A.4 PASSED: Invariant I-1, sum(base)=0, and withdrawal confirmed [MEASURED]");
+    println!(
+        "Requirement A.4 PASSED: Invariant I-1, sum(base)=0, and withdrawal confirmed [MEASURED]"
+    );
 }

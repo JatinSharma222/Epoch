@@ -20,8 +20,9 @@ fn compute_funding_accrual_seconds(
     funding_period_seconds: u64,
 ) -> i128 {
     let rate = rate_bps.clamp(-FUNDING_CAP_BPS, FUNDING_CAP_BPS);
-    let accrual = (rate as f64 * oracle_price_micro as f64 * elapsed_seconds * (F_SCALE as f64 / 1000.0))
-        / (10_000.0 * funding_period_seconds as f64);
+    let accrual =
+        (rate as f64 * oracle_price_micro as f64 * elapsed_seconds * (F_SCALE as f64 / 1000.0))
+            / (10_000.0 * funding_period_seconds as f64);
     accrual.round() as i128
 }
 
@@ -53,7 +54,8 @@ fn test_funding_accrual_seconds_vs_slots_equivalence() {
     let batch_seconds = batch_slots as f64 * measured_slot_time_s; // ~0.47734s
 
     // Calibrated slots for 28,800 seconds: 28,800 / 0.23867 = 120,669 ~ 120,670 slots
-    let calibrated_funding_slots = (FUNDING_PERIOD_SECONDS as f64 / measured_slot_time_s).round() as u32;
+    let calibrated_funding_slots =
+        (FUNDING_PERIOD_SECONDS as f64 / measured_slot_time_s).round() as u32;
     assert!((calibrated_funding_slots as i32 - 120_670).abs() <= 1);
 
     let oracle_price = 150_000_000u64; // $150.00 in micro-USDC
@@ -80,8 +82,15 @@ fn test_funding_accrual_seconds_vs_slots_equivalence() {
 
     // The two formulations agree within integer slot discretization rounding (< 0.001% error, or ~7e-9 USDC per lot)
     let diff = (delta_sec - delta_slot).abs();
-    assert!(diff <= 10, "Diff between seconds and calibrated slot accrual was {}", diff);
-    assert!((diff as f64 / delta_sec as f64) < 1e-4, "Relative error exceeds 0.01%");
+    assert!(
+        diff <= 10,
+        "Diff between seconds and calibrated slot accrual was {}",
+        diff
+    );
+    assert!(
+        (diff as f64 / delta_sec as f64) < 1e-4,
+        "Relative error exceeds 0.01%"
+    );
 }
 
 #[test]
@@ -92,18 +101,17 @@ fn test_funding_accrual_full_8h_accumulation() {
     let rate_bps = 20i32;
 
     // Accrual over full 28,800s
-    let total_delta_index = compute_funding_accrual_seconds(
-        rate_bps,
-        oracle_price,
-        28_800.0,
-        FUNDING_PERIOD_SECONDS,
-    );
+    let total_delta_index =
+        compute_funding_accrual_seconds(rate_bps, oracle_price, 28_800.0, FUNDING_PERIOD_SECONDS);
 
     // Per-lot payment in micro-USDC:
     // notional = 1 lot * ($150.00 / 1000) = $0.150 = 150_000 micro-USDC
     // 20 bps of 150_000 micro-USDC = 0.0020 * 150_000 = 300 micro-USDC
-    let funding_per_lot = (1i128 * total_delta_index) / F_SCALE;
-    assert_eq!(funding_per_lot, 300, "20 bps on 150,000 micro-USDC notional must equal 300 micro-USDC");
+    let funding_per_lot = total_delta_index / F_SCALE;
+    assert_eq!(
+        funding_per_lot, 300,
+        "20 bps on 150,000 micro-USDC notional must equal 300 micro-USDC"
+    );
 }
 
 #[test]
@@ -125,7 +133,10 @@ fn test_funding_cap_clamping_seconds() {
         FUNDING_PERIOD_SECONDS,
     );
 
-    assert_eq!(capped_delta, max_delta, "Extreme funding rate must be clamped to 50 bps cap");
+    assert_eq!(
+        capped_delta, max_delta,
+        "Extreme funding rate must be clamped to 50 bps cap"
+    );
 }
 
 #[test]
@@ -142,8 +153,14 @@ fn test_funding_zero_sum_with_fee_pool_residual() {
     let short_received = ((-short_lots) as i128 * delta_index) / F_SCALE;
 
     let residual_to_fee_pool = long_owed - short_received;
-    assert!(residual_to_fee_pool >= 0, "Residual must never leak protocol funds");
+    assert!(
+        residual_to_fee_pool >= 0,
+        "Residual must never leak protocol funds"
+    );
 
     let net_system_pnl = -long_owed + short_received + residual_to_fee_pool;
-    assert_eq!(net_system_pnl, 0, "Funding transfer must be zero-sum with fee pool capture");
+    assert_eq!(
+        net_system_pnl, 0,
+        "Funding transfer must be zero-sum with fee pool capture"
+    );
 }
