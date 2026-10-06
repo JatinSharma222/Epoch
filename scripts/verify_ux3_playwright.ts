@@ -29,8 +29,11 @@ async function runPlaywrightVerification() {
   });
 
   const resolutions = [
+    { name: "1100x700", width: 1100, height: 700 },
+    { name: "1232x800", width: 1232, height: 800 },
     { name: "1280x720", width: 1280, height: 720 },
     { name: "1440x900", width: 1440, height: 900 },
+    { name: "1920x1080", width: 1920, height: 1080 },
   ];
 
   const consoleErrors: ConsoleLog[] = [];

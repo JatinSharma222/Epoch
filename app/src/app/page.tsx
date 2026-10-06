@@ -51,10 +51,12 @@ export default function Home() {
   const [selectedOffsetBps, setSelectedOffsetBps] = useState<number>(0);
   const [isPlacingOrder, setIsPlacingOrder] = useState<boolean>(false);
 
-  // On-Chain Slot & Batch Tracking
-  const [currentSlot, setCurrentSlot] = useState<number>(331940280);
-  const [currentBatchId, setCurrentBatchId] = useState<number>(165970140);
+  // On-Chain Slot & Batch Tracking (B.1: batch_id = (slot - start_slot) / N)
+  const [currentSlot, setCurrentSlot] = useState<number>(508012057);
+  const [currentBatchId, setCurrentBatchId] = useState<number>(319700);
   const [slotsRemaining, setSlotsRemaining] = useState<number>(2);
+  const [startSlot, setStartSlot] = useState<number>(507372656);
+  const [batchSlots, setBatchSlots] = useState<number>(2);
   const [solBalance, setSolBalance] = useState<number | null>(null);
 
   // User Balances & Margin Account (09 §6.1: empty without wallet)
@@ -155,9 +157,35 @@ export default function Home() {
     };
   }, []);
 
-  // 2. LIVE SOLANA SLOT & BATCH CYCLE (09 §3.5 rule 14 & B.5: No local reactive simulation on RPC failure)
+  // 2. LIVE SOLANA SLOT & BATCH CYCLE (09 §3.5 rule 14, B.5, and Round 8 B.1: (slot - start_slot) / N)
   useEffect(() => {
     let mounted = true;
+
+    // Fetch on-chain market params (start_slot, batch_slots)
+    const fetchMarketParams = async () => {
+      try {
+        const [marketPda] = getMarketPda();
+        const dummyWallet = {
+          publicKey: PublicKey.default,
+          signTransaction: async () => {},
+          signAllTransactions: async () => {},
+        };
+        const provider = new AnchorProvider(connection, dummyWallet as any, { commitment: "confirmed" });
+        const program = new Program(epochIdl as any, provider);
+        const marketAcc = await (program.account as any).market.fetch(marketPda);
+        if (mounted && marketAcc) {
+          if (marketAcc.startSlot) {
+            setStartSlot(marketAcc.startSlot.toNumber());
+          }
+          if (marketAcc.params?.batchSlots) {
+            setBatchSlots(marketAcc.params.batchSlots);
+          }
+        }
+      } catch {
+        // Fallback to known on-chain parameters (507372656, 2)
+      }
+    };
+    fetchMarketParams();
 
     const syncSlot = async () => {
       try {
@@ -165,9 +193,12 @@ export default function Home() {
         if (mounted && slot > 0) {
           setIsDevnetOutage(false);
           setCurrentSlot(slot);
-          const bId = Math.floor(slot / 2);
+          const sSlot = startSlot || 507372656;
+          const bSlots = batchSlots || 2;
+          const bId = Math.max(0, Math.floor((slot - sSlot) / bSlots));
           setCurrentBatchId(bId);
-          setSlotsRemaining(2 - (slot % 2));
+          const rem = bSlots - ((slot - sSlot) % bSlots);
+          setSlotsRemaining(rem);
         }
       } catch {
         if (mounted) {
@@ -182,7 +213,7 @@ export default function Home() {
       mounted = false;
       clearInterval(interval);
     };
-  }, [connection]);
+  }, [connection, startSlot, batchSlots]);
 
   // 2b. ON-CHAIN BATCH AGGREGATES SYNC (09 §3.5 rule 11 & C.6)
   useEffect(() => {

@@ -1720,6 +1720,16 @@
       "code": 6030,
       "name": "BatchNotStale",
       "msg": "Batch is not stale yet"
+    },
+    {
+      "code": 6031,
+      "name": "CannotExpireClearedBatch",
+      "msg": "Cannot expire a cleared batch with matched trades"
+    },
+    {
+      "code": 6032,
+      "name": "InvalidUserAccount",
+      "msg": "User account does not match any unsettled order in batch"
     }
   ],
   "types": [

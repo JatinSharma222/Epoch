@@ -127,4 +127,12 @@ pub enum EpochError {
     /// Batch is not stale yet and cannot be expired.
     #[msg("Batch is not stale yet")]
     BatchNotStale,
+
+    /// Cannot expire a batch that has already been cleared; use settle_users instead.
+    #[msg("Cannot expire a cleared batch with matched trades")]
+    CannotExpireClearedBatch,
+
+    /// User account does not match any unsettled order in the batch.
+    #[msg("User account does not match any unsettled order in batch")]
+    InvalidUserAccount,
 }

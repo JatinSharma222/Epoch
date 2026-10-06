@@ -52,6 +52,13 @@ pub fn handle_expire_and_release<'info>(
     let close_slot = start_slot + (batch_id + 1) * n_slots;
     let max_delay = market.params.max_clear_delay_slots as u64;
 
+    // Security Requirement A.1: Never expire or void a CLEARED batch.
+    // CLEARED batches contain executed trades and MUST be settled via settle_users.
+    require!(
+        batch.status != BatchStatus::CLEARED,
+        EpochError::CannotExpireClearedBatch
+    );
+
     // 3. Stale / Void check:
     // Batch must either already be VOID, or be OPEN and past close_slot + max_clear_delay_slots
     if batch.status == BatchStatus::OPEN {
@@ -152,20 +159,21 @@ pub fn handle_expire_and_release<'info>(
             user_released_orders += 1;
         }
 
-        if user_released_orders > 0 {
-            emit!(UserSettled {
-                user: user_pda,
-                batch_id,
-                fill_lots: 0,
-                fee: 0,
-            });
-            msg!(
-                "Released {} orders for user {} in stale batch {}",
-                user_released_orders,
-                user_pda,
-                batch_id
-            );
-        }
+        // A.3: Reject accounts that do not match any unsettled order in this batch
+        require!(user_released_orders > 0, EpochError::InvalidUserAccount);
+
+        emit!(UserSettled {
+            user: user_pda,
+            batch_id,
+            fill_lots: 0,
+            fee: 0,
+        });
+        msg!(
+            "Released {} orders for user {} in stale batch {}",
+            user_released_orders,
+            user_pda,
+            batch_id
+        );
     }
 
     // Funding residual goes to fee_pool

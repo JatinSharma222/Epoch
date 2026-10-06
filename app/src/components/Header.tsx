@@ -97,7 +97,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* 24h & Protocol Metrics */}
         <div className="flex items-center gap-3.5 text-[11px] shrink-0">
-          <div className="flex flex-col">
+          <div className="hidden min-[1200px]:flex flex-col">
             <span className="text-[#848E9C] text-[10px] font-sans">24h Change</span>
             <span
               className={`font-mono font-medium tabular-nums ${
@@ -108,7 +108,7 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
           </div>
 
-          <div className="flex flex-col hidden lg:flex">
+          <div className="hidden xl:flex flex-col">
             <span className="text-[#848E9C] text-[10px] font-sans flex items-center gap-1">
               Funding (8h)
               <span className="text-[9px] text-[#848E9C] tabular-nums font-mono">({stats?.fundingCountdown || "08:00:00"})</span>
@@ -138,8 +138,8 @@ export const Header: React.FC<HeaderProps> = ({
           {/* FBA Batch Indicator & Countdown (09 §2.2) */}
           <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-[#161B22] border bp-border text-[10px] font-mono">
             <span className="w-1.5 h-1.5 rounded-full bg-[#0ECB81] animate-pulse"></span>
-            <span className="text-[#848E9C] hidden sm:inline">Slot #{currentSlot || "..."}</span>
-            <span className="text-[#4B5563] hidden sm:inline">·</span>
+            <span className="text-[#848E9C] hidden min-[1350px]:inline">Slot #{currentSlot || "..."}</span>
+            <span className="text-[#4B5563] hidden min-[1350px]:inline">·</span>
             <span className="text-[#F0F3F6] font-medium">Batch #{currentBatchId}</span>
             <div className="w-10 h-1.5 rounded-full bg-[#1E2430] overflow-hidden ml-1">
               <div
