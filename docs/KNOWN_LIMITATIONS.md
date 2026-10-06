@@ -10,8 +10,9 @@ This document provides a transparent, rigorous accounting of the current boundar
 | :--- | :--- | :--- |
 | **Max Orders Per Batch** | **128 orders** | The batch accounts use zero-copy Borsh layouts fixed at 128 orders to fit within Solana account size and single-transaction clearing Compute Unit (CU) constraints. Orders exceeding 128 in a batch are rejected with `EpochError::BatchFull`. |
 | **Ring Buffer Size ($R$)** | **8 ring slots** | Ring index is calculated as `batch_id % 8`. A ring slot cannot be reused while it holds unsettled orders (`RingSlotBusy`, error 6007). Lookahead window is constrained to $L = 3$ batches to prevent ring wrapping collisions under normal clearing latency. |
-| **Batch Duration ($N$)** | **2 slots ($\approx 480\text{--}800\text{ ms}$)** | Nominally 2 slots. On Devnet, slot duration averages $\approx 240\text{ ms}$ (measured), resulting in batch closure every $\approx 480\text{ ms}$. Batches close automatically on-chain based on slot height (`current_slot >= close_slot`). |
-| **Max Clearing Delay** | **20 slots ($\approx 5\text{--}8\text{ s}$)** | If no keeper clears a batch within 20 slots after closure, the batch becomes stale. Stale batches cannot clear matched trades; anyone may call `expire_and_release` to void the batch, release user pending orders, and unblock the ring slot. |
+| **Batch Duration ($N$)** | **2 slots ($477\text{ ms}$ [MEASURED: 238.67 ms/slot])** | Nominally 2 slots. On Devnet, slot duration averages $\approx 238.67\text{ ms}$ (measured across 3,000 slots and 15,000 consensus samples), resulting in batch closure every $\approx 477\text{ ms}$. Batches close automatically on-chain based on slot height (`current_slot >= close_slot`). |
+| **Lookahead Window ($L$)** | **3 batches ($6\text{ slots} = 1.43\text{ s}$)** | Orders may target batches up to $L = 3$ ahead ($1.43\text{ s}$ horizon), ensuring reliable landing under network jitter while preventing ring wrap collisions. |
+| **Max Clearing Delay** | **20 slots ($4.78\text{ s}$ [MEASURED])** | If no keeper clears a batch within 20 slots ($4.78\text{ s}$) after closure, the batch becomes stale. Stale batches cannot clear matched trades; anyone may call `expire_and_release` to void the batch, release user pending orders, and unblock the ring slot. |
 
 ---
 

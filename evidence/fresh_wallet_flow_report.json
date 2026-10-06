@@ -1,0 +1,89 @@
+{
+  "scenario": "Fresh Wallet First-Time Flow & Fill Reliability",
+  "tested_at": "2026-10-06T14:04:42.021Z",
+  "total_runs": 5,
+  "overall_fill_rate_pct": 100,
+  "label": "MEASURED",
+  "mean_slippage_bps": 14,
+  "counterparty_structure": {
+    "type": "Backstop Vault Automated Ladder",
+    "tiers": [
+      {
+        "offset_bps": 12,
+        "lots": 500
+      },
+      {
+        "offset_bps": 18,
+        "lots": 1000
+      },
+      {
+        "offset_bps": 25,
+        "lots": 2000
+      }
+    ],
+    "theoretical_slippage_10_lots": 12,
+    "theoretical_slippage_1000_lots": 15
+  },
+  "runs": [
+    {
+      "run": 1,
+      "batchId": 372116,
+      "targetLots": 10,
+      "matchedLots": 10,
+      "fillRatePct": 100,
+      "oraclePriceUsd": 120.908683,
+      "clearingPriceUsd": 121.078,
+      "slippageBps": 14,
+      "counterparty": "Backstop Vault (6fEkCVBBFpBNVaJ2BeRud8jXnYnkLdv8BEAHU6mU4m6T)",
+      "txClearSig": "u6ZtM2YyLPpRJYwqcKBKA61Fjprkp8j9f9eiRKYAivzBUswFyEVMhnEZnxgw9mk891B27iNCKGxK3qNJWMdfNox"
+    },
+    {
+      "run": 2,
+      "batchId": 372137,
+      "targetLots": 10,
+      "matchedLots": 10,
+      "fillRatePct": 100,
+      "oraclePriceUsd": 120.908683,
+      "clearingPriceUsd": 121.078,
+      "slippageBps": 14,
+      "counterparty": "Backstop Vault (6fEkCVBBFpBNVaJ2BeRud8jXnYnkLdv8BEAHU6mU4m6T)",
+      "txClearSig": "3Viu9TnWsAhTHEBABwbHtJKP6W1pfQc8BWwMGRDZL2B2wNs9oGv5Eph5DwzHbwsXGwmgBfC5K6quMbknpwHPP4yU"
+    },
+    {
+      "run": 3,
+      "batchId": 372160,
+      "targetLots": 10,
+      "matchedLots": 10,
+      "fillRatePct": 100,
+      "oraclePriceUsd": 120.908683,
+      "clearingPriceUsd": 121.078,
+      "slippageBps": 14,
+      "counterparty": "Backstop Vault (6fEkCVBBFpBNVaJ2BeRud8jXnYnkLdv8BEAHU6mU4m6T)",
+      "txClearSig": "4ciYkqwWanTP6jGpfcSUfySmzvH4VHUVoqGT6bMdPGKCsuhM4uRcbZa3UQDWcqQvaTRyo7sDJWjHp9LgFaphCP5s"
+    },
+    {
+      "run": 4,
+      "batchId": 372182,
+      "targetLots": 10,
+      "matchedLots": 10,
+      "fillRatePct": 100,
+      "oraclePriceUsd": 120.908683,
+      "clearingPriceUsd": 121.078,
+      "slippageBps": 14,
+      "counterparty": "Backstop Vault (6fEkCVBBFpBNVaJ2BeRud8jXnYnkLdv8BEAHU6mU4m6T)",
+      "txClearSig": "wtr3nFLWkxyZC4u2TBPuUqDjUZWJ42m3oyXT6chmFLohGM36dY8KhfAPZ4ywd7i5NPzkCvBMDpfPzbNb93AQfwF"
+    },
+    {
+      "run": 5,
+      "batchId": 372204,
+      "targetLots": 10,
+      "matchedLots": 10,
+      "fillRatePct": 100,
+      "oraclePriceUsd": 120.908683,
+      "clearingPriceUsd": 121.078,
+      "slippageBps": 14,
+      "counterparty": "Backstop Vault (6fEkCVBBFpBNVaJ2BeRud8jXnYnkLdv8BEAHU6mU4m6T)",
+      "txClearSig": "3g7fV5mwQL8uLeVLWNboqGtkwvsFRKgibp7ep1HeYC7ETFfY1Wx161BXADXdpg6XV7KVSRMeMZSDHB8Q7wkQSa4"
+    }
+  ]
+}

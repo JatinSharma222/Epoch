@@ -655,7 +655,7 @@ export default function Home() {
             <span className="font-semibold uppercase tracking-wider">Keeper Offline:</span>
             <span>Last batch cleared {lastClearedAgeSec}s ago (&gt;15s threshold). Automated clearing and user settlements are delayed.</span>
           </div>
-          <span className="hidden sm:inline text-[11px] text-[#848E9C]">Target batch duration: 2 slots (800ms)</span>
+          <span className="hidden sm:inline text-[11px] text-[#848E9C]">Target batch duration: 2 slots (~477ms [MEASURED: 239ms/slot])</span>
         </div>
       )}
 

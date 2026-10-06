@@ -39,6 +39,23 @@ export class KeeperLogger {
     }
   }
 
+  public logHealth(entry: {
+    timestamp: string;
+    slot: number;
+    keeperBalanceSol: number;
+    status: "HEALTHY" | "DEGRADED" | "CRITICAL";
+    nextBatchToClear?: number;
+    lastBatchClearedAgeSec?: number;
+    details?: string;
+  }): void {
+    const healthPath = path.resolve(path.dirname(this.logFilePath), "health.log");
+    try {
+      fs.appendFileSync(healthPath, JSON.stringify(entry) + "\n", "utf-8");
+    } catch (err) {
+      console.warn(`[keeper] Failed to write health log:`, err);
+    }
+  }
+
   public info(msg: string, ...args: any[]): void {
     console.log(`[keeper:info] ${msg}`, ...args);
   }

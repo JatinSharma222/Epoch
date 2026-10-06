@@ -12,7 +12,7 @@ import epochIdl from "../app/src/lib/epoch_idl.json";
 import { getMarketPda } from "../app/src/lib/constants";
 
 async function main() {
-  const rpcUrl = process.env.EPOCH_RPC_URL || "https://devnet.helius-rpc.com/?api-key=7f051d79-ac86-4394-bae9-346f64974d1a";
+  const rpcUrl = process.env.EPOCH_RPC_URL || "https://api.devnet.solana.com";
   const connection = new Connection(rpcUrl, "confirmed");
 
   const keypairPath =
@@ -38,16 +38,16 @@ async function main() {
       priceTick: currentMarket.params.priceTick,
       minOrderLots: currentMarket.params.minOrderLots,
       minOrderNotional: currentMarket.params.minOrderNotional,
-      fundingPeriodSlots: 72000, // 72,000 slots = 8.0 hours
+      fundingPeriodSlots: 120670, // 120,670 slots = 28,800s (8.0 hours at measured 238.67ms/slot)
       batchSlots: currentMarket.params.batchSlots,
-      lookahead: currentMarket.params.lookahead,
+      lookahead: 4, // L=4 batches ahead provides robust landing window on devnet
       kTicks: currentMarket.params.kTicks,
       tickBps: currentMarket.params.tickBps,
       imrBps: currentMarket.params.imrBps,
       mmrBps: currentMarket.params.mmrBps,
       feeBps: currentMarket.params.feeBps,
       liqPenaltyBps: currentMarket.params.liqPenaltyBps,
-      maxOracleAgeSecs: currentMarket.params.maxOracleAgeSecs,
+      maxOracleAgeSecs: 600, // 600s accommodates Devnet Pyth update cadence (2-5m updates)
       maxConfBps: currentMarket.params.maxConfBps,
       maxClearDelaySlots: currentMarket.params.maxClearDelaySlots,
       maxOrdersPerBatch: currentMarket.params.maxOrdersPerBatch,

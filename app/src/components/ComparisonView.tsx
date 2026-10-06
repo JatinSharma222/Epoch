@@ -200,8 +200,8 @@ export const ComparisonView: React.FC = () => {
               <tr>
                 <td className="py-2.5 px-4 font-sans font-medium text-white">Execution Matching</td>
                 <td className="py-2.5 px-4 text-[#848E9C]">Continuous serial matching</td>
-                <td className="py-2.5 px-4 text-[#0ECB81] font-semibold">Discrete 2-slot batch (800ms)</td>
-                <td className="py-2.5 px-4 text-[#00F0FF] font-semibold">Discrete 2-slot batch (800ms)</td>
+                <td className="py-2.5 px-4 text-[#0ECB81] font-semibold">Discrete 2-slot batch (~477ms)</td>
+                <td className="py-2.5 px-4 text-[#00F0FF] font-semibold">Discrete 2-slot batch (~477ms)</td>
               </tr>
               <tr>
                 <td className="py-2.5 px-4 font-sans font-medium text-white">Clearing Price</td>
@@ -267,7 +267,7 @@ export const ComparisonView: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px] text-[#B7BDC6]">
             <div className="p-3 rounded bg-[#12161C] border bp-border space-y-1.5">
               <strong className="text-white block font-sans">Model Parameters & Dataset:</strong>
-              <div>• <strong>Batch Duration:</strong> 2 Solana slots (~800 ms cadence).</div>
+              <div>• <strong>Batch Duration:</strong> 2 Solana slots (~477 ms cadence [MEASURED: 239ms/slot]).</div>
               <div>• <strong>Protocol Fees:</strong> 5.0 bps maker, 5.0 bps taker (symmetrical fee).</div>
               <div>• <strong>Standard Notional:</strong> $100,000 USD (1 bps = $10.00).</div>
               <div>• <strong>Dataset & Scaling:</strong> S-1 used 1,000 Binance SOL/USDT 1-minute historical candles (mean price $120.56, P50 move 1.66 bps). Sub-second volatility is modeled via standard Brownian motion square-root-of-time scaling (σ √Δt). This provides a continuous mathematical proxy for high-frequency tick behavior.</div>

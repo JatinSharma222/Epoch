@@ -71,7 +71,7 @@ def run_s5_simulation():
             "batch_slots_N": n_slots,
             "lookahead_batches_L": l,
             "target_horizon_slots": (l + 1) * n_slots,
-            "horizon_seconds": round((l + 1) * n_slots * 0.4, 2),
+            "horizon_seconds": round((l + 1) * n_slots * 0.239, 2),
             "landing_success_rate_pct": success_rate,
             "expired_miss_rate_pct": expired_rate,
             "early_buffer_rest_rate_pct": early_rate,
@@ -96,6 +96,7 @@ def run_s5_simulation():
             "source": "Empirical Solana Devnet Benchmark T-17 / L-1 (P50 6 / P90 7 slots)",
         },
         "fixed_batch_duration_N": n_slots,
+        "measured_slot_time_s": 0.239,
         "sweep_by_lookahead_L": sweep_results,
         "verdict": {
             "hypothesis": "H5: With target-ahead, at least 90% of orders land in their target batch",
@@ -104,11 +105,11 @@ def run_s5_simulation():
             "l3_success_rate_pct": l3_res["landing_success_rate_pct"],
             "l5_success_rate_pct": l5_res["landing_success_rate_pct"],
             "explanation": (
-                f"With batch_slots fixed at N=2 (800ms) and empirical landing distribution (P50=6, P90=7 slots), "
-                f"a lookahead of L=3 provides an 8-slot horizon, achieving {l3_res['landing_success_rate_pct']}% on-time landing "
+                f"With batch_slots fixed at N=2 (~478ms at measured 239ms slot time) and empirical landing distribution (P50=6, P90=7 slots), "
+                f"a lookahead of L=3 provides an 8-slot horizon (1.91s), achieving {l3_res['landing_success_rate_pct']}% on-time landing "
                 f"[SIMULATED, model result under these assumptions]. Because P90 latency is 7 slots, an 8-slot window leaves only 1 slot of margin, "
                 f"resulting in {l3_res['expired_miss_rate_pct']}% expired orders under cluster jitter. "
-                f"Expanding lookahead to L=5 (12 slots / 4.8s horizon) elevates on-time inclusion to {l5_res['landing_success_rate_pct']}%, "
+                f"Expanding lookahead to L=5 (12 slots / 2.87s horizon) elevates on-time inclusion to {l5_res['landing_success_rate_pct']}%, "
                 f"robustly satisfying Hypothesis H5 without changing batch duration N."
             )
         }

@@ -11,12 +11,13 @@
     "source": "Empirical Solana Devnet Benchmark T-17 / L-1 (P50 6 / P90 7 slots)"
   },
   "fixed_batch_duration_N": 2,
+  "measured_slot_time_s": 0.239,
   "sweep_by_lookahead_L": {
     "lookahead_L_1": {
       "batch_slots_N": 2,
       "lookahead_batches_L": 1,
       "target_horizon_slots": 4,
-      "horizon_seconds": 1.6,
+      "horizon_seconds": 0.96,
       "landing_success_rate_pct": 0.38,
       "expired_miss_rate_pct": 99.62,
       "early_buffer_rest_rate_pct": 0.0,
@@ -26,7 +27,7 @@
       "batch_slots_N": 2,
       "lookahead_batches_L": 2,
       "target_horizon_slots": 6,
-      "horizon_seconds": 2.4,
+      "horizon_seconds": 1.43,
       "landing_success_rate_pct": 18.28,
       "expired_miss_rate_pct": 81.72,
       "early_buffer_rest_rate_pct": 0.36,
@@ -36,7 +37,7 @@
       "batch_slots_N": 2,
       "lookahead_batches_L": 3,
       "target_horizon_slots": 8,
-      "horizon_seconds": 3.2,
+      "horizon_seconds": 1.91,
       "landing_success_rate_pct": 68.87,
       "expired_miss_rate_pct": 31.13,
       "early_buffer_rest_rate_pct": 18.52,
@@ -46,7 +47,7 @@
       "batch_slots_N": 2,
       "lookahead_batches_L": 4,
       "target_horizon_slots": 10,
-      "horizon_seconds": 4.0,
+      "horizon_seconds": 2.39,
       "landing_success_rate_pct": 94.67,
       "expired_miss_rate_pct": 5.33,
       "early_buffer_rest_rate_pct": 68.84,
@@ -56,7 +57,7 @@
       "batch_slots_N": 2,
       "lookahead_batches_L": 5,
       "target_horizon_slots": 12,
-      "horizon_seconds": 4.8,
+      "horizon_seconds": 2.87,
       "landing_success_rate_pct": 98.9,
       "expired_miss_rate_pct": 1.1,
       "early_buffer_rest_rate_pct": 94.64,
@@ -66,7 +67,7 @@
       "batch_slots_N": 2,
       "lookahead_batches_L": 6,
       "target_horizon_slots": 14,
-      "horizon_seconds": 5.6,
+      "horizon_seconds": 3.35,
       "landing_success_rate_pct": 99.48,
       "expired_miss_rate_pct": 0.52,
       "early_buffer_rest_rate_pct": 98.9,
@@ -79,6 +80,6 @@
     "supported_at_L5": true,
     "l3_success_rate_pct": 68.87,
     "l5_success_rate_pct": 98.9,
-    "explanation": "With batch_slots fixed at N=2 (800ms) and empirical landing distribution (P50=6, P90=7 slots), a lookahead of L=3 provides an 8-slot horizon, achieving 68.87% on-time landing [SIMULATED, model result under these assumptions]. Because P90 latency is 7 slots, an 8-slot window leaves only 1 slot of margin, resulting in 31.13% expired orders under cluster jitter. Expanding lookahead to L=5 (12 slots / 4.8s horizon) elevates on-time inclusion to 98.9%, robustly satisfying Hypothesis H5 without changing batch duration N."
+    "explanation": "With batch_slots fixed at N=2 (~478ms at measured 239ms slot time) and empirical landing distribution (P50=6, P90=7 slots), a lookahead of L=3 provides an 8-slot horizon (1.91s), achieving 68.87% on-time landing [SIMULATED, model result under these assumptions]. Because P90 latency is 7 slots, an 8-slot window leaves only 1 slot of margin, resulting in 31.13% expired orders under cluster jitter. Expanding lookahead to L=5 (12 slots / 2.87s horizon) elevates on-time inclusion to 98.9%, robustly satisfying Hypothesis H5 without changing batch duration N."
   }
 }

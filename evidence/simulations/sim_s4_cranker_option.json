@@ -9,45 +9,45 @@
   "assumptions": {
     "slot_time_seconds": 0.4,
     "protocol_fee_bps": 5.0,
-    "tested_slots_count": 150000
+    "tested_slots_count": 251000
   },
   "windows": {
     "mainnet_w4": {
       "window_slots": 4,
-      "window_duration_seconds": 1.6,
-      "mean_price_excursion_bps": 1.903,
-      "p90_price_excursion_bps": 4.057,
-      "cranker_option_mean_bps": 1.611,
-      "cranker_option_p50_bps": 1.175,
-      "cranker_option_p90_bps": 3.459,
-      "cranker_option_p99_bps": 7.452,
-      "ratio_to_protocol_fee_pct": 32.2,
-      "effect_size_vs_5bps_fee": -3.389,
-      "mean_usd_value_per_100_sol_batch": 1.94,
+      "window_duration_seconds": 0.956,
+      "mean_price_excursion_bps": 1.91,
+      "p90_price_excursion_bps": 4.068,
+      "cranker_option_mean_bps": 1.629,
+      "cranker_option_p50_bps": 1.177,
+      "cranker_option_p90_bps": 3.491,
+      "cranker_option_p99_bps": 7.516,
+      "ratio_to_protocol_fee_pct": 32.6,
+      "effect_size_vs_5bps_fee": -3.371,
+      "mean_usd_value_per_100_sol_batch": 1.96,
       "exceeds_protocol_fee": false
     },
     "devnet_w20": {
       "window_slots": 20,
-      "window_duration_seconds": 8.0,
-      "mean_price_excursion_bps": 2.936,
-      "p90_price_excursion_bps": 5.968,
-      "cranker_option_mean_bps": 2.262,
-      "cranker_option_p50_bps": 1.748,
-      "cranker_option_p90_bps": 4.581,
-      "cranker_option_p99_bps": 9.501,
+      "window_duration_seconds": 4.78,
+      "mean_price_excursion_bps": 2.92,
+      "p90_price_excursion_bps": 5.961,
+      "cranker_option_mean_bps": 2.258,
+      "cranker_option_p50_bps": 1.737,
+      "cranker_option_p90_bps": 4.633,
+      "cranker_option_p99_bps": 9.465,
       "ratio_to_protocol_fee_pct": 45.2,
-      "effect_size_vs_5bps_fee": -2.738,
-      "mean_usd_value_per_100_sol_batch": 2.73,
+      "effect_size_vs_5bps_fee": -2.742,
+      "mean_usd_value_per_100_sol_batch": 2.72,
       "exceeds_protocol_fee": false
     }
   },
   "verdict": {
     "hypothesis": "H4: Cranker oracle-selection option is worth less than the fee per trade in a tight window (W=4)",
     "supported_mainnet_w4": true,
-    "mean_option_w4_bps": 1.611,
-    "ratio_w4_to_fee_pct": 32.2,
-    "mean_option_w20_bps": 2.262,
+    "mean_option_w4_bps": 1.629,
+    "ratio_w4_to_fee_pct": 32.6,
+    "mean_option_w20_bps": 2.258,
     "ratio_w20_to_fee_pct": 45.2,
-    "explanation": "In a 4-slot window (mainnet), cranker option value averages 1.611 bps (32.2% of the 5.0 bps protocol fee, effect size: -3.389 bps) [SIMULATED, model result under these assumptions], strictly below the protocol fee. In a 20-slot window (devnet), option value averages 2.262 bps (45.2% of fee, effect size: -2.738 bps), illustrating why permissionless keeper racing is required to keep delay minimal."
+    "explanation": "In a 4-slot window (mainnet), cranker option value averages 1.629 bps (32.6% of the 5.0 bps protocol fee, effect size: -3.371 bps) [SIMULATED, model result under these assumptions], strictly below the protocol fee. In a 20-slot window (devnet), option value averages 2.258 bps (45.2% of fee, effect size: -2.742 bps), illustrating why permissionless keeper racing is required to keep delay minimal."
   }
 }

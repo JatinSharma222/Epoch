@@ -26,12 +26,12 @@ def run_s4_simulation():
     
     np.random.seed(777)
     
-    # 400ms per slot on Solana.
-    # Synthesize slot-level price paths (150 slots per 1-minute candle)
+    # Measured Devnet slot time: 239ms (0.239s).
+    # Synthesize slot-level price paths (251 slots per 1-minute candle: 60s / 0.239s = 251)
     slot_prices = []
     for c in candles:
         p_open, p_high, p_low, p_close = c["open"], c["high"], c["low"], c["close"]
-        steps = 150 # 150 slots * 400ms = 60s
+        steps = 251 # 251 slots * 0.239s = 60s
         t = np.linspace(0, 1, steps)
         noise = np.random.normal(0, (p_high - p_low) / 4.0, steps)
         noise[0], noise[-1] = 0, 0
@@ -42,10 +42,10 @@ def run_s4_simulation():
     slot_prices = np.array(slot_prices)
     total_slots = len(slot_prices)
     
-    # Test windows: W=4 slots (mainnet target, ~1.6s) and W=20 slots (devnet permissive, ~8.0s)
+    # Test windows: W=4 slots (~0.96s) and W=20 slots (~4.78s) at measured 239ms slot time
     windows = {
-        "mainnet_w4": {"slots": 4, "desc": "Mainnet tight window (4 slots / 1.6s)"},
-        "devnet_w20": {"slots": 20, "desc": "Devnet permissive window (20 slots / 8.0s)"},
+        "mainnet_w4": {"slots": 4, "desc": "Mainnet tight window (4 slots / 0.96s at 239ms slot time)"},
+        "devnet_w20": {"slots": 20, "desc": "Devnet permissive window (20 slots / 4.78s at 239ms slot time)"},
     }
     
     window_results = {}
@@ -85,7 +85,7 @@ def run_s4_simulation():
         
         window_results[w_key] = {
             "window_slots": w_size,
-            "window_duration_seconds": w_size * 0.4,
+            "window_duration_seconds": round(w_size * 0.239, 3),
             "mean_price_excursion_bps": float(round(np.mean(exc_arr), 3)),
             "p90_price_excursion_bps": float(round(np.percentile(exc_arr, 90), 3)),
             "cranker_option_mean_bps": mean_opt,

@@ -24,7 +24,7 @@ Conventional decentralized perpetual exchanges match orders serially in continuo
 
 **Epoch** replaces continuous serial matching with discrete **Frequent Batch Auctions (FBA)** executing natively on Solana:
 
-1. **Discrete Auction Windows:** Time is partitioned into discrete batch intervals (default: $N = 2$ Solana slots, ~800 ms).
+1. **Discrete Auction Windows:** Time is partitioned into discrete batch intervals (default: $N = 2$ Solana slots, ~477 ms [MEASURED: 238.67 ms/slot]).
 2. **Oracle-Relative Limit Orders:** Traders submit limit orders pegged as basis-point offsets relative to the Pyth oracle (e.g. *Buy up to Oracle + 4 bps*). Resting quotes automatically track price drift and expire cleanly at batch close, eliminating stale quote sniping.
 3. **On-Chain Deterministic Uniform Price Clearing:** When a batch closes, the Solana program deterministically computes the single market-clearing tick ($P^*$) that maximizes matched volume ($V_{max}$) and minimizes volume imbalance.
 4. **Uniform Execution:** Every crossing order fills at the **exact same uniform clearing price**. Intra-batch transaction arrival order within a batch provides zero price or execution advantage.
@@ -150,7 +150,7 @@ The permissionless keeper daemon (`keeper/src/index.ts`) ensures continuous auto
 ```
 
 ### Key Keeper Policies:
-1. **Empty Batch Skipping Policy:** With $N = 2$ slots (800ms), there are 108,000 batches per day. Clearing empty batches costs 0.54 SOL/day and ~500,000 RPC calls/day. Because `place_order.rs` allows overwriting empty ring slots directly without clearing, the keeper skips empty batches during quiet periods, preserving funds and RPC quota.
+1. **Empty Batch Skipping Policy:** With $N = 2$ slots (~477 ms), there are ~181,000 batches per day. Clearing empty batches costs ~0.9 SOL/day and ~900,000 RPC calls/day. Because `place_order.rs` allows overwriting empty ring slots directly without clearing, the keeper skips empty batches during quiet periods, preserving funds and RPC quota.
 2. **Permissionless Redundancy & Racing:** Clearing and settlement calls are idempotent. Multiple independent keepers can race without risking double-clearing, fund loss, or invalid state transitions.
 3. **Systemd Daemon Deployment:** Deployable as a systemd service (`/etc/systemd/system/epoch-keeper.service`) with auto-restart, health-check telemetry, and automated keypair rotation.
 
@@ -184,7 +184,7 @@ Per the security analysis in [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) and 
 
 - **What Epoch Solves (Eliminated by Construction):**
   1. Intra-batch ordering sandwiches: Banned mathematically because all orders execute at the identical uniform price $P^*$.
-  2. Priority-gas wars: Transaction arrival time within an 800ms window grants zero execution or price priority.
+  2. Priority-gas wars: Transaction arrival time within an ~480ms window grants zero execution or price priority.
   3. Toxic intra-batch reordering: Matched lots are allocated via deterministic pro-rata math with integer-exact dust rules.
 - **What Epoch Does NOT Solve (Threat R4 Boundary):**
   1. Last-look informational advantage: An actor observing external centralized exchange price jumps at $t = T_{close} - 50$ms can submit late orders into the closing batch against resting quotes. This informational latency advantage is not eliminated.

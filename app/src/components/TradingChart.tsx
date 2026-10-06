@@ -640,7 +640,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
                 </div>
                 <div>
                   <span className="text-[#848e9c] text-[10px]">Batch Duration (N):</span>
-                  <div className="text-[#00f0ff] font-semibold">2 Slots (~800 ms)</div>
+                  <div className="text-[#00f0ff] font-semibold">2 Slots (~477 ms [MEASURED])</div>
                 </div>
                 <div>
                   <span className="text-[#848e9c] text-[10px]">Price Collar:</span>

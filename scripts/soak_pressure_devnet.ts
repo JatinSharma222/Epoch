@@ -203,7 +203,7 @@ async function main() {
 
   // Dedicated data connection for heavy RPC queries (userAccount.all) to avoid rate limits
   const dataConnection = new Connection(
-    process.env.EPOCH_RPC_URL || "https://devnet.helius-rpc.com/?api-key=7f051d79-ac86-4394-bae9-346f64974d1a",
+    process.env.EPOCH_DATA_RPC_URL || process.env.EPOCH_RPC_URL || "https://api.devnet.solana.com",
     "confirmed"
   );
   const dataProgram = new anchor.Program(

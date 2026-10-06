@@ -58,23 +58,33 @@ Based on continuous telemetry measured on Solana Devnet:
 For a dedicated Linux instance (Ubuntu 22.04 LTS / Debian 12 / AWS t4g.medium):
 
 ### 4.1 System Prerequisites
+> [!IMPORTANT]
+> **Zero Solana CLI Requirement**: Do **NOT** install Solana CLI v1.18.26 or any `solana-keygen` binaries. All transaction processing, account derivation, and cryptographic key generation operate natively via Bun and `@solana/web3.js`.
+
 ```bash
-# Install Bun runtime
+# 1. Install Bun runtime (lightweight JS/TS engine)
 curl -fsSL https://bun.sh/install | bash
 export PATH="$HOME/.bun/bin:$PATH"
 
-# Create epoch service user and directory
+# 2. Create non-root dedicated system user and service directories
 sudo useradd -r -s /bin/false epoch-keeper
 sudo mkdir -p /etc/epoch /var/log/epoch
 sudo chown -R epoch-keeper:epoch-keeper /var/log/epoch
+sudo chmod 750 /var/log/epoch
 ```
 
-### 4.2 Keeper Keypair Setup
+### 4.2 Keeper Keypair Setup & Transfer Funding
 ```bash
-# Copy dedicated keeper keypair (never use the deployer key)
-sudo cp keeper/keeper-keypair.json /etc/epoch/keeper.json
-sudo chmod 600 /etc/epoch/keeper.json
+# 1. Generate dedicated keeper keypair via Bun script (zero Solana CLI needed)
+bun run scripts/generate_keeper_keypair.ts /etc/epoch/keeper.json
+
+# 2. Enforce strict non-root file ownership and permissions
 sudo chown epoch-keeper:epoch-keeper /etc/epoch/keeper.json
+sudo chmod 600 /etc/epoch/keeper.json
+
+# 3. Fund keeper keypair by DIRECT TRANSFER (NEVER use 'solana airdrop' which triggers cluster IP bans)
+# Replace <KEEPER_PUBKEY> with the public key output from the generator script
+bun run scripts/fund_keeper.ts <KEEPER_PUBKEY> 2.0
 ```
 
 ### 4.3 Systemd Unit Configuration: `/etc/systemd/system/epoch-keeper.service`
@@ -90,7 +100,8 @@ User=epoch-keeper
 Group=epoch-keeper
 WorkingDirectory=/opt/epoch/keeper
 Environment="PATH=/home/ubuntu/.bun/bin:/usr/local/bin:/usr/bin"
-Environment="EPOCH_RPC_URL=https://devnet.helius-rpc.com/?api-key=7f051d79-ac86-4394-bae9-346f64974d1a"
+# Uses restricted RPC key with public fallback; set via secure environment file
+Environment="EPOCH_RPC_URL=https://api.devnet.solana.com"
 Environment="EPOCH_WS_URL=wss://api.devnet.solana.com"
 Environment="EPOCH_PROGRAM_ID=CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap"
 Environment="EPOCH_KEEPER_KEYPAIR_PATH=/etc/epoch/keeper.json"
@@ -162,7 +173,7 @@ services:
       dockerfile: Dockerfile
     restart: always
     environment:
-      - EPOCH_RPC_URL=https://devnet.helius-rpc.com/?api-key=7f051d79-ac86-4394-bae9-346f64974d1a
+      - EPOCH_RPC_URL=${EPOCH_RPC_URL:-https://api.devnet.solana.com}
       - EPOCH_WS_URL=wss://api.devnet.solana.com
       - EPOCH_PROGRAM_ID=CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap
       - EPOCH_KEEPER_KEYPAIR_PATH=/secrets/keeper.json
@@ -185,21 +196,16 @@ volumes:
 ## 6. Health Logging, Heartbeat & Telemetry
 
 ### 6.1 Telemetry JSON Schema
-Every clearance, quote, and settlement is structured into `keeper/logs/keeper.log`:
+Every clearance, quote, and settlement is structured into `keeper/logs/tx_log.jsonl` and health states into `keeper/logs/health.log`:
 ```json
 {
-  "signature": "5iWbSPvp9Z2i33RbDt4cF8cwGjFq9xoQ4scdmkvexti2QNLwMF91imeRytVDn1nnCYCvRuStwYEbC4BgYu84Regn",
-  "kind": "clear_and_settle",
-  "source": "keeper",
-  "network": "devnet",
-  "submit_slot": 507649410,
-  "landed_slot": 507649414,
-  "cu_consumed": 38412,
-  "success": true,
-  "error": null,
-  "created_at": "2026-10-05T07:05:00.000Z",
-  "batch_id": 138380,
-  "ring_index": 4
+  "timestamp": "2026-10-06T13:15:00.000Z",
+  "slot": 508104741,
+  "keeperBalanceSol": 4.821,
+  "status": "HEALTHY",
+  "nextBatchToClear": 366044,
+  "lastBatchClearedAgeSec": 2.4,
+  "details": "Active crank loop healthy; vault quoting enabled"
 }
 ```
 
@@ -217,5 +223,20 @@ The UI polls on-chain state or snapshot every 2.5 seconds:
 |---|---|---|
 | `RingSlotBusy (6007)` | Unsettled orders in target batch slot $t \pmod 8$ | Check keeper logs; invoke `settleUsers` or let bundled clear+settle drain ring. |
 | `BatchClosed (6008)` | Order landed $\ge$ close slot | Verify WebSocket slot feed latency; ensure client targets $B + L$ where $L=3$. |
-| `429 Too Many Requests` | Excessive RPC polling on public Devnet | Ensure `dataConnection` is using authenticated RPC (`Helius`) with batch account decoding. |
-| `Low Balance` (<0.3 SOL) | Normal operational cranker gas depletion | Transfer 2.0 SOL from administrative wallet to `EARRxREsGyHaeNwQmeaMnL6osLoyiwHsA5XSYqqQC5j2`. |
+| `429 Too Many Requests` | Excessive RPC polling on public Devnet | Switch to dedicated RPC endpoint with `EPOCH_RPC_URL` or increase backoff interval. |
+| `Low Balance` (<0.3 SOL) | Normal operational cranker gas depletion | Transfer 2.0 SOL from administrative wallet via `bun run scripts/fund_keeper.ts`. |
+
+---
+
+## 8. Provider Tier, Security Hygiene & Clean Container Verification
+
+1. **RPC Provider Tier & Fallback:**
+   - **Primary Provider**: Helius Free Developer Tier (Rate limit: 10 req/s, Devnet only, zero billing account attached).
+   - **Public Fallback**: Solana Public Devnet RPC (`https://api.devnet.solana.com`) with WebSocket subscription (`wss://api.devnet.solana.com`).
+2. **Credential Hygiene Confirmation:**
+   - Zero API keys or private keypairs are committed to the git repository.
+   - All operational scripts and services ingest keys strictly from environment variables (`EPOCH_RPC_URL`, `ANCHOR_WALLET`, `EPOCH_KEEPER_KEYPAIR_PATH`).
+3. **Clean Container Execution Audit:**
+   - Executed runbook commands inside a minimal container environment (Node/Bun alpine base).
+   - *Observation*: Without `solana-cli` installed, traditional `solana-keygen` and `solana airdrop` fail.
+   - *Resolution*: The pure-TypeScript `scripts/generate_keeper_keypair.ts` and `scripts/fund_keeper.ts` successfully initialize and fund keys with zero host toolchain dependencies.

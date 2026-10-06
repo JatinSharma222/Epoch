@@ -47,7 +47,7 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
   const { setVisible } = useWalletModal();
 
   const [side, setSide] = useState<"BUY" | "SELL">("BUY");
-  const [orderType, setOrderType] = useState<"market" | "limit">("limit");
+  const [orderType, setOrderType] = useState<"market" | "limit">("market");
   const [userEditedPrice, setUserEditedPrice] = useState<boolean>(false);
 
   // 09 §3.5 rule 10: limit price defaults to current oracle price (rounded to price tick) with no error on load
@@ -89,34 +89,90 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
     return priceToOffset(numPrice, oraclePrice, 1, 50);
   }, [numPrice, oraclePrice, orderType, side]);
 
-  // Client-side indicative clearing preview (09 §4.1)
+  // Client-side indicative clearing preview (09 §4.1 & Round 9 Track A)
   const indicativePreview = useMemo(() => {
-    if (bidQty.length === 0 || askQty.length === 0) return null;
+    if (orderType === "market") {
+      return {
+        willFill: true,
+        fillLots: lots,
+        fillPct: 100,
+        price: oraclePrice,
+        reason: "fills against demo liquidity at about oracle ±15 bps",
+        isCrossing: true,
+      };
+    }
+
+    const orderTick = Math.max(0, Math.min(100, 50 + offsetInfo.offsetBps));
+    let hasCrossing = false;
+
+    // Check if the aggregated on-chain book (including vault orders) crosses
+    if (bidQty.length > 0 && askQty.length > 0) {
+      if (side === "BUY") {
+        for (let t = 0; t <= orderTick; t++) {
+          if (askQty[t] > 0) {
+            hasCrossing = true;
+            break;
+          }
+        }
+      } else {
+        for (let t = orderTick; t < 101; t++) {
+          if (bidQty[t] > 0) {
+            hasCrossing = true;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!hasCrossing) {
+      return {
+        willFill: false,
+        reason: "No crossing liquidity at this price, your order will expire unfilled",
+        isCrossing: false,
+      };
+    }
+
     const res = clear(bidQty, askQty);
     if (!res || res.matched === 0) {
-      return { willFill: false, reason: "No crossing trade in current batch" };
+      return {
+        willFill: false,
+        reason: "No crossing liquidity at this price, your order will expire unfilled",
+        isCrossing: false,
+      };
     }
-    const orderTick = 50 + offsetInfo.offsetBps;
+
     if (side === "BUY") {
-      if (orderTick > res.bid.tick) {
-        return { willFill: true, fillLots: lots, fillPct: 100, price: res.tick };
-      } else if (orderTick === res.bid.tick) {
-        const pct = Math.round((res.bid.alloc / res.bid.total) * 100);
-        const fLots = Math.floor((lots * res.bid.alloc) / res.bid.total);
-        return { willFill: true, fillLots: fLots, fillPct: pct, price: res.tick };
+      if (orderTick >= res.ask.tick) {
+        if (orderTick > res.bid.tick) {
+          return { willFill: true, fillLots: lots, fillPct: 100, price: res.tick, isCrossing: true };
+        } else if (orderTick === res.bid.tick) {
+          const pct = Math.round((res.bid.alloc / res.bid.total) * 100);
+          const fLots = Math.floor((lots * res.bid.alloc) / res.bid.total);
+          return { willFill: true, fillLots: fLots, fillPct: pct, price: res.tick, isCrossing: true };
+        }
       }
-      return { willFill: false, reason: "Limit below marginal clearing bid" };
+      return {
+        willFill: false,
+        reason: "No crossing liquidity at this price, your order will expire unfilled",
+        isCrossing: false,
+      };
     } else {
-      if (orderTick < res.ask.tick) {
-        return { willFill: true, fillLots: lots, fillPct: 100, price: res.tick };
-      } else if (orderTick === res.ask.tick) {
-        const pct = Math.round((res.ask.alloc / res.ask.total) * 100);
-        const fLots = Math.floor((lots * res.ask.alloc) / res.ask.total);
-        return { willFill: true, fillLots: fLots, fillPct: pct, price: res.tick };
+      if (orderTick <= res.bid.tick) {
+        if (orderTick < res.ask.tick) {
+          return { willFill: true, fillLots: lots, fillPct: 100, price: res.tick, isCrossing: true };
+        } else if (orderTick === res.ask.tick) {
+          const pct = Math.round((res.ask.alloc / res.ask.total) * 100);
+          const fLots = Math.floor((lots * res.ask.alloc) / res.ask.total);
+          return { willFill: true, fillLots: fLots, fillPct: pct, price: res.tick, isCrossing: true };
+        }
       }
-      return { willFill: false, reason: "Limit above marginal clearing ask" };
+      return {
+        willFill: false,
+        reason: "No crossing liquidity at this price, your order will expire unfilled",
+        isCrossing: false,
+      };
     }
-  }, [bidQty, askQty, offsetInfo, side, lots]);
+  }, [bidQty, askQty, offsetInfo, side, lots, orderType, oraclePrice]);
 
   // Margin calculation (spec §9 with slip reserve)
   const marginRequired = useMemo(() => {
@@ -347,16 +403,32 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
                   {offsetInfo.clamped ? "Outside Collar" : "Moves with oracle"}
                 </span>
               </div>
+              {/* Crossing Warning & One-Click Fill Now (Round 9 Track A) */}
+              {indicativePreview && !indicativePreview.isCrossing && (
+                <div className="p-2 rounded bg-[#eab308]/10 border border-[#eab308]/30 text-[11px] text-[#eab308] flex items-center justify-between gap-2">
+                  <div className="flex items-start gap-1.5 flex-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[#eab308]" />
+                    <span>No crossing liquidity at this price, your order will expire unfilled</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setOrderType("market")}
+                    className="px-2 py-1 rounded bg-[#00f0ff] hover:bg-[#00d8e6] text-black font-semibold text-[10px] shrink-0 cursor-pointer transition-colors"
+                  >
+                    Fill now
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
-            /* Market Order Slippage Label (09 §4.1) */
+            /* Market Order Slippage Label (09 §4.1 & Round 9 Track A) */
             <div className="p-2.5 rounded bg-[#12161c] border bp-border text-[11px] space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-white font-semibold">Market Order</span>
-                <span className="text-[#0ecb81] font-mono">Max 0.50% slip</span>
+                <span className="text-[#0ecb81] font-mono text-[10px]">fills against demo liquidity at about oracle ±15 bps</span>
               </div>
               <p className="text-[10px] text-[#848e9c]">
-                Crosses batch at band-edge tick ({side === "BUY" ? "+50 bps" : "-50 bps"}) to match all available volume at uniform price.
+                Fills against demo liquidity at about oracle ±15 bps at uniform batch clearing price.
               </p>
             </div>
           )}
@@ -408,7 +480,7 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
                 Order Lifetime
               </span>
               <span className="text-[#00f0ff] font-mono text-[10px]">
-                {lifetimeBatches === 1 ? "1 batch (~0.8s)" : `${lifetimeBatches} batches (~${(lifetimeBatches * 0.8).toFixed(1)}s)`}
+                {lifetimeBatches === 1 ? "1 batch (~0.48s)" : `${lifetimeBatches} batches (~${(lifetimeBatches * 0.48).toFixed(2)}s)`}
               </span>
             </div>
             <div className="grid grid-cols-4 gap-1">
@@ -481,14 +553,25 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
               )}
             </div>
 
-            {/* Indicative fill preview (09 §4.1) */}
+            {/* Indicative fill preview (09 §4.1 & Round 9 Track A) */}
             <div className="pt-1.5 mt-1 border-t bp-border text-[10px] flex items-center justify-between">
               <span className="text-[#848e9c]">Indicative Fill (Batch #{currentBatchId + 1})</span>
-              <span className="text-[#00f0ff] font-mono font-medium">
-                {indicativePreview?.willFill
-                  ? `${indicativePreview.fillPct}% (${((indicativePreview.fillLots ?? 0) * 0.001).toFixed(2)} SOL)`
-                  : "0% (queued)"}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className={`font-mono font-medium ${indicativePreview?.isCrossing ? "text-[#00f0ff]" : "text-[#eab308]"}`}>
+                  {indicativePreview?.willFill
+                    ? `${indicativePreview.fillPct}% (${((indicativePreview.fillLots ?? 0) * 0.001).toFixed(2)} SOL)`
+                    : "0% (unfilled)"}
+                </span>
+                {!indicativePreview?.isCrossing && orderType === "limit" && (
+                  <button
+                    type="button"
+                    onClick={() => setOrderType("market")}
+                    className="px-1.5 py-0.5 rounded bg-[#00f0ff] text-black font-semibold text-[9px] hover:bg-[#00d8e6] transition-colors"
+                  >
+                    Fill now
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -520,7 +603,7 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
             )}
           </button>
           <p className="text-center text-[10px] text-[#848e9c] mt-1.5">
-            Executes at the next batch close (about 0.8 s)
+            Executes at the next batch close (about 0.48 s)
           </p>
         </div>
       </form>
