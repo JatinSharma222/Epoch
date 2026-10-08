@@ -16,9 +16,9 @@
 
 This report establishes the complete verification and delivery of **Round 9** requirements under strict empirical standards:
 1. **Judge-Flow Liquidity Architecture & Live Fills:**
-   - Reconstructed counterparty matching mechanics from the Round 8 multi-wallet rehearsal: crossing orders matched peer-to-peer at uniform price $P^*$, while net order imbalances matched against the protocol's deterministic Backstop Vault PDA (`6fEkCVBB...`).
-   - Mapped the on-chain vault ladder structure: Tier 1 (500 lots @ 12 bps), Tier 2 (1,000 lots @ 18 bps), and Tier 3 (2,000 lots @ 25 bps).
-   - Re-engineered the UI first-time experience: default ticket type is `Market` stating `"fills against demo liquidity at about oracle ±15 bps"`, with limit order non-crossing warnings (`"No crossing liquidity at this price, your order will expire unfilled"`) and an inline one-click `"Fill now"` threshold adjustment button.
+   - Counterparty Matching: All live verification fills to date on Devnet were executed against the protocol's deterministic Backstop Vault PDA (`6fEkCVBB...`). Direct peer-to-peer matching between distinct user accounts is fully implemented and tested in the contract logic, but benchmark fills on devnet were absorbed by the Backstop Vault liquidity ladder.
+   - Mapped the on-chain vault ladder structure: Tier 1 (500 lots @ 12 bps), Tier 2 (1,000 lots @ 18 bps), and Tier 3 (2,000 lots @ 25 bps), with a true aggregate VWAP of **21.1 bps** across all 3,500 lots (3.50 SOL).
+   - Re-engineered the UI first-time experience: default ticket type is `Market` showing dynamic indicative clearing preview (e.g. `"Indicative price: oracle +21 bps for 1.00 SOL"` and `"+14 bps for 0.10 SOL"`), with limit order non-crossing warnings (`"No crossing liquidity at this price, your order will expire unfilled"`) and an inline one-click `"Fill now"` threshold adjustment button.
    - Tested live on Solana Devnet with a completely fresh, uninitialized keypair across 5 consecutive end-to-end cycles (Deposit $\to$ Default Order $\to$ Fill): achieved **100.0% Fill Rate** (5/5 filled) and **+14.00 bps Mean Slippage** `[MEASURED]`, with zero external trading bots.
 2. **Devnet Slot Time Re-Measurement & System Consistency:**
    - Re-measured Devnet block times on-chain across **3,000 slots** and **15,058 consensus performance samples**: empirical mean slot time is **238.67 ms/slot** `[MEASURED]` (standard deviation $\pm 1.78\text{ ms}$, spread $10.52\text{ ms}$), showing exceptional stability across independent 500-slot windows ($<1.5\text{ ms}$ drift).
@@ -45,8 +45,7 @@ During the Round 8 multi-wallet rehearsal ([Report 8 §E.1](REPORT_8.md)), two i
 - **Wallet 2 (Trader B):** `8xKv7F2jL5pYqW9mN4bT8cR1zXvE3uSd6aP9yTrQe4mS`
 
 **Counterparty Resolution Mechanics:**
-1. **Direct Peer-to-Peer Cross:** When Trader A (Buy) and Trader B (Sell) submitted overlapping limit orders in the same discrete batch (e.g., Batch #142073), the clearing engine matched them directly against each other at the single uniform clearing price $P^*$. Neither party incurred bid-ask spread; surplus was split equally or allocated based on limit order price priority.
-2. **Backstop Vault Fill for Unilateral / Imbalanced Flow:** When Trader A or Trader B submitted orders without an opposing user order (e.g. unilateral test runs or position flattening), the sole counterparty was the on-chain **Epoch Backstop Vault PDA** (`6fEkCVBBFpBNVaJ2BeRud8jXnYnkLdv8BEAHU6mU4m6T`).
+All live verification fills to date on Devnet were executed against the protocol's deterministic Backstop Vault PDA (`6fEkCVBBFpBNVaJ2BeRud8jXnYnkLdv8BEAHU6mU4m6T`). Direct peer-to-peer matching between distinct user accounts is supported by the clearing mechanism specification and contract logic, but all devnet benchmark fills were absorbed by the Backstop Vault liquidity ladder.
 
 ### A.2 On-Chain Backstop Vault Ladder Structure
 The Backstop Vault provides programmatic, deterministic two-sided liquidity by submitting bid and ask quote orders via the permissionless `vault_quote` instruction:
@@ -56,16 +55,16 @@ The Backstop Vault provides programmatic, deterministic two-sided liquidity by s
 | **Tier 1** | 500 lots | 0.50 SOL | **$\pm 12\text{ bps}$** | $120.76 | $121.05 |
 | **Tier 2** | 1,000 lots | 1.00 SOL | **$\pm 18\text{ bps}$** | $120.69 | $121.13 |
 | **Tier 3** | 2,000 lots | 2.00 SOL | **$\pm 25\text{ bps}$** | $120.61 | $121.21 |
-| **Aggregate Capacity** | **3,500 lots** | **3.50 SOL** | **$\sim \pm 18.2\text{ bps}$ (VWAP)** | — | — |
+| **Aggregate Capacity** | **3,500 lots** | **3.50 SOL** | **$\mathbf{21.1\text{ bps}}$ (VWAP)** | — | — |
 
-- **Execution for a 10-lot Order (0.01 SOL):** Fills entirely against Tier 1 liquidity ($+12\text{ bps}$ theoretical spread + price tick rounding $\to \mathbf{+14\text{ bps}}$ effective).
-- **Execution for a 1,000-lot Order (1.00 SOL):** Absorbs all 500 lots of Tier 1 (+12 bps) and 500 lots of Tier 2 (+18 bps), producing an exact volume-weighted average slippage of $\mathbf{+15.0\text{ bps}}$ `[COMPUTED]`.
+- **Execution for a 10-lot Order (0.01 SOL) or 100-lot Order (0.10 SOL):** Clears at the single uniform clearing price of **+14 bps** (+12 bps tier 1 offset + tick rounding midpoint). Total taker cost = +14 bps + 5 bps fee = **19 bps** one-way `[COMPUTED]`.
+- **Execution for a 1,000-lot Order (1.00 SOL):** Clears at the single uniform clearing price of **+21 bps** (the minimum-imbalance midpoint of the plateau, per spec §6.1). It is NOT the pay-as-bid weighted average of 15 bps. All 1,000 lots trade at that one price. Total taker cost = +21 bps + 5 bps fee = **26 bps** one-way `[COMPUTED]`.
 
 ### A.3 First-Time Flow UI Redesign
 In [`app/src/components/OrderTicket.tsx`](../../app/src/components/OrderTicket.tsx):
 1. **Default Order Type:** Initialized to `"market"` instead of `"limit"`.
-2. **Guaranteed Fill Clarity:** Explanatory copy below the trade button explicitly states:  
-   `"fills against demo liquidity at about oracle ±15 bps"`
+2. **Dynamic Indicative Price Preview:** Computes the single uniform clearing price using the shared clearing algorithm, displaying e.g.:  
+   `"Indicative price: oracle +21 bps for 1.00 SOL"` (and `"+14 bps for 0.10 SOL"`).
 3. **Limit Order Non-Crossing Warning:** When the user switches to `"limit"` and inputs a price outside the crossing threshold (evaluated against live on-chain batch aggregates and vault orders), a prominent amber notice warns:  
    `"No crossing liquidity at this price, your order will expire unfilled"`
 4. **One-Click "Fill Now":** Renders directly adjacent to the non-crossing warning. Clicking it automatically adjusts the user's limit price to cross the best opposing vault quote tier, guaranteeing immediate matching in the target batch.
@@ -130,7 +129,7 @@ Every time-dependent variable across smart contracts, UI components, simulations
 | **On-Chain Market Account Update** | Slot count updated on Devnet | **Tx `3b9LzWU6iDt1...`** | Verified on Solana Explorer `[MEASURED]` |
 | **Lookahead Window ($L=4$ batches)** | $3.20\text{ s}$ (assumed 400ms) | **$1.91\text{ s}$** ($8 \text{ slots} \times 238.67\text{ ms}$) | Real-time horizon `[COMPUTED]` |
 | **Devnet Stale Window ($W=20$ slots)** | $8.00\text{ s}$ (assumed 400ms) | **$4.78\text{ s}$** ($20 \text{ slots} \times 238.67\text{ ms}$) | Empirical chain timeout `[COMPUTED]` |
-| **Mainnet Stale Window ($W=4$ slots)** | $1.60\text{ s}$ (assumed 400ms) | **$0.96\text{ s}$** ($4 \text{ slots} \times 238.67\text{ ms}$) | Mainnet parameter target `[COMPUTED]` |
+| **Target Stale Window ($W=4$ slots)** | 4 slots | **4 slots** (seconds depend on network slot time) | Stale window target `[SOURCED]` |
 | **Devnet Max Oracle Age** | $10\text{ s}$ (too tight for devnet Pyth) | **$600\text{ s}$** | Avoids `VaultSkipReason::ORACLE_STALE` `[MEASURED]` |
 
 ### B.3 Funding Accrual Test & Verification
@@ -154,11 +153,11 @@ Both Monte Carlo simulations were re-executed using the measured $0.23867\text{ 
 #### Simulation S-4 (Cranker Delay Option Value Sensitivity):
 - **Script:** [`scripts/simulations/sim_s4_cranker_option.py`](../../scripts/simulations/sim_s4_cranker_option.py)
 - **Artifact:** [`evidence/simulations/sim_s4_cranker_option.json`](../../evidence/simulations/sim_s4_cranker_option.json)
-- **Mainnet Setting ($W=4\text{ slots} = 0.96\text{ s}$):**
-  - Mean cranker delay option value: **$1.629\text{ bps}$** ($32.6\%$ of protocol fee) `[SIMULATED]` (down from $2.72\text{ bps}$ under the obsolete $400\text{ ms}$ assumption).
+- **Narrow Window ($W=4\text{ slots}$):**
+  - Mean cranker delay option value: **$1.629\text{ bps}$** ($32.6\%$ of protocol fee) `[SIMULATED]`.
   - P95 option value: **$3.882\text{ bps}$**.
   - P99 option value: **$5.914\text{ bps}$**.
-- **Devnet Setting ($W=20\text{ slots} = 4.78\text{ s}$):**
+- **Devnet Window ($W=20\text{ slots} = 4.78\text{ s}$):**
   - Mean option value: **$2.258\text{ bps}$** ($45.2\%$ of protocol fee) `[SIMULATED]`.
 
 #### Simulation S-5 (Batch Landing Reliability):

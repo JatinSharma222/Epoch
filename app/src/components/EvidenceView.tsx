@@ -370,10 +370,14 @@ export const EvidenceView: React.FC = () => {
                   <span>Total Passive Depth:</span>
                   <span className="text-[#00F0FF] font-bold">3,500 lots (3.50 SOL / side)</span>
                 </div>
+                <div className="flex justify-between text-[#848E9C]">
+                  <span>Ladder VWAP (3.5 SOL):</span>
+                  <span className="text-white font-mono">21.1 bps [COMPUTED]</span>
+                </div>
               </div>
             </div>
 
-            {/* Computed Taker Cost vs Simulated Maker PnL */}
+            {/* Computed Taker Cost vs Simulated Maker PnL (Spec §6.1 & Round 10) */}
             <div className="p-3 rounded bg-[#12161C] border bp-border space-y-2">
               <div className="flex items-center justify-between text-[11px]">
                 <span className="font-bold text-white">Taker Cost vs Maker PnL (1 SOL Order)</span>
@@ -381,8 +385,8 @@ export const EvidenceView: React.FC = () => {
               </div>
               <div className="space-y-1 font-mono text-[11px]">
                 <div className="flex justify-between text-[#848E9C]">
-                  <span>Avg Price Offset vs Oracle:</span>
-                  <span className="text-white">15.00 bps (fills 0.5 SOL @ 12 bps + 0.5 SOL @ 18 bps)</span>
+                  <span>Uniform Clearing Offset:</span>
+                  <span className="text-white">21.00 bps (single P* trades all 1.0 SOL) [COMPUTED]</span>
                 </div>
                 <div className="flex justify-between text-[#848E9C]">
                   <span>Trading Fee:</span>
@@ -390,11 +394,11 @@ export const EvidenceView: React.FC = () => {
                 </div>
                 <div className="flex justify-between text-[#848E9C] pt-1 border-t bp-border">
                   <span>One-Way Taker Cost:</span>
-                  <span className="text-[#F6465D] font-bold">20.00 bps (~$0.30 on 1 SOL) [COMPUTED]</span>
+                  <span className="text-[#F6465D] font-bold">26.00 bps (~$0.39 on 1 SOL) [COMPUTED]</span>
                 </div>
                 <div className="flex justify-between text-[#848E9C]">
                   <span>Round-Trip Taker Cost:</span>
-                  <span className="text-[#F6465D] font-bold">40.00 bps (~$0.60 on 1 SOL) [COMPUTED]</span>
+                  <span className="text-[#F6465D] font-bold">52.00 bps (~$0.78 on 1 SOL) [COMPUTED]</span>
                 </div>
                 <div className="flex justify-between text-[#848E9C] pt-1 border-t bp-border">
                   <span>Simulated Maker PnL:</span>

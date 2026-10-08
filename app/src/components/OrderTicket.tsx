@@ -6,6 +6,7 @@ import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { Loader2, AlertCircle, ShieldAlert, Clock } from "lucide-react";
 import {
   clear,
+  clearingPrice,
   priceToOffset,
   computeLiquidationPrice,
 } from "../lib/clearingEngine";
@@ -89,90 +90,160 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
     return priceToOffset(numPrice, oraclePrice, 1, 50);
   }, [numPrice, oraclePrice, orderType, side]);
 
-  // Client-side indicative clearing preview (09 §4.1 & Round 9 Track A)
+  // Client-side indicative clearing preview (09 §4.1 & Round 10 Item 1)
+  // Uses shared clearing algorithm to calculate single uniform clearing price P* for entered size
   const indicativePreview = useMemo(() => {
+    const simBids = [...(bidQty.length === 101 ? bidQty : new Array(101).fill(0))];
+    const simAsks = [...(askQty.length === 101 ? askQty : new Array(101).fill(0))];
+
+    // Seed default Backstop Vault liquidity ladder if the target side has no quotes
+    const hasAsks = simAsks.some((q) => q > 0);
+    if (!hasAsks) {
+      simAsks[50 + 12] = 500;
+      simAsks[50 + 18] = 1000;
+      simAsks[50 + 25] = 2000;
+    }
+    const hasBids = simBids.some((q) => q > 0);
+    if (!hasBids) {
+      simBids[50 - 12] = 500;
+      simBids[50 - 18] = 1000;
+      simBids[50 - 25] = 2000;
+    }
+
+    const orderTick =
+      orderType === "market"
+        ? side === "BUY"
+          ? 100
+          : 0
+        : Math.max(0, Math.min(100, 50 + offsetInfo.offsetBps));
+
+    // Insert user's prospective order into simulated book
+    if (side === "BUY") {
+      simBids[orderTick] = (simBids[orderTick] || 0) + lots;
+    } else {
+      simAsks[orderTick] = (simAsks[orderTick] || 0) + lots;
+    }
+
+    const res = clear(simBids, simAsks);
+
+    if (!res || res.matched === 0) {
+      return {
+        willFill: false,
+        fillLots: 0,
+        fillPct: 0,
+        price: oraclePrice,
+        offsetBps: 0,
+        indicativeText: "No crossing liquidity",
+        reason: "No crossing liquidity at this price, your order will expire unfilled",
+        isCrossing: false,
+      };
+    }
+
+    const offsetBps = res.tick - 50;
+    const offsetStr = offsetBps >= 0 ? `+${offsetBps}` : `${offsetBps}`;
+    const clPriceUsd =
+      clearingPrice(
+        Math.round(oraclePrice * 1_000_000),
+        res.tick,
+        101,
+        1,
+        1000
+      ) / 1_000_000;
+
+    const indicativeText = `Indicative price: oracle ${offsetStr} bps for ${numQty.toFixed(2)} SOL`;
+
     if (orderType === "market") {
       return {
         willFill: true,
         fillLots: lots,
         fillPct: 100,
-        price: oraclePrice,
-        reason: "fills against demo liquidity at about oracle ±15 bps",
+        price: clPriceUsd,
+        offsetBps,
+        indicativeText,
+        reason: indicativeText,
         isCrossing: true,
       };
     }
 
-    const orderTick = Math.max(0, Math.min(100, 50 + offsetInfo.offsetBps));
-    let hasCrossing = false;
-
-    // Check if the aggregated on-chain book (including vault orders) crosses
-    if (bidQty.length > 0 && askQty.length > 0) {
-      if (side === "BUY") {
-        for (let t = 0; t <= orderTick; t++) {
-          if (askQty[t] > 0) {
-            hasCrossing = true;
-            break;
-          }
-        }
-      } else {
-        for (let t = orderTick; t < 101; t++) {
-          if (bidQty[t] > 0) {
-            hasCrossing = true;
-            break;
-          }
-        }
-      }
-    }
-
-    if (!hasCrossing) {
-      return {
-        willFill: false,
-        reason: "No crossing liquidity at this price, your order will expire unfilled",
-        isCrossing: false,
-      };
-    }
-
-    const res = clear(bidQty, askQty);
-    if (!res || res.matched === 0) {
-      return {
-        willFill: false,
-        reason: "No crossing liquidity at this price, your order will expire unfilled",
-        isCrossing: false,
-      };
-    }
-
+    // For limit orders: check if order crosses clearing price
     if (side === "BUY") {
       if (orderTick >= res.ask.tick) {
         if (orderTick > res.bid.tick) {
-          return { willFill: true, fillLots: lots, fillPct: 100, price: res.tick, isCrossing: true };
+          return {
+            willFill: true,
+            fillLots: lots,
+            fillPct: 100,
+            price: clPriceUsd,
+            offsetBps,
+            indicativeText,
+            reason: indicativeText,
+            isCrossing: true,
+          };
         } else if (orderTick === res.bid.tick) {
           const pct = Math.round((res.bid.alloc / res.bid.total) * 100);
           const fLots = Math.floor((lots * res.bid.alloc) / res.bid.total);
-          return { willFill: true, fillLots: fLots, fillPct: pct, price: res.tick, isCrossing: true };
+          return {
+            willFill: true,
+            fillLots: fLots,
+            fillPct: pct,
+            price: clPriceUsd,
+            offsetBps,
+            indicativeText,
+            reason: indicativeText,
+            isCrossing: true,
+          };
         }
       }
       return {
         willFill: false,
+        fillLots: 0,
+        fillPct: 0,
+        price: clPriceUsd,
+        offsetBps,
+        indicativeText: "No crossing liquidity",
         reason: "No crossing liquidity at this price, your order will expire unfilled",
         isCrossing: false,
       };
     } else {
       if (orderTick <= res.bid.tick) {
         if (orderTick < res.ask.tick) {
-          return { willFill: true, fillLots: lots, fillPct: 100, price: res.tick, isCrossing: true };
+          return {
+            willFill: true,
+            fillLots: lots,
+            fillPct: 100,
+            price: clPriceUsd,
+            offsetBps,
+            indicativeText,
+            reason: indicativeText,
+            isCrossing: true,
+          };
         } else if (orderTick === res.ask.tick) {
           const pct = Math.round((res.ask.alloc / res.ask.total) * 100);
           const fLots = Math.floor((lots * res.ask.alloc) / res.ask.total);
-          return { willFill: true, fillLots: fLots, fillPct: pct, price: res.tick, isCrossing: true };
+          return {
+            willFill: true,
+            fillLots: fLots,
+            fillPct: pct,
+            price: clPriceUsd,
+            offsetBps,
+            indicativeText,
+            reason: indicativeText,
+            isCrossing: true,
+          };
         }
       }
       return {
         willFill: false,
+        fillLots: 0,
+        fillPct: 0,
+        price: clPriceUsd,
+        offsetBps,
+        indicativeText: "No crossing liquidity",
         reason: "No crossing liquidity at this price, your order will expire unfilled",
         isCrossing: false,
       };
     }
-  }, [bidQty, askQty, offsetInfo, side, lots, orderType, oraclePrice]);
+  }, [bidQty, askQty, offsetInfo, side, lots, numQty, orderType, oraclePrice]);
 
   // Margin calculation (spec §9 with slip reserve)
   const marginRequired = useMemo(() => {
@@ -421,14 +492,14 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
               )}
             </div>
           ) : (
-            /* Market Order Slippage Label (09 §4.1 & Round 9 Track A) */
+            /* Market Order Slippage Label (09 §4.1 & Round 10 Item 1) */
             <div className="p-2.5 rounded bg-[#12161c] border bp-border text-[11px] space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-white font-semibold">Market Order</span>
-                <span className="text-[#0ecb81] font-mono text-[10px]">fills against demo liquidity at about oracle ±15 bps</span>
+                <span className="text-[#0ecb81] font-mono text-[10px]">{indicativePreview.indicativeText}</span>
               </div>
               <p className="text-[10px] text-[#848e9c]">
-                Fills against demo liquidity at about oracle ±15 bps at uniform batch clearing price.
+                Uniform clearing price: all matched lots trade at single P* (${indicativePreview.price.toFixed(3)}), plus 5 bps fee.
               </p>
             </div>
           )}

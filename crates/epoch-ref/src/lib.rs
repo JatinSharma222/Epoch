@@ -709,4 +709,93 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_spec_6_1_market_buy_against_vault_ladder_1000_lots() {
+        // Spec §6.1: Asks: 500 @ +12, 1000 @ +18, 2000 @ +25.
+        // Market buy of 1,000 lots (limit +50 bps).
+        let k = 101usize;
+        let c = 50usize;
+        let mut bid_qty = vec![0u64; k];
+        let mut ask_qty = vec![0u64; k];
+
+        ask_qty[c + 12] = 500;
+        ask_qty[c + 18] = 1000;
+        ask_qty[c + 25] = 2000;
+
+        bid_qty[c + 50] = 1000; // market buy
+
+        let res = clear(&bid_qty, &ask_qty).expect("must clear");
+        assert_eq!(res.matched, 1000);
+        // Clearing tick is 71 (offset +21 bps), NOT weighted average 15 bps
+        assert_eq!(res.tick, 71);
+        let offset = res.tick as i32 - c as i32;
+        assert_eq!(offset, 21);
+
+        // Taker cost = offset (21 bps) + 5 bps protocol fee = 26 bps one way
+        let fee_bps = 5i32;
+        let taker_cost_one_way_bps = offset + fee_bps;
+        assert_eq!(taker_cost_one_way_bps, 26);
+    }
+
+    #[test]
+    fn test_spec_6_1_market_buy_against_vault_ladder_10_lots() {
+        // Spec §6.1: 10-lot market buy against same ladder clears at +14 bps
+        let k = 101usize;
+        let c = 50usize;
+        let mut bid_qty = vec![0u64; k];
+        let mut ask_qty = vec![0u64; k];
+
+        ask_qty[c + 12] = 500;
+        ask_qty[c + 18] = 1000;
+        ask_qty[c + 25] = 2000;
+
+        bid_qty[c + 50] = 10; // 10 lots market buy
+
+        let res = clear(&bid_qty, &ask_qty).expect("must clear");
+        assert_eq!(res.matched, 10);
+        // Plateau 12 to 50, min imbalance 12 to 17, midpoint 14.5 -> rounds to 14 toward center
+        assert_eq!(res.tick, 64);
+        let offset = res.tick as i32 - c as i32;
+        assert_eq!(offset, 14);
+
+        let fee_bps = 5i32;
+        assert_eq!(offset + fee_bps, 19);
+    }
+
+    #[test]
+    fn test_spec_6_1_market_buy_against_vault_ladder_100_lots() {
+        // 100-lot market buy (0.1 SOL) against same ladder also clears at +14 bps
+        let k = 101usize;
+        let c = 50usize;
+        let mut bid_qty = vec![0u64; k];
+        let mut ask_qty = vec![0u64; k];
+
+        ask_qty[c + 12] = 500;
+        ask_qty[c + 18] = 1000;
+        ask_qty[c + 25] = 2000;
+
+        bid_qty[c + 50] = 100; // 100 lots market buy (0.1 SOL)
+
+        let res = clear(&bid_qty, &ask_qty).expect("must clear");
+        assert_eq!(res.matched, 100);
+        assert_eq!(res.tick, 64);
+        let offset = res.tick as i32 - c as i32;
+        assert_eq!(offset, 14);
+
+        let fee_bps = 5i32;
+        assert_eq!(offset + fee_bps, 19);
+    }
+
+    #[test]
+    fn test_spec_6_1_ladder_vwap() {
+        // Vault ladder total volume: 500 + 1000 + 2000 = 3500 lots
+        // VWAP = (500*12 + 1000*18 + 2000*25) / 3500 = 74000 / 3500 = 21.142857... bps ~ 21.1 bps
+        let total_lots: f64 = 500.0 + 1000.0 + 2000.0;
+        let weighted_bps: f64 = 500.0 * 12.0 + 1000.0 * 18.0 + 2000.0 * 25.0;
+        let vwap_bps: f64 = weighted_bps / total_lots;
+        assert!((vwap_bps - 21.142857f64).abs() < 1e-4);
+        let rounded_vwap = (vwap_bps * 10.0).round() / 10.0;
+        assert_eq!(rounded_vwap, 21.1f64);
+    }
 }
