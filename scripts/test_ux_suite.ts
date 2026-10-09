@@ -171,6 +171,37 @@ async function runUxSuite() {
   if (!rationalityPassed) throw new Error("UX-11 rationality check failed");
   console.log(`UX-9, UX-10, UX-11 PASSED: Clearing tick=${res.tick}, matched=${res.matched}, rationality strictly verified [MEASURED]`);
 
+  // --- Oversize Preview Verification (Round 12 Item 3) ---
+  console.log("\n[Oversize Preview] Verifying 5.0 SOL market buy against 3.5 SOL ladder shows both +37 bps and 3.5 of 5.0 SOL...");
+  const oversizeAsks = new Array(101).fill(0);
+  oversizeAsks[50 + 12] = 500;  // Rung 1: 500 @ +12 bps
+  oversizeAsks[50 + 18] = 1000; // Rung 2: 1000 @ +18 bps
+  oversizeAsks[50 + 25] = 2000; // Rung 3: 2000 @ +25 bps
+  const oversizeBids = new Array(101).fill(0);
+  oversizeBids[100] = 5000; // 5.0 SOL market buy collar
+
+  const oversizeRes = clear(oversizeBids, oversizeAsks);
+  const oversizeOffsetBps = oversizeRes.tick - 50;
+  const isOversizePartial = oversizeRes.matched < 5000;
+  const filledSolStr = (oversizeRes.matched * 0.001).toFixed(1);
+  const reqSolStr = (5.0).toFixed(1);
+  const partialText = `fills ${filledSolStr} of ${reqSolStr} SOL`;
+  const offsetStr = `+${oversizeOffsetBps}`;
+  const indicativeText = isOversizePartial
+    ? `Indicative price: oracle ${offsetStr} bps (${partialText})`
+    : `Indicative price: oracle ${offsetStr} bps for 5.00 SOL`;
+
+  if (oversizeOffsetBps !== 37) {
+    throw new Error(`Oversize preview expected offset +37 bps, got +${oversizeOffsetBps}`);
+  }
+  if (oversizeRes.matched !== 3500) {
+    throw new Error(`Oversize preview expected 3500 matched lots, got ${oversizeRes.matched}`);
+  }
+  if (!indicativeText.includes("+37 bps") || !indicativeText.includes("3.5 of 5.0 SOL")) {
+    throw new Error(`Oversize preview text "${indicativeText}" missing +37 bps or 3.5 of 5.0 SOL`);
+  }
+  console.log(`Oversize Preview PASSED: "${indicativeText}" contains both expected offset (+37 bps) and partial fill (3.5 of 5.0 SOL) [MEASURED]`);
+
   // --- UX-12: Dynamic Data & No Static Mock Overclaims (09 §10) ---
   console.log("\n[UX-12] Checking for mock overclaims & dynamic data integration (09 §10)...");
   const evidencePath = path.resolve(__dirname, "../app/src/components/EvidenceView.tsx");

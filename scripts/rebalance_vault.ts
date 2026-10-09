@@ -362,8 +362,10 @@ export async function rebalanceVault(): Promise<{
 }
 
 if (require.main === module) {
-  rebalanceVault().catch((err) => {
-    console.error("Rebalance failed:", err);
-    process.exit(1);
-  });
+  rebalanceVault()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error("Rebalance failed:", err);
+      process.exit(1);
+    });
 }

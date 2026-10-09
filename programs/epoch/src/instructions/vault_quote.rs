@@ -119,11 +119,17 @@ pub fn handle_vault_quote(ctx: Context<VaultQuote>, params: VaultQuoteParams) ->
         return Ok(());
     }
 
-    // 6. Guards: Check max inventory
+    // 6. Guards: Determine allowed quote sides based on inventory limits (Round 12)
+    // When inventory is at or beyond the limit, quote only the inventory-reducing side:
+    // - Short at or beyond limit (inventory <= -max_inventory): keep bids (reduces short), stop asks.
+    // - Long at or beyond limit (inventory >= max_inventory): keep asks (reduces long), stop bids.
+    // - Within limits (|inventory| < max_inventory): quote both sides.
     let mut vault_user = ctx.accounts.vault_user.load_mut()?;
     let inventory = vault_user.base_position;
     let max_inventory = market.vault_params.max_inventory_lots;
-    if !is_inventory_within_limit(inventory, max_inventory) {
+    let (allow_bids, allow_asks) = get_allowed_quote_sides(inventory, max_inventory);
+
+    if !allow_bids && !allow_asks {
         emit!(VaultQuoteSkipped {
             target_batch,
             ring_index,
@@ -163,30 +169,60 @@ pub fn handle_vault_quote(ctx: Context<VaultQuote>, params: VaultQuoteParams) ->
     let vault_user_pda = ctx.accounts.vault_user.key();
     let mut orders_placed: u8 = 0;
 
+    // Cancel any existing orders on the disallowed side (if updating an open batch)
+    for i in 0..(batch.num_orders as usize) {
+        let (is_match, side, tick, lots) = {
+            let o = &batch.orders[i];
+            if o.user_pda == vault_user_pda && o.status == OrderStatus::OPEN {
+                (true, o.side, o.tick as usize, o.lots)
+            } else {
+                (false, 0, 0, 0)
+            }
+        };
+
+        if is_match {
+            if side == OrderSide::BUY && !allow_bids {
+                batch.bid_qty[tick] = batch.bid_qty[tick].saturating_sub(lots);
+                vault_user.pending_buy_lots = vault_user.pending_buy_lots.saturating_sub(lots);
+                batch.orders[i].status = OrderStatus::CANCELLED;
+            } else if side == OrderSide::SELL && !allow_asks {
+                batch.ask_qty[tick] = batch.ask_qty[tick].saturating_sub(lots);
+                vault_user.pending_sell_lots = vault_user.pending_sell_lots.saturating_sub(lots);
+                batch.orders[i].status = OrderStatus::CANCELLED;
+            }
+        }
+    }
+
     for (slot_id, side, tick, lots) in quotes {
+        // Skip quoting on the disallowed side (Round 12)
+        if (side == OrderSide::BUY && !allow_bids) || (side == OrderSide::SELL && !allow_asks) {
+            continue;
+        }
+
         // Upsert into batch: check if order already exists for (vault_user_pda, slot_id)
         let mut existing_idx = None;
         for i in 0..(batch.num_orders as usize) {
             let o = &batch.orders[i];
-            if o.user_pda == vault_user_pda && o.slot_id == slot_id && o.status == OrderStatus::OPEN
-            {
+            if o.user_pda == vault_user_pda && o.slot_id == slot_id {
                 existing_idx = Some(i);
                 break;
             }
         }
 
         let target_idx = if let Some(idx) = existing_idx {
-            // Subtract old order from aggregates and pending lots
-            let old_side = batch.orders[idx].side;
-            let old_tick = batch.orders[idx].tick as usize;
-            let old_lots = batch.orders[idx].lots;
-            if old_side == OrderSide::BUY {
-                batch.bid_qty[old_tick] = batch.bid_qty[old_tick].saturating_sub(old_lots);
-                vault_user.pending_buy_lots = vault_user.pending_buy_lots.saturating_sub(old_lots);
-            } else {
-                batch.ask_qty[old_tick] = batch.ask_qty[old_tick].saturating_sub(old_lots);
-                vault_user.pending_sell_lots =
-                    vault_user.pending_sell_lots.saturating_sub(old_lots);
+            // Subtract old order from aggregates and pending lots if OPEN
+            if batch.orders[idx].status == OrderStatus::OPEN {
+                let old_side = batch.orders[idx].side;
+                let old_tick = batch.orders[idx].tick as usize;
+                let old_lots = batch.orders[idx].lots;
+                if old_side == OrderSide::BUY {
+                    batch.bid_qty[old_tick] = batch.bid_qty[old_tick].saturating_sub(old_lots);
+                    vault_user.pending_buy_lots = vault_user.pending_buy_lots.saturating_sub(old_lots);
+                } else {
+                    batch.ask_qty[old_tick] = batch.ask_qty[old_tick].saturating_sub(old_lots);
+                    vault_user.pending_sell_lots =
+                        vault_user.pending_sell_lots.saturating_sub(old_lots);
+                }
             }
             idx
         } else {
@@ -268,6 +304,23 @@ pub fn is_oracle_confident(oracle_conf: u64, oracle_price: u64, max_conf_bps: u1
 /// Inventory guard: returns true if |inventory| < max_inventory.
 pub fn is_inventory_within_limit(inventory: i64, max_inventory: u64) -> bool {
     inventory.unsigned_abs() < max_inventory
+}
+
+/// Returns (allow_bids, allow_asks) for a given inventory level and max_inventory (Round 12).
+/// When inventory is at or beyond the limit, only the inventory-reducing side is quoted:
+/// - Short at or beyond limit (inventory <= -max_inventory): keep bids, stop asks.
+/// - Long at or beyond limit (inventory >= max_inventory): keep asks, stop bids.
+/// - Within limits (|inventory| < max_inventory): quote both sides.
+pub fn get_allowed_quote_sides(inventory: i64, max_inventory: u64) -> (bool, bool) {
+    if max_inventory == 0 {
+        (false, false)
+    } else if inventory <= -(max_inventory as i64) {
+        (true, false)
+    } else if inventory >= max_inventory as i64 {
+        (false, true)
+    } else {
+        (true, true)
+    }
 }
 
 /// Computes inventory skew and the 6-rung ladder quotes (3 bids, 3 asks).
@@ -426,5 +479,30 @@ mod tests {
         assert!(!is_inventory_within_limit(500, max_inv));
         assert!(!is_inventory_within_limit(-500, max_inv));
         assert!(!is_inventory_within_limit(1000, max_inv));
+    }
+
+    #[test]
+    fn test_allowed_quote_sides_at_limits() {
+        let max_inv = 1000u64;
+
+        // Zero inventory: both sides allowed
+        assert_eq!(get_allowed_quote_sides(0, max_inv), (true, true));
+
+        // Within limits: both sides allowed
+        assert_eq!(get_allowed_quote_sides(500, max_inv), (true, true));
+        assert_eq!(get_allowed_quote_sides(-500, max_inv), (true, true));
+        assert_eq!(get_allowed_quote_sides(999, max_inv), (true, true));
+        assert_eq!(get_allowed_quote_sides(-999, max_inv), (true, true));
+
+        // Long at or beyond limit: stop bids, keep asks (reduce long)
+        assert_eq!(get_allowed_quote_sides(1000, max_inv), (false, true));
+        assert_eq!(get_allowed_quote_sides(1500, max_inv), (false, true));
+
+        // Short at or beyond limit: keep bids (reduce short), stop asks
+        assert_eq!(get_allowed_quote_sides(-1000, max_inv), (true, false));
+        assert_eq!(get_allowed_quote_sides(-1500, max_inv), (true, false));
+
+        // Zero max inventory: neither allowed
+        assert_eq!(get_allowed_quote_sides(0, 0), (false, false));
     }
 }

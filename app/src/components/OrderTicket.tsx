@@ -155,7 +155,9 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
     const requestedSol = numQty.toFixed(1);
     const partialText = `fills ${filledSol} of ${requestedSol} SOL`;
     const fullText = `Indicative price: oracle ${offsetStr} bps for ${numQty.toFixed(2)} SOL`;
-    const indicativeText = isPartial ? partialText : fullText;
+    const indicativeText = isPartial
+      ? `Indicative price: oracle ${offsetStr} bps (${partialText})`
+      : fullText;
     const fillLots = Math.min(lots, res.matched);
     const fillPct = Math.round((fillLots / lots) * 100);
 
@@ -198,7 +200,9 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
           const actualPct = Math.round((actualFill / lots) * 100);
           const actualFilledSol = (actualFill * 0.001).toFixed(1);
           const isActPartial = actualFill < lots;
-          const actText = isActPartial ? `fills ${actualFilledSol} of ${requestedSol} SOL` : fullText;
+          const actText = isActPartial
+            ? `Indicative price: oracle ${offsetStr} bps (fills ${actualFilledSol} of ${requestedSol} SOL)`
+            : fullText;
           return {
             willFill: true,
             fillLots: actualFill,
@@ -207,7 +211,7 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
             offsetBps,
             indicativeText: actText,
             reason: isActPartial
-              ? `Depth insufficient: ${actText} at oracle ${offsetStr} bps`
+              ? `Depth insufficient: fills ${actualFilledSol} of ${requestedSol} SOL at oracle ${offsetStr} bps`
               : indicativeText,
             isCrossing: true,
             isPartial: isActPartial,
@@ -247,7 +251,9 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
           const actualPct = Math.round((actualFill / lots) * 100);
           const actualFilledSol = (actualFill * 0.001).toFixed(1);
           const isActPartial = actualFill < lots;
-          const actText = isActPartial ? `fills ${actualFilledSol} of ${requestedSol} SOL` : fullText;
+          const actText = isActPartial
+            ? `Indicative price: oracle ${offsetStr} bps (fills ${actualFilledSol} of ${requestedSol} SOL)`
+            : fullText;
           return {
             willFill: true,
             fillLots: actualFill,
@@ -256,7 +262,7 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
             offsetBps,
             indicativeText: actText,
             reason: isActPartial
-              ? `Depth insufficient: ${actText} at oracle ${offsetStr} bps`
+              ? `Depth insufficient: fills ${actualFilledSol} of ${requestedSol} SOL at oracle ${offsetStr} bps`
               : indicativeText,
             isCrossing: true,
             isPartial: isActPartial,

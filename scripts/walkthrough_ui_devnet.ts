@@ -64,9 +64,9 @@ async function main() {
 
   const rpcUrl =
     process.env.EPOCH_RPC_URL ||
-    "https://api.devnet.solana.com";
-  const wsUrl = "wss://api.devnet.solana.com";
-  const connection = new Connection(rpcUrl, { commitment: "confirmed", wsEndpoint: wsUrl });
+    process.env.NEXT_PUBLIC_RPC_URL ||
+    "https://devnet.helius-rpc.com/?api-key=7f051d79-ac86-4394-bae9-346f64974d1a";
+  const connection = new Connection(rpcUrl, "confirmed");
 
   let liveSlot = await connection.getSlot("processed");
   const slotSub = connection.onSlotChange((info) => {
@@ -84,15 +84,8 @@ async function main() {
   );
   const admin = Keypair.fromSecretKey(Uint8Array.from(adminSecret));
 
-  // Walkthrough user keypair (fresh clean wallet)
-  const userKeyPath = path.join(OUTPUT_DIR, "walkthrough_wallet_clean.json");
-  let user: Keypair;
-  if (fs.existsSync(userKeyPath)) {
-    user = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(userKeyPath, "utf-8"))));
-  } else {
-    user = Keypair.generate();
-    fs.writeFileSync(userKeyPath, JSON.stringify(Array.from(user.secretKey)));
-  }
+  // Walkthrough user keypair (always fresh clean wallet)
+  const user = Keypair.generate();
 
   // Counterparty trader keypair (Trader 1 from soak test)
   const hash = crypto.createHash("sha256");
@@ -304,9 +297,9 @@ async function main() {
   await new Promise((r) => setTimeout(r, 600));
 
   // ===========================================================================
-  // STEP 2: PLACE LIMIT ORDER (BUY 10 lots SOL at tick 50)
+  // STEP 2: PLACE MARKET BUY (BUY 100 lots = 0.10 SOL) AGAINST BACKSTOP VAULT
   // ===========================================================================
-  console.log("\n--- STEP 2: PLACE BUY LIMIT ORDER ---");
+  console.log("\n--- STEP 2: PLACE MARKET BUY (0.10 SOL) ---");
   const marketAcc = await (program.account as any).market.fetch(marketPda);
   let placeSig = "";
   let targetBatch = 0;
@@ -340,34 +333,15 @@ async function main() {
         })
         .instruction();
 
-      // 2. Counterparty Trader 1 SELL order at tick 50 (10 lots)
-      const trader1SellIx = await program.methods
-        .placeOrder({
-          targetBatch: new anchor.BN(targetBatch),
-          ringIndex,
-          slotId: 1,
-          side: 1, // SELL
-          tick: 50,
-          lots: new anchor.BN(10),
-          flags: 0,
-        })
-        .accounts({
-          market: marketPda,
-          batch: targetBatchPda,
-          user: trader1Pda,
-          owner: trader1.publicKey,
-        })
-        .instruction();
-
-      // 3. User BUY order at tick 50 (10 lots)
+      // 2. User Market BUY order (tick 100 = oracle +100 bps slippage limit, 100 lots = 0.10 SOL)
       const placeOrderIx = await program.methods
         .placeOrder({
           targetBatch: new anchor.BN(targetBatch),
           ringIndex,
           slotId: 0,
           side: 0, // BUY
-          tick: 50,
-          lots: new anchor.BN(10), // 10 lots = 0.010 SOL
+          tick: 100, // Market Buy
+          lots: new anchor.BN(100), // 100 lots = 0.100 SOL
           flags: 0,
         })
         .accounts({
@@ -382,42 +356,46 @@ async function main() {
         ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
         ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 }),
         vQuoteIx,
-        trader1SellIx,
         placeOrderIx
       );
-      placeSig = await provider.sendAndConfirm(placeTx, [admin, trader1, user], {
+      placeSig = await provider.sendAndConfirm(placeTx, [admin, user], {
         skipPreflight: true,
         commitment: "confirmed",
       });
-      console.log(`✓ Place order confirmed for Batch #${targetBatch}! Tx: ${placeSig}`);
+      console.log(`✓ Market buy order confirmed for Batch #${targetBatch}! Tx: ${placeSig}`);
     } catch (err: any) {
       console.warn("Retrying place order due to timing:", err.message?.slice(0, 80));
       await new Promise((r) => setTimeout(r, 400));
     }
   }
 
-  // In UI: update Order Ticket inputs
+  // In UI: update Order Ticket inputs to Market 0.10 SOL
   await page.evaluate(() => {
+    // Select Market tab
+    const btns = Array.from(document.querySelectorAll("button"));
+    const marketBtn = btns.find((b) => b.textContent?.trim() === "Market");
+    marketBtn?.click();
+
     const inputs = Array.from(document.querySelectorAll("input"));
-    const pInput = inputs.find((i) => i.placeholder === "0.00" || i.step === "0.01");
-    if (pInput) {
-      pInput.value = "119.80";
-      pInput.dispatchEvent(new Event("input", { bubbles: true }));
+    const qInput = inputs.find((i) => i.placeholder === "0.00" || i.step === "0.01" || i.type === "number");
+    if (qInput) {
+      qInput.value = "0.10";
+      qInput.dispatchEvent(new Event("input", { bubbles: true }));
     }
   });
   await new Promise((r) => setTimeout(r, 600));
 
-  const ss2Path = path.join(OUTPUT_DIR, "2_limit_order_placed.png");
+  const ss2Path = path.join(OUTPUT_DIR, "2_market_buy_placed.png");
   await page.screenshot({ path: ss2Path });
   steps.push({
     step: 2,
-    name: "Place Limit Order",
-    action: `Placed BUY limit order of 10 lots (0.010 SOL) at tick 50 into target batch #${targetBatch}`,
+    name: "Place Market Buy Order",
+    action: `Placed default Market BUY order of 100 lots (0.100 SOL) against Backstop Vault ladder into target batch #${targetBatch}`,
     txSignature: placeSig,
     explorerUrl: `https://explorer.solana.com/tx/${placeSig}?cluster=devnet`,
     screenshotPath: ss2Path,
     status: "SUCCESS",
-    details: { targetBatch, ringIndex, side: "BUY", tick: 50, lots: 10 },
+    details: { targetBatch, ringIndex, side: "BUY", tick: 100, lots: 100 },
   });
 
   // ===========================================================================
@@ -450,7 +428,6 @@ async function main() {
     })
     .remainingAccounts([
       { pubkey: userPda, isWritable: true, isSigner: false },
-      { pubkey: trader1Pda, isWritable: true, isSigner: false },
       { pubkey: vaultUserPda, isWritable: true, isSigner: false },
     ])
     .instruction();
@@ -481,12 +458,12 @@ async function main() {
   steps.push({
     step: 3,
     name: "Batch Auction Crossing & Fill",
-    action: `Batch #${targetBatch} cleared and settled uniformly at tick 50; 10 lots filled cleanly`,
+    action: `Batch #${targetBatch} cleared and settled uniformly; 100 lots filled cleanly against Backstop Vault`,
     txSignature: clearSig,
     explorerUrl: `https://explorer.solana.com/tx/${clearSig}?cluster=devnet`,
     screenshotPath: ss3Path,
     status: "SUCCESS",
-    details: { batchId: targetBatch, filledLots: 10 },
+    details: { batchId: targetBatch, filledLots: postUser.basePosition.toNumber() },
   });
 
   // Switch back to Trade view and select Positions tab in bottom ledger
@@ -509,7 +486,7 @@ async function main() {
   steps.push({
     step: 4,
     name: "Open Position Inspection",
-    action: `User position active: +${postUser.basePosition.toNumber()} lots (+0.010 SOL) long with live mark-to-market and liquidation monitoring`,
+    action: `User position active: +${postUser.basePosition.toNumber()} lots (+0.100 SOL) long with live mark-to-market and liquidation monitoring`,
     screenshotPath: ss4Path,
     status: "SUCCESS",
     details: {
@@ -520,9 +497,9 @@ async function main() {
   });
 
   // ===========================================================================
-  // STEP 5: CLOSE POSITION (SELL 10 lots REDUCE_ONLY)
+  // STEP 5: CLOSE POSITION (MARKET SELL 100 lots REDUCE_ONLY)
   // ===========================================================================
-  console.log("\n--- STEP 5: CLOSE POSITION (SELL 10 LOTS REDUCE_ONLY) ---");
+  console.log("\n--- STEP 5: CLOSE POSITION (MARKET SELL 100 LOTS REDUCE_ONLY) ---");
   let closePlaceSig = "";
   let closeBatchId = 0;
   let closeRingIdx = 0;
@@ -557,34 +534,20 @@ async function main() {
         })
         .instruction();
 
-      // 2. Counterparty Trader 1 BUY order at tick 50 (10 lots)
-      const trader1BuyIx = await program.methods
-        .placeOrder({
-          targetBatch: new anchor.BN(closeBatchId),
-          ringIndex: closeRingIdx,
-          slotId: 2,
-          side: 0, // BUY
-          tick: 50,
-          lots: new anchor.BN(10),
-          flags: 0,
-        })
-        .accounts({
-          market: marketPda,
-          batch: closeBatchPda,
-          user: trader1Pda,
-          owner: trader1.publicKey,
-        })
-        .instruction();
+      const userToClose = await (program.account as any).userAccount.fetch(userPda);
+      const closeLots = Math.abs(userToClose.basePosition.toNumber()) || 100;
+      const closeSide = userToClose.basePosition.toNumber() >= 0 ? 1 : 0;
+      const closeTick = closeSide === 1 ? 0 : 100;
 
-      // 3. User SELL order (REDUCE_ONLY = 1) at tick 50
+      // 2. User order (REDUCE_ONLY = 1) to flatten position
       const closeOrderIx = await program.methods
         .placeOrder({
           targetBatch: new anchor.BN(closeBatchId),
           ringIndex: closeRingIdx,
           slotId: 0,
-          side: 1, // SELL
-          tick: 50,
-          lots: new anchor.BN(10),
+          side: closeSide,
+          tick: closeTick,
+          lots: new anchor.BN(closeLots),
           flags: 1, // REDUCE_ONLY
         })
         .accounts({
@@ -599,10 +562,9 @@ async function main() {
         ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
         ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 }),
         vCloseQuoteIx,
-        trader1BuyIx,
         closeOrderIx
       );
-      closePlaceSig = await provider.sendAndConfirm(closePlaceTx, [admin, trader1, user], {
+      closePlaceSig = await provider.sendAndConfirm(closePlaceTx, [admin, user], {
         skipPreflight: true,
         commitment: "confirmed",
       });
@@ -641,7 +603,6 @@ async function main() {
     })
     .remainingAccounts([
       { pubkey: userPda, isWritable: true, isSigner: false },
-      { pubkey: trader1Pda, isWritable: true, isSigner: false },
       { pubkey: vaultUserPda, isWritable: true, isSigner: false },
     ])
     .instruction();
@@ -713,6 +674,8 @@ async function main() {
   await new Promise((r) => setTimeout(r, 600));
 
   await page.evaluate(() => {
+    const tab = Array.from(document.querySelectorAll(".fixed button")).find((b) => b.textContent?.includes("Withdraw Collateral"));
+    (tab as HTMLElement)?.click();
     const input = document.querySelector(".fixed input[type='number']") as HTMLInputElement;
     if (input) {
       input.value = "490";

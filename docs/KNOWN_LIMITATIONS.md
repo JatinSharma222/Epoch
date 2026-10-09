@@ -44,3 +44,37 @@ This document provides a transparent, rigorous accounting of the current boundar
    - The Epoch UI handles RPC outages via an explicit, non-simulated warning banner (`DEVNET RPC OUTAGE: Solana Devnet RPC cluster is unreachable. Live widgets are frozen.`), completely disabling synthetic fallbacks.
 2. **Keeper Centralization in Devnet Release:**
    - While the on-chain protocol is 100% permissionless (anyone can crank `clear_batch`, `settle_users`, or `expire_and_release`), the automated keeper is currently provided as a local node daemon. In a production mainnet deployment, a distributed cranker network with MEV-resistant tips is required.
+
+---
+
+## 5. Privileged & Admin Instruction Audit (Round 12 Freeze Audit)
+
+Epoch strictly enforces mathematical invariants ($I-1$ to $I-12$). An audit of all 17 on-chain instructions confirms that **zero instructions exist that can directly edit user positions, collaterals, or balances**.
+
+| Instruction | Privilege Level | Permitted Scope & Mutation Target | Impact on Positions / Balances |
+| :--- | :--- | :--- | :--- |
+| `initialize_market` | Initializer (One-time) | Initializes global `Market` PDA and sets initial risk bounds. | Cannot edit balances or positions. |
+| `create_user` | Permissionless | Allocates new `UserAccount` PDA for caller. | Zero balance / zero position initialized. |
+| `faucet` | Devnet/Testnet Only | Mints mock USDC SPL tokens to caller ATA (capped at $2,000$ USDC). | Does not alter internal margin ledger. |
+| `deposit` | Permissionless (User) | Transfers SPL tokens into vault; credits caller collateral. | Conserves Invariant $I-1$ ($\Delta C = \text{tokens}$). |
+| `withdraw` | Permissionless (User) | Debits caller collateral; transfers SPL tokens (flat position only). | Conserves Invariant $I-1$ ($b = 0$, pending $= 0$). |
+| `initialize_batch` | Permissionless (Cranker) | Initializes zero-copy `Batch` ring buffer slot. | Cannot edit user positions or balances. |
+| `place_order` | Permissionless (User) | Enqueues user order into target batch; locks margin. | Standard order placement; user-signed only. |
+| `cancel_order` | Permissionless (User) | Cancels pending order before batch close; unlocks margin. | Caller-owned orders only. |
+| `clear_batch` | Permissionless (Cranker) | Computes uniform clearing price $P^*$ via socialized crossing. | Deterministic auction math; cannot inject fills. |
+| `update_market_params` | Admin (`market.admin`) | Updates governance parameters (`batch_slots`, `imr_bps`, `fee_bps`). | **Cannot touch or edit user accounts or positions.** |
+| `settle_users` | Permissionless (Cranker) | Executes uniform fills and updates base/quote positions. | Strictly conserves $\sum \text{base} = 0$ and $I-1$. |
+| `initialize_vault_user` | Admin (`market.admin`) | One-time creation of Backstop Vault `UserAccount` PDA. | Cannot edit existing user accounts. |
+| `fund_vault` | Permissionless | Deposits mock USDC into Backstop Vault collateral. | Increases vault equity; cannot alter user accounts. |
+| `vault_quote` | Permissionless (Cranker) | Places deterministic liquidity rungs for Backstop Vault. | Governed by on-chain inventory limits & allowed sides. |
+| `update_vault_params` | Admin (`market.admin`) | Updates vault risk parameters (`max_inventory_lots`, spread, skew). | **Cannot edit vault or user balances/positions.** |
+| `liquidate` | Permissionless (Liquidator)| Liquidates undercollateralized accounts against vault. | Strictly verifies $\text{equity} < \text{MMR}$. |
+| `expire_and_release` | Permissionless (Cranker) | Voids stale batches and unblocks ring slots. | Releases pending lots; preserves settled ledger. |
+
+### Vault Rebalancing Mechanics (`scripts/rebalance_vault.ts`)
+The protocol does **not** possess any backdoor instruction to reset or manipulate vault positions. As proven in Round 12, rebalancing the Backstop Vault is executed entirely through the permissionless clearing pipeline:
+1. The admin calls `update_vault_params` to temporarily expand `max_inventory_lots` if required.
+2. The admin places an offsetting market order via `place_order`.
+3. The order clears against the vault via standard uniform-price auction (`clear_batch` and `settle_users`), guaranteeing that $\sum \text{base} = 0$ and Invariant $I-1$ hold at every step.
+4. The admin restores `max_inventory_lots` to default ($10,000$ lots).
+
