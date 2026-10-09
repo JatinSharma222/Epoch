@@ -12,6 +12,7 @@ import {
   getQuoteMintPda,
   getCollateralVaultPda,
   getVaultAuthorityPda,
+  getVaultUserPda,
 } from "../lib/constants";
 import { Header } from "../components/Header";
 import { Sidebar } from "../components/Sidebar";
@@ -113,6 +114,52 @@ export default function Home() {
 
   const lastClearedAgeSec = Math.max(0, Math.floor((now - lastClearedBatchTs) / 1000));
   const isKeeperOffline = lastClearedAgeSec > 15;
+
+  // Vault Inventory Tracking (Round 11 Requirement 2)
+  const [vaultInventoryNotice, setVaultInventoryNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const checkVaultInventory = async () => {
+      try {
+        const [vaultUser] = getVaultUserPda();
+        const [marketPda] = getMarketPda();
+        const dummyWallet = {
+          publicKey: PublicKey.default,
+          signTransaction: async (tx: any) => tx,
+          signAllTransactions: async (txs: any) => txs,
+        };
+        const provider = new AnchorProvider(connection, dummyWallet as any, { commitment: "confirmed" });
+        const program = new Program(epochIdl as any, provider);
+        const [marketAcc, vaultUserAcc] = await Promise.all([
+          (program.account as any).market.fetch(marketPda),
+          (program.account as any).userAccount.fetch(vaultUser),
+        ]);
+        if (!mounted) return;
+        const basePos = vaultUserAcc.basePosition.toNumber();
+        const maxLots = marketAcc.vaultParams.maxInventoryLots.toNumber();
+        if (basePos >= maxLots) {
+          setVaultInventoryNotice(
+            `Backstop Vault at max LONG inventory (+${(basePos * 0.001).toFixed(1)} / ${(maxLots * 0.001).toFixed(1)} SOL). Bid quoting halted. Market sells will expire unfilled until rebalanced.`
+          );
+        } else if (basePos <= -maxLots) {
+          setVaultInventoryNotice(
+            `Backstop Vault at max SHORT inventory (${(basePos * 0.001).toFixed(1)} / -${(maxLots * 0.001).toFixed(1)} SOL). Ask quoting halted. Market buys will expire unfilled until rebalanced.`
+          );
+        } else {
+          setVaultInventoryNotice(null);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    checkVaultInventory();
+    const interval = setInterval(checkVaultInventory, 4000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [connection]);
 
   useEffect(() => {
     fetch("/data/snapshot.json")
@@ -668,6 +715,18 @@ export default function Home() {
             <span>Solana Devnet RPC cluster is unreachable. Live widgets are frozen.</span>
           </div>
           <span className="hidden sm:inline text-[11px] text-[#848E9C]">Reconnecting...</span>
+        </div>
+      )}
+
+      {/* Vault Inventory Alert Banner (Round 11 Requirement 2) */}
+      {vaultInventoryNotice && (
+        <div className="bg-[#EAB308]/15 border-b border-[#EAB308]/40 text-[#EAB308] px-4 py-1.5 text-xs flex items-center justify-between font-mono shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-[#EAB308] animate-ping shrink-0" />
+            <span className="font-semibold uppercase tracking-wider">Vault Inventory Warning:</span>
+            <span>{vaultInventoryNotice}</span>
+          </div>
+          <span className="hidden sm:inline text-[11px] text-[#848E9C]">Run bun run scripts/rebalance_vault.ts</span>
         </div>
       )}
 

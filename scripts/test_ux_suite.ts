@@ -303,7 +303,14 @@ async function runUxSuite() {
   console.log("UX-21 PASSED: On-chain batch aggregates only; external reference data strictly labeled (reference) [MEASURED]");
 
   console.log("\n===============================================================================");
-  console.log("                  ALL 21 ACCEPTANCE TESTS PASSED [MEASURED]                    ");
+  console.log("                       ACCEPTANCE SUITE SUMMARY REPORT                         ");
+  console.log("===============================================================================");
+  console.log("  AUTOMATED TESTS:  19 / 19 PASSED [MEASURED]");
+  console.log("  MANUAL TESTS:     2 PENDING HUMAN CHECK [MANUAL, pending human check]");
+  console.log("                    - UX-6: Parity Checklist (09 §2.1, §2.2, §2.3 & §10)");
+  console.log("                    - UX-8: User Limit Placement Workflow (09 §10)");
+  console.log("  FUNDING CALIB:    Calibrated on-chain parameter (120,670 slots) [COMPUTED]");
+  console.log("  TOTAL CRITERIA:   21 ACCEPTANCE CRITERIA EVALUATED");
   console.log("===============================================================================");
 }
 

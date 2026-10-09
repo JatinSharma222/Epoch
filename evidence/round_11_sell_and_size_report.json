@@ -1,0 +1,106 @@
+{
+  "tested_at": "2026-10-09T04:52:17.834Z",
+  "network": "devnet",
+  "programId": "CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap",
+  "fresh_wallet": "4tmnSYPLffT6q1o6Ct6Ktd7DUbjB8u3RgdAM4bELn9np",
+  "user_pda": "7CQcEYATBVYXWS8d9WxRvYCvu6AziuYaVDnA4sPpEM3S",
+  "vault_ladder": {
+    "total_ask_depth_sol": 3.5,
+    "total_bid_depth_sol": 3.5,
+    "tiers": [
+      {
+        "tier": 1,
+        "lots": 500,
+        "offsetBps": 12
+      },
+      {
+        "tier": 2,
+        "lots": 1000,
+        "offsetBps": 18
+      },
+      {
+        "tier": 3,
+        "lots": 2000,
+        "offsetBps": 25
+      }
+    ]
+  },
+  "runs": [
+    {
+      "step": "Market Sell 0.10 SOL",
+      "orderType": "market",
+      "side": "SELL",
+      "sizeSol": 0.1,
+      "lots": 100,
+      "ticketPreviewText": "Indicative price: oracle -14 bps for 0.10 SOL",
+      "previewExpectedOffsetBps": -14,
+      "previewIsPartial": false,
+      "batchId": 845556,
+      "clearingPriceUsd": 109.716,
+      "clearingOffsetBps": -14,
+      "matchedLots": 100,
+      "fillRatePct": 100,
+      "protocolFeeBps": 5,
+      "totalCostBps": 19,
+      "txPlaceSig": "2tTW7C9E22F7hmk8tp4x1QkAvp7VmmTjNmTMrgXwv96PMV2a2wfmct1T8gKFVVtbFnRVPvETpU9DD7dpvMQB44MP",
+      "txClearSig": "3s36xgUFGhPtbaWN4JWFccSw3bq2syoXpQwQa6HKWeUCFWpnshxEdsyxVwUNRnoRivh7CA8ZmnPfcbtNtttEJaX1"
+    },
+    {
+      "step": "Market Sell 1.00 SOL",
+      "orderType": "market",
+      "side": "SELL",
+      "sizeSol": 1,
+      "lots": 1000,
+      "ticketPreviewText": "Indicative price: oracle -21 bps for 1.00 SOL",
+      "previewExpectedOffsetBps": -21,
+      "previewIsPartial": false,
+      "batchId": 845579,
+      "clearingPriceUsd": 109.639,
+      "clearingOffsetBps": -21,
+      "matchedLots": 1000,
+      "fillRatePct": 100,
+      "protocolFeeBps": 5,
+      "totalCostBps": 26,
+      "txPlaceSig": "CXTgS4chGxQhRip3tuBJAcUB1MwagtL2SPmZCw9y4TvWCG9yqdoMEXHdyeFy2mVFfhguUvGCoP4VvrFnomgLCGj",
+      "txClearSig": "2U67MwqiCrB13JVU4mrHtAMr2ixcXLFFqCQgaSMJ45jmLq2aDBs1KRQmkbnQcYxbnr9mAW2U1yrZHSLjMZuhADJN"
+    },
+    {
+      "step": "Limit Buy 0.10 SOL @ +14 bps",
+      "orderType": "limit",
+      "side": "BUY",
+      "sizeSol": 0.1,
+      "lots": 100,
+      "ticketPreviewText": "Indicative price: oracle +13 bps for 0.10 SOL",
+      "previewExpectedOffsetBps": 13,
+      "previewIsPartial": false,
+      "batchId": 845608,
+      "clearingPriceUsd": 110.013,
+      "clearingOffsetBps": 13,
+      "matchedLots": 100,
+      "fillRatePct": 100,
+      "protocolFeeBps": 5,
+      "totalCostBps": 18,
+      "txPlaceSig": "3cKwaeymhnMTCsCcJcpWDVbtyq3sFiZPbDPimtuqyV6whdwKbF7PhHNafrgVTRcMjYrCTj4gp1UcnptQpc1us1bA",
+      "txClearSig": "e8SSDGYDHJ1L1bmFAXwVyg5WCTp3ZSoqnskKxWZ2SdBCzqFyKdy41TSovrn6hHSBHeshomd6F3HDvnV1rBppth5"
+    },
+    {
+      "step": "Market Buy 5.00 SOL (Depth Exceeded)",
+      "orderType": "market",
+      "side": "BUY",
+      "sizeSol": 5,
+      "lots": 5000,
+      "ticketPreviewText": "fills 3.5 of 5.0 SOL",
+      "previewExpectedOffsetBps": 37,
+      "previewIsPartial": true,
+      "batchId": 845633,
+      "clearingPriceUsd": 110.276,
+      "clearingOffsetBps": 37,
+      "matchedLots": 3500,
+      "fillRatePct": 70,
+      "protocolFeeBps": 5,
+      "totalCostBps": 42,
+      "txPlaceSig": "jeKSbsoCaMLcuckNmRD6eNPfUAPb5SMm5cCCDXZzRYHCogrQRxMj6QJBUWkpMCau5UT7Lycj7q1BF5S6JJdsrp7",
+      "txClearSig": "kMx1x7TDzCHGXbXJz8QuZy7fhBCUVLF7o1QxYmypR6GGgcE5hpezmCbvBGBJDYSmZVRKG8xkdNJSUeYXjm8DD9r"
+    }
+  ]
+}

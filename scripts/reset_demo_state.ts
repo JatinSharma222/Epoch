@@ -13,6 +13,7 @@ import { AnchorProvider, Program, BN } from "@coral-xyz/anchor";
 import * as fs from "fs";
 import * as path from "path";
 import epochIdl from "../app/src/lib/epoch_idl.json";
+import { rebalanceVault } from "./rebalance_vault";
 
 const DEVNET_RPC = process.env.NEXT_PUBLIC_RPC_URL || "https://api.devnet.solana.com";
 
@@ -21,6 +22,10 @@ async function main() {
   console.log("                     EPOCH PROTOCOL - DEMO STATE RESET                         ");
   console.log("===============================================================================");
   console.log(`Connecting to: ${DEVNET_RPC}`);
+
+  // Rebalance Backstop Vault inventory to ensure clean two-sided depth for demo
+  console.log("\n>>> Step 0: Checking & Rebalancing Backstop Vault Inventory...");
+  await rebalanceVault();
 
   const connection = new Connection(DEVNET_RPC, "confirmed");
   const programId = new PublicKey("CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap");

@@ -150,18 +150,28 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
         1000
       ) / 1_000_000;
 
-    const indicativeText = `Indicative price: oracle ${offsetStr} bps for ${numQty.toFixed(2)} SOL`;
+    const isPartial = res.matched < lots;
+    const filledSol = (res.matched * 0.001).toFixed(1);
+    const requestedSol = numQty.toFixed(1);
+    const partialText = `fills ${filledSol} of ${requestedSol} SOL`;
+    const fullText = `Indicative price: oracle ${offsetStr} bps for ${numQty.toFixed(2)} SOL`;
+    const indicativeText = isPartial ? partialText : fullText;
+    const fillLots = Math.min(lots, res.matched);
+    const fillPct = Math.round((fillLots / lots) * 100);
 
     if (orderType === "market") {
       return {
         willFill: true,
-        fillLots: lots,
-        fillPct: 100,
+        fillLots,
+        fillPct,
         price: clPriceUsd,
         offsetBps,
         indicativeText,
-        reason: indicativeText,
+        reason: isPartial
+          ? `Depth insufficient: ${partialText} at oracle ${offsetStr} bps`
+          : indicativeText,
         isCrossing: true,
+        isPartial,
       };
     }
 
@@ -171,26 +181,36 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
         if (orderTick > res.bid.tick) {
           return {
             willFill: true,
-            fillLots: lots,
-            fillPct: 100,
+            fillLots,
+            fillPct,
             price: clPriceUsd,
             offsetBps,
             indicativeText,
-            reason: indicativeText,
+            reason: isPartial
+              ? `Depth insufficient: ${partialText} at oracle ${offsetStr} bps`
+              : indicativeText,
             isCrossing: true,
+            isPartial,
           };
         } else if (orderTick === res.bid.tick) {
-          const pct = Math.round((res.bid.alloc / res.bid.total) * 100);
-          const fLots = Math.floor((lots * res.bid.alloc) / res.bid.total);
+          const allocLots = Math.floor((lots * res.bid.alloc) / res.bid.total);
+          const actualFill = Math.min(fillLots, allocLots);
+          const actualPct = Math.round((actualFill / lots) * 100);
+          const actualFilledSol = (actualFill * 0.001).toFixed(1);
+          const isActPartial = actualFill < lots;
+          const actText = isActPartial ? `fills ${actualFilledSol} of ${requestedSol} SOL` : fullText;
           return {
             willFill: true,
-            fillLots: fLots,
-            fillPct: pct,
+            fillLots: actualFill,
+            fillPct: actualPct,
             price: clPriceUsd,
             offsetBps,
-            indicativeText,
-            reason: indicativeText,
+            indicativeText: actText,
+            reason: isActPartial
+              ? `Depth insufficient: ${actText} at oracle ${offsetStr} bps`
+              : indicativeText,
             isCrossing: true,
+            isPartial: isActPartial,
           };
         }
       }
@@ -203,32 +223,43 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
         indicativeText: "No crossing liquidity",
         reason: "No crossing liquidity at this price, your order will expire unfilled",
         isCrossing: false,
+        isPartial: false,
       };
     } else {
       if (orderTick <= res.bid.tick) {
         if (orderTick < res.ask.tick) {
           return {
             willFill: true,
-            fillLots: lots,
-            fillPct: 100,
+            fillLots,
+            fillPct,
             price: clPriceUsd,
             offsetBps,
             indicativeText,
-            reason: indicativeText,
+            reason: isPartial
+              ? `Depth insufficient: ${partialText} at oracle ${offsetStr} bps`
+              : indicativeText,
             isCrossing: true,
+            isPartial,
           };
         } else if (orderTick === res.ask.tick) {
-          const pct = Math.round((res.ask.alloc / res.ask.total) * 100);
-          const fLots = Math.floor((lots * res.ask.alloc) / res.ask.total);
+          const allocLots = Math.floor((lots * res.ask.alloc) / res.ask.total);
+          const actualFill = Math.min(fillLots, allocLots);
+          const actualPct = Math.round((actualFill / lots) * 100);
+          const actualFilledSol = (actualFill * 0.001).toFixed(1);
+          const isActPartial = actualFill < lots;
+          const actText = isActPartial ? `fills ${actualFilledSol} of ${requestedSol} SOL` : fullText;
           return {
             willFill: true,
-            fillLots: fLots,
-            fillPct: pct,
+            fillLots: actualFill,
+            fillPct: actualPct,
             price: clPriceUsd,
             offsetBps,
-            indicativeText,
-            reason: indicativeText,
+            indicativeText: actText,
+            reason: isActPartial
+              ? `Depth insufficient: ${actText} at oracle ${offsetStr} bps`
+              : indicativeText,
             isCrossing: true,
+            isPartial: isActPartial,
           };
         }
       }
@@ -241,6 +272,7 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
         indicativeText: "No crossing liquidity",
         reason: "No crossing liquidity at this price, your order will expire unfilled",
         isCrossing: false,
+        isPartial: false,
       };
     }
   }, [bidQty, askQty, offsetInfo, side, lots, numQty, orderType, oraclePrice]);
@@ -475,6 +507,12 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
                 </span>
               </div>
               {/* Crossing Warning & One-Click Fill Now (Round 9 Track A) */}
+              {indicativePreview && indicativePreview.isCrossing && indicativePreview.isPartial && (
+                <div className="p-2 rounded bg-[#eab308]/10 border border-[#eab308]/30 text-[11px] text-[#eab308] flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 text-[#eab308]" />
+                  <span>Depth insufficient: {indicativePreview.indicativeText}</span>
+                </div>
+              )}
               {indicativePreview && !indicativePreview.isCrossing && (
                 <div className="p-2 rounded bg-[#eab308]/10 border border-[#eab308]/30 text-[11px] text-[#eab308] flex items-center justify-between gap-2">
                   <div className="flex items-start gap-1.5 flex-1">
@@ -492,14 +530,20 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
               )}
             </div>
           ) : (
-            /* Market Order Slippage Label (09 §4.1 & Round 10 Item 1) */
+            /* Market Order Slippage Label (09 §4.1 & Round 10 Item 1 & Round 11) */
             <div className="p-2.5 rounded bg-[#12161c] border bp-border text-[11px] space-y-1">
               <div className="flex items-center justify-between">
-                <span className="text-white font-semibold">Market Order</span>
-                <span className="text-[#0ecb81] font-mono text-[10px]">{indicativePreview.indicativeText}</span>
+                <span className="text-white font-semibold">
+                  {indicativePreview.isPartial ? "Partial Fill Preview" : "Market Order"}
+                </span>
+                <span className={indicativePreview.isPartial ? "text-[#eab308] font-mono text-[10px]" : "text-[#0ecb81] font-mono text-[10px]"}>
+                  {indicativePreview.indicativeText}
+                </span>
               </div>
               <p className="text-[10px] text-[#848e9c]">
-                Uniform clearing price: all matched lots trade at single P* (${indicativePreview.price.toFixed(3)}), plus 5 bps fee.
+                {indicativePreview.isPartial
+                  ? `Depth insufficient: ${indicativePreview.indicativeText} at uniform P* ($${indicativePreview.price.toFixed(3)}), remaining expires unfilled.`
+                  : `Uniform clearing price: all matched lots trade at single P* ($${indicativePreview.price.toFixed(3)}), plus 5 bps fee.`}
               </p>
             </div>
           )}

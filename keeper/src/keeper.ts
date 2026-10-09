@@ -383,6 +383,10 @@ export class EpochKeeper {
           batch: batchPda,
           cranker: this.wallet.publicKey,
         })
+        .preInstructions([
+          ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+        ])
         .rpc({ skipPreflight: true });
 
       // Confirm and fetch transaction metadata for CU consumption
@@ -515,6 +519,10 @@ export class EpochKeeper {
               isSigner: false,
             }))
           )
+          .preInstructions([
+            ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
+            ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          ])
           .rpc({ skipPreflight: true });
 
         const txInfo = await this.connection.getTransaction(txSig, {
@@ -629,6 +637,10 @@ export class EpochKeeper {
             batch: batchPda,
             caller: this.wallet.publicKey,
           })
+          .preInstructions([
+            ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
+            ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          ])
           .rpc({ skipPreflight: true });
 
         const txInfo = await this.connection.getTransaction(txSig, {
@@ -678,6 +690,10 @@ export class EpochKeeper {
               isSigner: false,
             }))
           )
+          .preInstructions([
+            ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
+            ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          ])
           .rpc({ skipPreflight: true });
 
         const txInfo = await this.connection.getTransaction(txSig, {
@@ -748,6 +764,10 @@ export class EpochKeeper {
           vaultUser: this.vaultUser,
           cranker: this.wallet.publicKey,
         })
+        .preInstructions([
+          ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+        ])
         .rpc({ skipPreflight: true });
 
       const txInfo = await this.connection.getTransaction(txSig, {
@@ -838,6 +858,10 @@ export class EpochKeeper {
           liquidatee: liquidateeOwner,
           liquidator: this.wallet.publicKey,
         })
+        .preInstructions([
+          ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+        ])
         .rpc({ skipPreflight: true });
 
       const txInfo = await this.connection.getTransaction(txSig, {
