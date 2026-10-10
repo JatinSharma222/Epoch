@@ -795,19 +795,35 @@ export class EpochKeeper {
 
       return { success: true, signature: txSig, cu: cuConsumed };
     } catch (err: any) {
-      const errStr = err.toString();
+      let logs: string[] = [];
+      try {
+        if (typeof err?.getLogs === "function") {
+          logs = await err.getLogs();
+        } else if (Array.isArray(err?.logs)) {
+          logs = err.logs;
+        }
+      } catch {}
+
+      const errStr = [
+        err?.message || "",
+        err?.transactionMessage || "",
+        ...logs,
+        err?.toString() || "",
+      ].join(" ");
+
       if (
         errStr.includes("BatchClosed") ||
         errStr.includes("RingSlotBusy") ||
         errStr.includes("BatchTooFarAhead") ||
-        errStr.includes("BatchInPast")
+        errStr.includes("BatchInPast") ||
+        errStr.includes("0x1778")
       ) {
         return { success: true };
       }
 
       this.logger.warn(
         `[keeper] vault_quote error for batch ${targetBatch}:`,
-        errStr
+        err?.message || errStr
       );
       return { success: false, error: errStr };
     }
@@ -1042,7 +1058,8 @@ export class EpochKeeper {
         const currentBatch = Math.floor(
           (currentSlot - market.startSlot.toNumber()) / batchSlots
         );
-        const targetBatch = currentBatch + 1;
+        const lookahead = market.params.lookahead || 3;
+        const targetBatch = currentBatch + Math.min(lookahead, 3);
         const ringIndex = targetBatch % 8;
         const quoteRes = await this.vaultQuote(targetBatch, ringIndex);
         if (quoteRes.success) vaultQuotesCount++;
