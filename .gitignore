@@ -4,6 +4,7 @@
 /context/
 /research/
 /design/
+/scratch/
 
 # Environment files
 .env

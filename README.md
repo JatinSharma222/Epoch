@@ -43,10 +43,11 @@ The Epoch protocol is live and verified on **Solana Devnet**:
 | **Epoch Program ID** | `CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap` | [Solana Explorer](https://explorer.solana.com/address/CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap?cluster=devnet) |
 | **Upgrade Authority** | `D2Lf1YPGLDLKBpm6h5tWGYmkxVs7ArDLudGqCzDrxaeR` | [Solana Explorer](https://explorer.solana.com/address/D2Lf1YPGLDLKBpm6h5tWGYmkxVs7ArDLudGqCzDrxaeR?cluster=devnet) |
 | **Market PDA** | `9XoVtk3h7EbNnJPQU8JrN8cQwHoLdswZasi4wYojwFCP` | [Solana Explorer](https://explorer.solana.com/address/9XoVtk3h7EbNnJPQU8JrN8cQwHoLdswZasi4wYojwFCP?cluster=devnet) |
-| **Collateral Vault PDA** | `91u2K6jS9d8hN5L6vU3WqNf9K6vD1eH8nK9mP7xR9sT` | [Solana Explorer](https://explorer.solana.com/address/91u2K6jS9d8hN5L6vU3WqNf9K6vD1eH8nK9mP7xR9sT?cluster=devnet) |
-| **Mock USDC Mint** | `6n2xV78PvdzY352K6E83Jb7rK72hA9aK8gM2Z1kL4pQx` | [Solana Explorer](https://explorer.solana.com/address/6n2xV78PvdzY352K6E83Jb7rK72hA9aK8gM2Z1kL4pQx?cluster=devnet) |
+| **Backstop Vault User PDA** | `6fEkCVBBFpBNVaJ2BeRud8jXnYnkLdv8BEAHU6mU4m6T` | [Solana Explorer](https://explorer.solana.com/address/6fEkCVBBFpBNVaJ2BeRud8jXnYnkLdv8BEAHU6mU4m6T?cluster=devnet) |
+| **Collateral Vault PDA** | `2Vj53nWYb95KxS1Zgbh5dvJryWrPmaprz3hRDuW4aZPG` | [Solana Explorer](https://explorer.solana.com/address/2Vj53nWYb95KxS1Zgbh5dvJryWrPmaprz3hRDuW4aZPG?cluster=devnet) |
+| **Mock USDC Mint** | `7VR6BNMZ5Y4bPRyndLAhXm9EN3GASHum6kym1hbrT2Xs` | [Solana Explorer](https://explorer.solana.com/address/7VR6BNMZ5Y4bPRyndLAhXm9EN3GASHum6kym1hbrT2Xs?cluster=devnet) |
 | **Pyth SOL/USD Feed** | `7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE` | [Solana Explorer](https://explorer.solana.com/address/7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE?cluster=devnet) |
-| **Latest Upgrade Tx** | `5PUq6ivhzNT3Dv1NtSTUEF9YuNg4fWz6xEuJ5qp6uGUTnCptw...` | [Solana Explorer](https://explorer.solana.com/tx/5PUq6ivhzNT3Dv1NtSTUEF9YuNg4fWz6xEuJ5qp6uGUTnCptwCuAKHgxcsMw2DaSAZfA6L7SbLM9kvAQXpDYGwXU?cluster=devnet) |
+| **Latest Upgrade Tx** | `5HRnbiYa51Vo93KTVEG5oSj4goUCgqNrMCRehgA2Mujfk7gvwhqRnuFDNzvTSmL3xeu2PmmYGPbQnyQxnpGwpTzX` | [Solana Explorer](https://explorer.solana.com/tx/5HRnbiYa51Vo93KTVEG5oSj4goUCgqNrMCRehgA2Mujfk7gvwhqRnuFDNzvTSmL3xeu2PmmYGPbQnyQxnpGwpTzX?cluster=devnet) |
 
 ---
 
@@ -59,7 +60,7 @@ All metrics are derived from real on-chain execution or calibrated economic simu
 | **Gate G0: Toolchain** | Batch Account PDA Memory Footprint | **9,928 bytes** | **[MEASURED]** (Within 10,240-byte Anchor ceiling) |
 | **Gate G1: Compute Units** | `clear_batch` Local Worst-Case (128 orders @ 1 tick) | **34,812 CU** | **[MEASURED]** (5.80% of 600k budget, 2.49% of 1.4M tx limit) |
 | **Gate G1: Compute Units** | `clear_batch` Devnet Live Execution (Batch #6579) | **17,267 CU** | **[MEASURED]** (2.88% of 600k budget, 1.23% of 1.4M tx limit) |
-| **Gate G1: Compute Units** | `expire_and_release` Stale Batch Release | **12,425 CU** | **[MEASURED]** (Devnet tx `2c1bTXx4...`) |
+| **Gate G1: Compute Units** | `expire_and_release` Stale Batch Release | **12,425 CU** | **[MEASURED]** (Devnet tx [`2c1bTXx4p3B6ESJtj7154MkTEL74qEq5Qz8EnrAT7ErBUWRjWM2StDNhMaaryF3oyfkBdjpCnedmWNvo7bod3zhV`](https://explorer.solana.com/tx/2c1bTXx4p3B6ESJtj7154MkTEL74qEq5Qz8EnrAT7ErBUWRjWM2StDNhMaaryF3oyfkBdjpCnedmWNvo7bod3zhV?cluster=devnet)) |
 | **Gate G1: Compute Units** | `place_order` Per-User Placement | **10,552 – 13,243 CU** | **[MEASURED]** (Target $\le 60,000$ CU) |
 | **Gate G1: Compute Units** | `settle_users` Paged Settlement | **14,791 – 28,380 CU** | **[MEASURED]** (Target $\le 400,000$ CU) |
 | **Gate G2: Differential** | Golden Vectors Parity (TS vs Rust Engine) | **1,001/1,001 Bit-for-bit** | **[MEASURED]** (0 mismatches across 1,001 vectors) |
@@ -98,35 +99,102 @@ All metrics are derived from real on-chain execution or calibrated economic simu
 The entire lifecycle was executed live on Solana Devnet across trader wallets and the Backstop Vault:
 
 1. **SOL Funding & ATA Setup:** Transferred test SOL to User 1 and User 2; initialized associated token accounts for mock USDC.
-   - Fund SOL: [`x33bVjCbQh7J...`](https://explorer.solana.com/tx/x33bVjCbQh7Jcx7CEF2wQHuTG2hzLanVy4e6MYr9csZLGwezyDEmQ8EFxCdKA7WZe7ZLxBgQ53ChHeR9SfHt6Ft?cluster=devnet) [MEASURED]
-   - Create ATAs: [`2cN1C5R8JVWq...`](https://explorer.solana.com/tx/2cN1C5R8JVWqKPjZcLew9u9fMTYZfus9tixcjTtcH18stFHmTg3eZzgGyn1LQDYnx2e9Ng8tUJ2u24X4EcdQfpwL?cluster=devnet) [MEASURED]
+   - Fund SOL: [`x33bVjCbQh7Jcx7CEF2wQHuTG2hzLanVy4e6MYr9csZLGwezyDEmQ8EFxCdKA7WZe7ZLxBgQ53ChHeR9SfHt6Ft`](https://explorer.solana.com/tx/x33bVjCbQh7Jcx7CEF2wQHuTG2hzLanVy4e6MYr9csZLGwezyDEmQ8EFxCdKA7WZe7ZLxBgQ53ChHeR9SfHt6Ft?cluster=devnet) [MEASURED]
+   - Create ATAs: [`2cN1C5R8JVWqKPjZcLew9u9fMTYZfus9tixcjTtcH18stFHmTg3eZzgGyn1LQDYnx2e9Ng8tUJ2u24X4EcdQfpwL`](https://explorer.solana.com/tx/2cN1C5R8JVWqKPjZcLew9u9fMTYZfus9tixcjTtcH18stFHmTg3eZzgGyn1LQDYnx2e9Ng8tUJ2u24X4EcdQfpwL?cluster=devnet) [MEASURED]
 2. **Faucet & Registration:** Minted 5,000 USDC each via on-chain faucet; initialized `UserAccount` PDAs.
-   - Faucet User 1: [`vV8HtTVewi34...`](https://explorer.solana.com/tx/vV8HtTVewi34WPGJ89JsKuaJMYCLyhT8JLhNEXM1Xm8BcyUDCPNWL9hNLwJd4k2HbXNfks8683azPEqb4mNtLXE?cluster=devnet) [MEASURED]
-   - Create PDA User 1: [`3DD8DsSZbqX7...`](https://explorer.solana.com/tx/3DD8DsSZbqX7KsC1xkHNhw7P1wrLxdUCVKfr3GXn39gS2AiTfmtmBzML73DTqMmvi8Sv4bzHtXz16LaKnFmU1skS?cluster=devnet) [MEASURED]
+   - Faucet User 1: [`vV8HtTVewi34WPGJ89JsKuaJMYCLyhT8JLhNEXM1Xm8BcyUDCPNWL9hNLwJd4k2HbXNfks8683azPEqb4mNtLXE`](https://explorer.solana.com/tx/vV8HtTVewi34WPGJ89JsKuaJMYCLyhT8JLhNEXM1Xm8BcyUDCPNWL9hNLwJd4k2HbXNfks8683azPEqb4mNtLXE?cluster=devnet) [MEASURED]
+   - Create PDA User 1: [`3DD8DsSZbqX7KsC1xkHNhw7P1wrLxdUCVKfr3GXn39gS2AiTfmtmBzML73DTqMmvi8Sv4bzHtXz16LaKnFmU1skS`](https://explorer.solana.com/tx/3DD8DsSZbqX7KsC1xkHNhw7P1wrLxdUCVKfr3GXn39gS2AiTfmtmBzML73DTqMmvi8Sv4bzHtXz16LaKnFmU1skS?cluster=devnet) [MEASURED]
 3. **Collateral Deposit:** Deposited 1,000 USDC each into the Epoch Collateral Vault.
-   - Deposit User 1: [`5Y1Pch5G784E...`](https://explorer.solana.com/tx/5Y1Pch5G784EJVY5oLsZt9VFRqwhysc42WvqAPefjyLUKG4sh8qaLWcx687o7FGQ7PtDwtouL2PViQnKqA4d7iz3?cluster=devnet) [MEASURED]
+   - Deposit User 1: [`5Y1Pch5G784EJVY5oLsZt9VFRqwhysc42WvqAPefjyLUKG4sh8qaLWcx687o7FGQ7PtDwtouL2PViQnKqA4d7iz3`](https://explorer.solana.com/tx/5Y1Pch5G784EJVY5oLsZt9VFRqwhysc42WvqAPefjyLUKG4sh8qaLWcx687o7FGQ7PtDwtouL2PViQnKqA4d7iz3?cluster=devnet) [MEASURED]
 4. **Order Placement & Batch Crossing:** Backstop Vault placed its 6-order quoting ladder; User 1 placed a BUY order for 10 lots @ tick 62 targeting Batch #6579.
-   - Bundle Orders: [`2p5APTN9fChD...`](https://explorer.solana.com/tx/2p5APTN9fChDAcTnaapNcNg3DUa3w7EgXaPhViHjuQQjK4PMpkqmeVmbUNdRYbmr9aVV65gSn2WhENWzxkSmvKMN?cluster=devnet) [MEASURED]
+   - Bundle Orders: [`2p5APTN9fChDAcTnaapNcNg3DUa3w7EgXaPhViHjuQQjK4PMpkqmeVmbUNdRYbmr9aVV65gSn2WhENWzxkSmvKMN`](https://explorer.solana.com/tx/2p5APTN9fChDAcTnaapNcNg3DUa3w7EgXaPhViHjuQQjK4PMpkqmeVmbUNdRYbmr9aVV65gSn2WhENWzxkSmvKMN?cluster=devnet) [MEASURED]
 5. **Batch Clearance ($Q^* > 0$):** Batch #6579 cleared at uniform clearing tick 55 ($121.7950) matching **10 lots ($1,217.95 USDC notional) NONZERO [MEASURED]** consuming **17,267 CU**.
-   - Clear Batch #6579: [`3Yok6mkHUW3k...`](https://explorer.solana.com/tx/3Yok6mkHUW3kx4cfUZeb22ftF1LtZqxDQ5Yu63dMiusgvk8gQ5tV6smSDwwPwzXws3xbXJqa1rv2dmyAvF7RdCW6?cluster=devnet) [MEASURED]
+   - Clear Batch #6579: [`3Yok6mkHUW3kx4cfUZeb22ftF1LtZqxDQ5Yu63dMiusgvk8gQ5tV6smSDwwPwzXws3xbXJqa1rv2dmyAvF7RdCW6`](https://explorer.solana.com/tx/3Yok6mkHUW3kx4cfUZeb22ftF1LtZqxDQ5Yu63dMiusgvk8gQ5tV6smSDwwPwzXws3xbXJqa1rv2dmyAvF7RdCW6?cluster=devnet) [MEASURED]
 6. **Paged Settlement:** Settled positions on-chain against the vault: User 1: **+10 lots (Long)**; Backstop Vault: **-10 lots (Short)**.
-   - Settle Users: [`289ehs5W6AqS...`](https://explorer.solana.com/tx/289ehs5W6AqSaXjEvgfKCFNsaKv6Xx558SP6RJVk762VXauFvgnyCGUkYYxX7svdk51ho2tLQ1DxywofyoRoMseW?cluster=devnet) [MEASURED]
+   - Settle Users: [`289ehs5W6AqSaXjEvgfKCFNsaKv6Xx558SP6RJVk762VXauFvgnyCGUkYYxX7svdk51ho2tLQ1DxywofyoRoMseW`](https://explorer.solana.com/tx/289ehs5W6AqSaXjEvgfKCFNsaKv6Xx558SP6RJVk762VXauFvgnyCGUkYYxX7svdk51ho2tLQ1DxywofyoRoMseW?cluster=devnet) [MEASURED]
 7. **Flattening Trade & Collateral Exit:** User 1 placed an offsetting SELL order in Batch #6608 crossing the vault bid, returning position to **0 lots (Flat) [MEASURED]**, and withdrew $500 USDC collateral.
-   - Clear Flattening Batch #6608: [`4hQ4okvPTRYq...`](https://explorer.solana.com/tx/4hQ4okvPTRYqN3gNUaxMVMyFk2KFxznxwJbuiw9Nk6akhPKFfeDeWiHJ65UngNDTe8K62jCDPhTLDZY8zjEwr5ZG?cluster=devnet) [MEASURED]
-   - Withdraw User 1: [`2D145Kmk6nPv...`](https://explorer.solana.com/tx/2D145Kmk6nPvUwubcxwdNnpeiGGDYaXxicsxPWdpgH3g2ekJH87Ez3LpAHn5Ays7NBN7jNScbWFqyJywzerg2De4?cluster=devnet) [MEASURED]
+   - Clear Flattening Batch #6608: [`4hQ4okvPTRYqN3gNUaxMVMyFk2KFxznxwJbuiw9Nk6akhPKFfeDeWiHJ65UngNDTe8K62jCDPhTLDZY8zjEwr5ZG`](https://explorer.solana.com/tx/4hQ4okvPTRYqN3gNUaxMVMyFk2KFxznxwJbuiw9Nk6akhPKFfeDeWiHJ65UngNDTe8K62jCDPhTLDZY8zjEwr5ZG?cluster=devnet) [MEASURED]
+   - Withdraw User 1: [`2D145Kmk6nPvUwubcxwdNnpeiGGDYaXxicsxPWdpgH3g2ekJH87Ez3LpAHn5Ays7NBN7jNScbWFqyJywzerg2De4`](https://explorer.solana.com/tx/2D145Kmk6nPvUwubcxwdNnpeiGGDYaXxicsxPWdpgH3g2ekJH87Ez3LpAHn5Ays7NBN7jNScbWFqyJywzerg2De4?cluster=devnet) [MEASURED]
 
 ---
 
 ### Demo 2: Backstop Vault Quoting & Uniform Price Execution
 
 1. **Vault Parameter Sizing:** The on-chain Backstop Vault quoting ladder is configured via `updateVaultParams` to offsets `[12, 18, 25]` bps and sizes `[500, 1000, 2000]` lots (3.5 SOL total depth per side, VWAP: 21.1 bps).
-   - Parameter Update Signature: [`57c5dCLkxvMd...`](https://explorer.solana.com/tx/57c5dCLkxvMdXqhsF8zCXm7fVvTPtMsgXnsFrcPNjv1hcJUkE8ZfUdPCjRJnKm3gsC2t7Xb5nZ4mKWqhJ2Z6YPqn?cluster=devnet) [MEASURED]
+   - Parameter Update Signature: [`57c5dCLkxvMdXqhsF8zCXm7fVvTPtMsgXnsFrcPNjv1hcJUkE8ZfUdPCjRJnKm3gsC2t7Xb5nZ4mKWqhJ2Z6YPqn`](https://explorer.solana.com/tx/57c5dCLkxvMdXqhsF8zCXm7fVvTPtMsgXnsFrcPNjv1hcJUkE8ZfUdPCjRJnKm3gsC2t7Xb5nZ4mKWqhJ2Z6YPqn?cluster=devnet) [MEASURED]
 2. **1.0 SOL Market Order Execution:** A 1.0 SOL (1,000 lots) market buy clears at the single uniform clearing price of **+21.00 bps** (the minimum-imbalance midpoint of the plateau), plus 5 bps fee (total taker cost: 26 bps one-way), matching 100% of lots at that single price.
 3. **On-Screen Spread:** The vault quotes a 24 bps inner bid-ask spread ($-12$ bps to $+12$ bps, or $0.288 at $120 SOL) with an expected maker yield of **+6.973 bps [SIMULATED]** net of all protocol fees.
 
 ---
 
-## 5. Always-On Keeper Architecture & Production Plan
+### Demo 3: Vault Inventory Limit & Asymmetric Reversal (Round 12 Verified)
+
+1. **Inventory Limit & Asymmetric Quoting:** Tested with 20 consecutive 1.0 SOL market buys against the Backstop Vault. As inventory accumulated, Avellaneda-Stoikov skew widened clearing offsets from +21 bps up to +30 bps. At Run 10, vault inventory reached the maximum short limit of **-10,000 lots (-10.0 SOL)**.
+2. **One-Sided Quoting Halt:** In Runs 11–20, the vault halted ask quotes (inventory-increasing side) while continuing to quote bid quotes (inventory-reducing side), resulting in 0 lots matched for subsequent buys.
+3. **Inventory Reversal:** A 1.0 SOL market sell was submitted. Because the vault maintained its bid ladder, the order executed at offset **-11 bps**, matching 1,000 lots and reducing vault short inventory from -10,000 to -9,000 lots:
+   - Sell Placement Tx: [`5wBq234e7RatQY1XB7GuBQKV1VUTx6vjrFkPtUqbykNorjcPYf9wRjv1i76VzL3E5R1BpeZaXhMsnxwrBjsQGUas`](https://explorer.solana.com/tx/5wBq234e7RatQY1XB7GuBQKV1VUTx6vjrFkPtUqbykNorjcPYf9wRjv1i76VzL3E5R1BpeZaXhMsnxwrBjsQGUas?cluster=devnet) [MEASURED]
+   - Batch Clearance Tx: [`5aidNPa7H3yNBALk6i3CUFE7LTJ7nHsFBW6yFFkLvPvAx66TacrRjGmC8E887H1cgw3wgR8hddhDMFk6ANBvj5MA`](https://explorer.solana.com/tx/5aidNPa7H3yNBALk6i3CUFE7LTJ7nHsFBW6yFFkLvPvAx66TacrRjGmC8E887H1cgw3wgR8hddhDMFk6ANBvj5MA?cluster=devnet) [MEASURED]
+4. **Oversize Order Preview:** When an order exceeds total book depth (e.g. 5.0 SOL market buy against 3.5 SOL vault ladder depth), the order ticket preview displays both the expected clearing offset (+37 bps) and the partial fill notice ("fills 3.5 of 5.0 SOL") prior to signature submission.
+
+---
+
+## 5. Quickstart & Clean-Clone Reproducibility Guide
+
+Follow these exact steps from a fresh git clone to install, build, test, and run the complete Epoch protocol:
+
+### Prerequisites
+- **Rust & Cargo:** `1.75.0` or newer
+- **Solana CLI:** `1.18.0` or newer
+- **Anchor CLI:** `0.30.1` (`avm use 0.30.1`)
+- **Bun:** `1.1.0` or newer (`curl -fsSL https://bun.sh/install | bash`)
+
+### Step 1: Repository Setup
+```bash
+git clone https://github.com/your-org/epoch.git
+cd epoch
+bun install
+```
+
+### Step 2: Build & Test On-Chain Program
+```bash
+anchor build
+cargo test
+```
+*Result:* Compiles the BPF program binary and executes 59 Rust unit tests verifying uniform price clearing, Avellaneda-Stoikov inventory skew, and mathematical conservation invariants (59 / 59 passed).
+
+### Step 3: Build Autonomous Keeper Daemon
+```bash
+cd keeper
+bun install
+bun run build
+cd ..
+```
+*Result:* Compiles the TypeScript keeper daemon with Hermes Pyth streaming and automated batch clearing.
+
+### Step 4: Build Headless Trading Frontend
+```bash
+cd app
+bun install
+bun run build
+cd ..
+```
+*Result:* Generates the production Next.js 14 static and server bundles (0 lint errors, 0 type errors).
+
+### Step 5: Run Pre-Flight System Health Check
+```bash
+bun run scripts/preflight.ts
+```
+*Result:* Queries Solana Devnet and confirms 7/7 health dimensions: live program ID, keeper and admin balances, Pyth oracle freshness, keeper liveness, two-sided vault quoting, vault inventory limits, and ring buffer accounts.
+
+### Step 6: Demo State Reset & Vault Rebalancing
+```bash
+bun run scripts/reset_demo_state.ts
+```
+*Result:* Verifies demo wallet balances, inspects Backstop Vault inventory, and rebalances the vault to flat (0 lots) through the on-chain auction pipeline to guarantee pristine demo conditions.
+
+---
+
+## 6. Always-On Keeper Architecture & Production Plan
 
 The permissionless keeper daemon (`keeper/src/index.ts`) ensures continuous autonomous operation on Solana Devnet:
 
@@ -151,7 +219,7 @@ The permissionless keeper daemon (`keeper/src/index.ts`) ensures continuous auto
 ┌─────────────────────────────────────────────────────────────┐
 │                      Solana Validators                      │
 │            (Deterministic on-chain consensus state)         │
-└─────────────────────────────────────────────────────────────┘
+└──────────────────────────────┬──────────────────────────────┘
 ```
 
 ### Key Keeper Policies:
@@ -161,7 +229,7 @@ The permissionless keeper daemon (`keeper/src/index.ts`) ensures continuous auto
 
 ---
 
-## 6. Frontend Production Deployment
+## 7. Frontend Production Deployment
 
 The Epoch trading terminal (`app/`) is built on **Next.js 14**, **Tailwind CSS**, and **@solana/wallet-adapter**:
 
@@ -183,7 +251,7 @@ The Epoch trading terminal (`app/`) is built on **Next.js 14**, **Tailwind CSS**
 
 ---
 
-## 7. Honest Claims & Security Boundaries
+## 8. Honest Claims, Security Boundaries & Known Limitations
 
 Per the security analysis in [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) and [`research/review/AS_BUILT_DELTA_2.md`](research/review/AS_BUILT_DELTA_2.md):
 
@@ -194,11 +262,17 @@ Per the security analysis in [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) and 
 - **What Epoch Does NOT Solve (Threat R4 Boundary):**
   1. Last-look informational advantage: An actor observing external centralized exchange price jumps at $t = T_{close} - 50$ms can submit late orders into the closing batch against resting quotes. This informational latency advantage is not eliminated.
   2. Oracle update latency: Pyth oracle updates reflect external venue prices with finite latency. Makers must maintain spread buffers (e.g. 12 bps) to offset adverse selection.
-- **Architectural & Operational Boundaries:** For complete details on order capacity, ring limits, tick discretization, and Devnet realities, see [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md).
+- **Architectural & Operational Boundaries:**
+  - **128 Orders per Batch:** Zero-copy layout fixed at 128 orders to fit within Solana account size and single-transaction CU limits.
+  - **Ring Buffer Size ($R=8$):** Lookahead window restricted to $L=3$ batches ($1.43\text{ s}$) to prevent ring collisions.
+  - **Max Clearing Delay:** Batches un-cleared after 20 slots ($4.78\text{ s}$) expire stale and can be permissionlessly voided via `expire_and_release`.
+  - **Paged Settlement:** Batches with $>16$ users unbundle into distinct `clear_batch` and `settle_users` transactions.
+  - **Zero Admin Backdoors:** Audit of all 17 on-chain instructions confirms zero instructions can edit user positions or balances directly. Vault rebalancing proceeds exclusively through the standard auction crossing pipeline.
+  - Complete details are documented in [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md).
 - **Deployment Scope:** Devnet hackathon prototype. Mainnet deployment is out of scope.
 
 ---
 
-## 8. License & Attribution
+## 9. License & Attribution
 
 This project is licensed under the [ISC License](LICENSE). Full academic and open-source software citations are documented in [`ATTRIBUTION.md`](ATTRIBUTION.md). Per-asset vector graphics are open source under MIT / CC0 licenses detailed in [`app/public/icons/ATTRIBUTION.md`](app/public/icons/ATTRIBUTION.md).

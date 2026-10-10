@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Permissionless keeper service for Epoch batch clearing and settlement",
   "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target node",
     "start": "bun run src/index.ts"
   },
   "dependencies": {

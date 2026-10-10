@@ -40,9 +40,7 @@ This report establishes the complete verification and delivery of **Round 9** re
 ## Section A: Judge-Flow Fills & Liquidity Mechanics
 
 ### A.1 Counterparty Identification in Two-Wallet Rehearsals
-During the Round 8 multi-wallet rehearsal ([Report 8 §E.1](REPORT_8.md)), two independent browser wallets interacted with the order book:
-- **Wallet 1 (Trader A):** `E5yN2C3s1xZtz4qR8WnE9mK6aLbU9yPxVjTrQe4mSd1F`
-- **Wallet 2 (Trader B):** `8xKv7F2jL5pYqW9mN4bT8cR1zXvE3uSd6aP9yTrQe4mS`
+During the Round 8 multi-wallet rehearsal ([Report 8 §E.1](REPORT_8.md)), two simulated browser client sessions interacted with the order book.
 
 **Counterparty Resolution Mechanics:**
 All live verification fills to date on Devnet were executed against the protocol's deterministic Backstop Vault PDA (`6fEkCVBBFpBNVaJ2BeRud8jXnYnkLdv8BEAHU6mU4m6T`). Direct peer-to-peer matching between distinct user accounts is supported by the clearing mechanism specification and contract logic, but all devnet benchmark fills were absorbed by the Backstop Vault liquidity ladder.

@@ -66,8 +66,8 @@ The test suite `scripts/test_round_12_vault_limit_reversal.ts` was executed on S
    - A $1.0\text{ SOL}$ market sell was submitted.
    - **Fill Result:** Filled **$1,000 / 1,000\text{ lots}$ ($100\%$ fill)** at clearing offset **$-11\text{ bps}$** against the vault's active bid ladder!
    - **Inventory Impact:** Vault short inventory successfully decreased from $-10,000\text{ lots}$ to **$-9,000\text{ lots}$** ($-9.000\text{ SOL}$).
-   - **Place Order Tx:** [`5wBq234e7RatYh2K7q9qKz7RjC6oG8p4yG7P7Y37m6w6oFqB9d...`](https://explorer.solana.com/tx/5wBq234e7RatYh2K7q9qKz7RjC6oG8p4yG7P7Y37m6w6oFqB9d?cluster=devnet) [MEASURED]
-   - **Clear Batch Tx:** [`5aidNPa7H3yNqB629o1Xy3oR8x4y9j6o2...`](https://explorer.solana.com/tx/5aidNPa7H3yNqB629o1Xy3oR8x4y9j6o2?cluster=devnet) [MEASURED]
+   - **Place Order Tx:** [`5wBq234e7RatQY1XB7GuBQKV1VUTx6vjrFkPtUqbykNorjcPYf9wRjv1i76VzL3E5R1BpeZaXhMsnxwrBjsQGUas`](https://explorer.solana.com/tx/5wBq234e7RatQY1XB7GuBQKV1VUTx6vjrFkPtUqbykNorjcPYf9wRjv1i76VzL3E5R1BpeZaXhMsnxwrBjsQGUas?cluster=devnet) [MEASURED]
+   - **Clear Batch Tx:** [`5aidNPa7H3yNBALk6i3CUFE7LTJ7nHsFBW6yFFkLvPvAx66TacrRjGmC8E887H1cgw3wgR8hddhDMFk6ANBvj5MA`](https://explorer.solana.com/tx/5aidNPa7H3yNBALk6i3CUFE7LTJ7nHsFBW6yFFkLvPvAx66TacrRjGmC8E887H1cgw3wgR8hddhDMFk6ANBvj5MA?cluster=devnet) [MEASURED]
 
 | Phase | Run | Action | Vault Inv. Before | Lots Ordered | Lots Matched | Fill Rate | Clearing Offset | Vault Inv. After | Status |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -195,12 +195,12 @@ Executed via Puppeteer in `scripts/walkthrough_ui_devnet.ts` against local Next.
 
 | Step | Action | Tx Signature | Devnet Explorer Link | UI Screenshot | Status |
 | :-: | :--- | :--- | :--- | :--- | :-: |
-| **1** | **Deposit Collateral** ($500.00\text{ USDC}$) | `QxY54vyQ...` | [Explorer Link](https://explorer.solana.com/tx/QxY54vyQafFKJ4kc7pbyMFN3exPhC2NUDJ9Gh8j4Fz4Sb4pqvg5xHAwY6zpj9dGa9Em5hQaiNBqJMRPFzyfjaF9?cluster=devnet) | `1_deposit_success.png` | **SUCCESS** |
-| **2** | **Place Market Buy** ($0.100\text{ SOL}$) | `4GSWWEKQ...` | [Explorer Link](https://explorer.solana.com/tx/4GSWWEKQT718HnCq1uYxMFDHB1RXqQwiUBDriTC7XZre3eC6KrBKfD6fwuixJNX7wfzNNhgrjTezHpk6jjEy8zSd?cluster=devnet) | `2_market_buy_placed.png` | **SUCCESS** |
-| **3** | **Batch Clear & Fill** (Batch #934894) | `3tkveyjv...` | [Explorer Link](https://explorer.solana.com/tx/3tkveyjvEfvCKHQPiUzPjF2L66qQps8Vxd76WwVLCWQPa47ZoHnniBdUb5SqYv9PnmDxH7iVsQAuXka2bMSBmEYF?cluster=devnet) | `3_batch_crossing_fill.png` | **SUCCESS** |
+| **1** | **Deposit Collateral** ($500.00\text{ USDC}$) | `QxY54vyQafFKJ4kc7pbyMFN3exPhC2NUDJ9Gh8j4Fz4Sb4pqvg5xHAwY6zpj9dGa9Em5hQaiNBqJMRPFzyfjaF9` | [Explorer Link](https://explorer.solana.com/tx/QxY54vyQafFKJ4kc7pbyMFN3exPhC2NUDJ9Gh8j4Fz4Sb4pqvg5xHAwY6zpj9dGa9Em5hQaiNBqJMRPFzyfjaF9?cluster=devnet) | `1_deposit_success.png` | **SUCCESS** |
+| **2** | **Place Market Buy** ($0.100\text{ SOL}$) | `4GSWWEKQT718HnCq1uYxMFDHB1RXqQwiUBDriTC7XZre3eC6KrBKfD6fwuixJNX7wfzNNhgrjTezHpk6jjEy8zSd` | [Explorer Link](https://explorer.solana.com/tx/4GSWWEKQT718HnCq1uYxMFDHB1RXqQwiUBDriTC7XZre3eC6KrBKfD6fwuixJNX7wfzNNhgrjTezHpk6jjEy8zSd?cluster=devnet) | `2_market_buy_placed.png` | **SUCCESS** |
+| **3** | **Batch Clear & Fill** (Batch #934894) | `3tkveyjvEfvCKHQPiUzPjF2L66qQps8Vxd76WwVLCWQPa47ZoHnniBdUb5SqYv9PnmDxH7iVsQAuXka2bMSBmEYF` | [Explorer Link](https://explorer.solana.com/tx/3tkveyjvEfvCKHQPiUzPjF2L66qQps8Vxd76WwVLCWQPa47ZoHnniBdUb5SqYv9PnmDxH7iVsQAuXka2bMSBmEYF?cluster=devnet) | `3_batch_crossing_fill.png` | **SUCCESS** |
 | **4** | **Position Open** ($+100\text{ lots}$) | *On-chain* | Base Position: $+100\text{ lots}$, Quote: $-10.97\text{ USDC}$ | `4_position_open.png` | **SUCCESS** |
-| **5** | **Close Position** (Reduce-Only Sell) | `qzZUxXP6...` | [Explorer Link](https://explorer.solana.com/tx/qzZUxXP6Xwa4wUwjG5eKuyNoWc54Z4ocBu8a2Tk3ivWtQZ2wjHmonkrfCfgemZCpXAWJoX4CQ4nbAyqAx8mXrA5?cluster=devnet) | `5_position_closed.png` | **SUCCESS** |
-| **6** | **Withdraw Collateral** ($490.00\text{ USDC}$) | `3Rpng2FT...` | [Explorer Link](https://explorer.solana.com/tx/3Rpng2FTDVXxLMQrBfQa8PobB3uKWYcnPVKQWcpSH5bSo7rczMiQjKCMyVLM9M8Z5MeUXDnEfmhjYzopnaeysGSR?cluster=devnet) | `6_withdraw_success.png` | **SUCCESS** |
+| **5** | **Close Position** (Reduce-Only Sell) | `qzZUxXP6Xwa4wUwjG5eKuyNoWc54Z4ocBu8a2Tk3ivWtQZ2wjHmonkrfCfgemZCpXAWJoX4CQ4nbAyqAx8mXrA5` | [Explorer Link](https://explorer.solana.com/tx/qzZUxXP6Xwa4wUwjG5eKuyNoWc54Z4ocBu8a2Tk3ivWtQZ2wjHmonkrfCfgemZCpXAWJoX4CQ4nbAyqAx8mXrA5?cluster=devnet) | `5_position_closed.png` | **SUCCESS** |
+| **6** | **Withdraw Collateral** ($490.00\text{ USDC}$) | `3Rpng2FTDVXxLMQrBfQa8PobB3uKWYcnPVKQWcpSH5bSo7rczMiQjKCMyVLM9M8Z5MeUXDnEfmhjYzopnaeysGSR` | [Explorer Link](https://explorer.solana.com/tx/3Rpng2FTDVXxLMQrBfQa8PobB3uKWYcnPVKQWcpSH5bSo7rczMiQjKCMyVLM9M8Z5MeUXDnEfmhjYzopnaeysGSR?cluster=devnet) | `6_withdraw_success.png` | **SUCCESS** |
 
 *All screenshots and structured report output are preserved in `research/review/walkthrough/`.*
 

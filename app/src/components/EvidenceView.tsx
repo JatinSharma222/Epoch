@@ -413,6 +413,93 @@ export const EvidenceView: React.FC = () => {
           </div>
         </div>
 
+        {/* Round 11 & 12 Empirical Verifications: Inventory Saturation, Limit Reversal & Depth Exceeded */}
+        <div className="bg-[#0E1217] rounded-lg border bp-border p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-[#00F0FF]" />
+              <span className="font-bold text-white text-[13px]">
+                Round 11 & 12 On-Chain Execution: Inventory Limit Reversal & Depth Exceedance
+              </span>
+            </div>
+            <span className="text-[10px] font-mono text-[#0ECB81] bg-[#162720] border border-[#0ECB81]/30 px-2 py-0.5 rounded">
+              VERIFIED ON DEVNET [MEASURED]
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
+            {/* Round 11 Card */}
+            <div className="p-3 rounded bg-[#12161C] border bp-border space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-white">Round 11: Sell-Side Fills & Oversize Depth</span>
+                <span className="text-[10px] font-mono text-[#848E9C]">4 Execution Runs</span>
+              </div>
+              <div className="space-y-1.5 font-mono text-[10px]">
+                <div className="p-1.5 rounded bg-[#0B0E11] border bp-border flex justify-between items-center">
+                  <span>1. Market Sell 0.10 SOL (100% fill @ -14 bps)</span>
+                  <div className="flex gap-1.5">
+                    <a href="https://explorer.solana.com/tx/2tTW7C9E22F7hmk8tp4x1QkAvp7VmmTjNmTMrgXwv96PMV2a2wfmct1T8gKFVVtbFnRVPvETpU9DD7dpvMQB44MP?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">Place</a>
+                    <span className="text-[#848E9C]">·</span>
+                    <a href="https://explorer.solana.com/tx/3s36xgUFGhPtbaWN4JWFccSw3bq2syoXpQwQa6HKWeUCFWpnshxEdsyxVwUNRnoRivh7CA8ZmnPfcbtNtttEJaX1?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">Clear</a>
+                  </div>
+                </div>
+                <div className="p-1.5 rounded bg-[#0B0E11] border bp-border flex justify-between items-center">
+                  <span>2. Market Sell 1.00 SOL (100% fill @ -21 bps)</span>
+                  <div className="flex gap-1.5">
+                    <a href="https://explorer.solana.com/tx/CXTgS4chGxQhRip3tuBJAcUB1MwagtL2SPmZCw9y4TvWCG9yqdoMEXHdyeFy2mVFfhguUvGCoP4VvrFnomgLCGj?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">Place</a>
+                    <span className="text-[#848E9C]">·</span>
+                    <a href="https://explorer.solana.com/tx/2U67MwqiCrB13JVU4mrHtAMr2ixcXLFFqCQgaSMJ45jmLq2aDBs1KRQmkbnQcYxbnr9mAW2U1yrZHSLjMZuhADJN?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">Clear</a>
+                  </div>
+                </div>
+                <div className="p-1.5 rounded bg-[#0B0E11] border bp-border flex justify-between items-center">
+                  <span>3. Limit Buy 0.10 SOL (100% fill @ +13 bps)</span>
+                  <div className="flex gap-1.5">
+                    <a href="https://explorer.solana.com/tx/3cKwaeymhnMTCsCcJcpWDVbtyq3sFiZPbDPimtuqyV6whdwKbF7PhHNafrgVTRcMjYrCTj4gp1UcnptQpc1us1bA?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">Place</a>
+                    <span className="text-[#848E9C]">·</span>
+                    <a href="https://explorer.solana.com/tx/e8SSDGYDHJ1L1bmFAXwVyg5WCTp3ZSoqnskKxWZ2SdBCzqFyKdy41TSovrn6hHSBHeshomd6F3HDvnV1rBppth5?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">Clear</a>
+                  </div>
+                </div>
+                <div className="p-1.5 rounded bg-[#0B0E11] border bp-border flex justify-between items-center">
+                  <span>4. Market Buy 5.00 SOL (Partial: 3.5 SOL @ +37 bps)</span>
+                  <div className="flex gap-1.5">
+                    <a href="https://explorer.solana.com/tx/jeKSbsoCaMLcuckNmRD6eNPfUAPb5SMm5cCCDXZzRYHCogrQRxMj6QJBUWkpMCau5UT7Lycj7q1BF5S6JJdsrp7?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">Place</a>
+                    <span className="text-[#848E9C]">·</span>
+                    <a href="https://explorer.solana.com/tx/kMx1x7TDzCHGXbXJz8QuZy7fhBCUVLF7o1QxYmypR6GGgcE5hpezmCbvBGBJDYSmZVRKG8xkdNJSUeYXjm8DD9r?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">Clear</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Round 12 Card */}
+            <div className="p-3 rounded bg-[#12161C] border bp-border space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-white">Round 12: Inventory Limit Reversal</span>
+                <span className="text-[10px] font-mono text-[#0ECB81]">Upgrade Slot 509174017</span>
+              </div>
+              <div className="space-y-1.5 font-mono text-[10px]">
+                <div className="p-1.5 rounded bg-[#0B0E11] border bp-border space-y-1">
+                  <div className="text-white font-bold">20 Buys Soak & Limit Quoting Halt:</div>
+                  <div className="text-[#848E9C]">
+                    Buys 1–10 filled 100% (-10,000 lots hit). Asks halted, bids kept active. Buys 11–20 expired unfilled.
+                  </div>
+                </div>
+                <div className="p-1.5 rounded bg-[#0B0E11] border bp-border flex justify-between items-center">
+                  <span>1.0 SOL Sell Reversal (100% fill @ -11 bps)</span>
+                  <div className="flex gap-1.5">
+                    <a href="https://explorer.solana.com/tx/5wBq234e7RatQY1XB7GuBQKV1VUTx6vjrFkPtUqbykNorjcPYf9wRjv1i76VzL3E5R1BpeZaXhMsnxwrBjsQGUas?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">Place</a>
+                    <span className="text-[#848E9C]">·</span>
+                    <a href="https://explorer.solana.com/tx/5aidNPa7H3yNBALk6i3CUFE7LTJ7nHsFBW6yFFkLvPvAx66TacrRjGmC8E887H1cgw3wgR8hddhDMFk6ANBvj5MA?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">Clear</a>
+                  </div>
+                </div>
+                <div className="p-1.5 rounded bg-[#0B0E11] border bp-border flex justify-between items-center">
+                  <span>Contract Upgrade Signature</span>
+                  <a href="https://explorer.solana.com/tx/5HRnbiYa51Vo93KTVEG5oSj4goUCgqNrMCRehgA2Mujfk7gvwhqRnuFDNzvTSmL3xeu2PmmYGPbQnyQxnpGwpTzX?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#0ECB81] hover:underline">View Upgrade Tx</a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Asset Vector Logos & Open License Attribution */}
         <div className="bg-[#0E1217] rounded-lg border bp-border p-4 space-y-3">
           <div className="flex items-center justify-between">

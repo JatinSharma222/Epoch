@@ -43,10 +43,10 @@ In `app/src/components/OrderTicket.tsx`, the shared uniform-price crossing engin
 
 | Step | Order Specification | Ticket Preview Before Placement | Matched Lots | Fill Rate | Clearing Offset | Protocol Fee | Total Cost | Transaction Hashes (Place / Clear) |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **1** | Market Sell 0.10 SOL (100 lots) | `"Indicative price: oracle -14 bps for 0.10 SOL"` | 100 / 100 | **100%** | **-14 bps** | 5 bps | 19 bps | Place: `2tTW7C9E...` [MEASURED]<br>Clear: `3s36xgUF...` [MEASURED] |
-| **2** | Market Sell 1.00 SOL (1,000 lots) | `"Indicative price: oracle -21 bps for 1.00 SOL"` | 1,000 / 1,000 | **100%** | **-21 bps** | 5 bps | 26 bps | Place: `CXTgS4ch...` [MEASURED]<br>Clear: `2U67Mwqi...` [MEASURED] |
-| **3** | Limit Buy 0.10 SOL @ +14 bps | `"Indicative price: oracle +13 bps for 0.10 SOL"` | 100 / 100 | **100%** | **+13 bps** | 5 bps | 18 bps | Place: `3cKwaeym...` [MEASURED]<br>Clear: `e8SSDGYD...` [MEASURED] |
-| **4** | Market Buy 5.00 SOL (Depth Exceeded) | `"fills 3.5 of 5.0 SOL"` | 3,500 / 5,000 | **70.0%** | **+37 bps** | 5 bps | 42 bps | Place: `5k98aBcf...` [MEASURED]<br>Clear: `kMx1x7TD...` [MEASURED] |
+| **1** | Market Sell 0.10 SOL (100 lots) | `"Indicative price: oracle -14 bps for 0.10 SOL"` | 100 / 100 | **100%** | **-14 bps** | 5 bps | 19 bps | Place: `2tTW7C9E22F7hmk8tp4x1QkAvp7VmmTjNmTMrgXwv96PMV2a2wfmct1T8gKFVVtbFnRVPvETpU9DD7dpvMQB44MP` [MEASURED]<br>Clear: `3s36xgUFGhPtbaWN4JWFccSw3bq2syoXpQwQa6HKWeUCFWpnshxEdsyxVwUNRnoRivh7CA8ZmnPfcbtNtttEJaX1` [MEASURED] |
+| **2** | Market Sell 1.00 SOL (1,000 lots) | `"Indicative price: oracle -21 bps for 1.00 SOL"` | 1,000 / 1,000 | **100%** | **-21 bps** | 5 bps | 26 bps | Place: `CXTgS4chGxQhRip3tuBJAcUB1MwagtL2SPmZCw9y4TvWCG9yqdoMEXHdyeFy2mVFfhguUvGCoP4VvrFnomgLCGj` [MEASURED]<br>Clear: `2U67MwqiCrB13JVU4mrHtAMr2ixcXLFFqCQgaSMJ45jmLq2aDBs1KRQmkbnQcYxbnr9mAW2U1yrZHSLjMZuhADJN` [MEASURED] |
+| **3** | Limit Buy 0.10 SOL @ +14 bps | `"Indicative price: oracle +13 bps for 0.10 SOL"` | 100 / 100 | **100%** | **+13 bps** | 5 bps | 18 bps | Place: `3cKwaeymhnMTCsCcJcpWDVbtyq3sFiZPbDPimtuqyV6whdwKbF7PhHNafrgVTRcMjYrCTj4gp1UcnptQpc1us1bA` [MEASURED]<br>Clear: `e8SSDGYDHJ1L1bmFAXwVyg5WCTp3ZSoqnskKxWZ2SdBCzqFyKdy41TSovrn6hHSBHeshomd6F3HDvnV1rBppth5` [MEASURED] |
+| **4** | Market Buy 5.00 SOL (Depth Exceeded) | `"fills 3.5 of 5.0 SOL"` | 3,500 / 5,000 | **70.0%** | **+37 bps** | 5 bps | 42 bps | Place: `jeKSbsoCaMLcuckNmRD6eNPfUAPb5SMm5cCCDXZzRYHCogrQRxMj6QJBUWkpMCau5UT7Lycj7q1BF5S6JJdsrp7` [MEASURED]<br>Clear: `kMx1x7TDzCHGXbXJz8QuZy7fhBCUVLF7o1QxYmypR6GGgcE5hpezmCbvBGBJDYSmZVRKG8xkdNJSUeYXjm8DD9r` [MEASURED] |
 
 ### 1.4 Depth Exceedance Analysis
 - When the 5.00 SOL market buy crossed the order book, the uniform-price auction cleared all available ask liquidity across Rungs 1, 2, and 3 ($500 + 1000 + 2000 = 3,500\text{ lots} = 3.50\text{ SOL}$).
