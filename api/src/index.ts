@@ -1,3 +1,4 @@
+// Note: Not used in v1; replaced by the JSONL log and snapshot export.
 /**
  * Epoch Read-Only API
  *

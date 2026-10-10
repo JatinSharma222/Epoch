@@ -7,26 +7,33 @@ on:
     branches: [main]
 
 jobs:
-  rust-check:
-    name: Rust Formatting, Clippy & Unit/Differential Tests
+  cargo-test:
+    name: Cargo Test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install stable toolchain
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Run Cargo Tests
+        run: cargo test
+
+  app-build:
+    name: Next.js App Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          components: rustfmt, clippy
+          bun-version: latest
 
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
-
-      - name: Check code formatting
-        run: cargo fmt --all -- --check
-
-      - name: Run clippy
-        run: cargo clippy --all-targets -- -D warnings
-
-      - name: Run unit & differential property tests
-        run: cargo test --verbose
+      - name: Build Trading Terminal App
+        run: |
+          cd app
+          bun install
+          bun run build

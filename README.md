@@ -32,6 +32,12 @@ Conventional decentralized perpetual exchanges match orders serially in continuo
 6. **Zero-Haircut Liquidation:** Positions falling below Maintenance Margin Requirement (MMR = 500 bps) close out directly against the Backstop Vault at oracle mark price, routing penalties to the insurance fund and booking bad debt transparently without socialized user haircuts.
 7. **Paged Settlement:** Trades settle permissionlessly across lightweight transactions, releasing pending margin and updating balances with zero double-settlement vulnerability.
 
+### Core Documentation Links
+- **Architecture (As Built):** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- **Mechanism Specification:** [`docs/MECHANISM_SPEC.md`](docs/MECHANISM_SPEC.md)
+- **Known Limitations & As-Built Delta:** [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md)
+- **Threat Model & Security Boundaries:** [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md)
+
 ---
 
 ## 2. On-Chain Devnet Deployments & Verified Addresses
@@ -248,6 +254,15 @@ The Epoch trading terminal (`app/`) is built on **Next.js 14**, **Tailwind CSS**
   NEXT_PUBLIC_RPC_URL=https://api.devnet.solana.com
   NEXT_PUBLIC_PROGRAM_ID=CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap
   ```
+
+### What Is Used in v1
+- **Active Production Stack:**
+  - **On-Chain Solana Program:** [`programs/epoch`](programs/epoch) (`CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap`).
+  - **Headless Frontend Terminal:** [`app/`](app/) reading on-chain state and Pyth Hermes directly with zero backend servers.
+  - **Autonomous Keeper Daemon:** [`keeper/`](keeper/) cranking batch clearances and paged settlements.
+  - **Telemetry & Snapshots:** Keeper JSONL logs and automated snapshot exports ([`scripts/export_snapshot.ts`](scripts/export_snapshot.ts)).
+- **Not Used in v1:**
+  - Off-chain database and indexing containers (`indexer/`, `api/`, `db/`, `docker-compose.yml`, `docker/`) are scaffolding and **not used in v1**; they are superseded by direct RPC reads, JSONL logs, and snapshot exports.
 
 ---
 

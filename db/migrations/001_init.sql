@@ -1,3 +1,4 @@
+-- Note: Not used in v1; replaced by the JSONL log and snapshot export.
 CREATE TABLE IF NOT EXISTS schema_migrations (
   version    text PRIMARY KEY,
   applied_at timestamptz NOT NULL DEFAULT now()

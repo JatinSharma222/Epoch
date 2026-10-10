@@ -20,13 +20,10 @@ const connection = new Connection(RPC_URL, "confirmed");
 
 const TARGET_FILES = [
   "README.md",
+  "docs/ARCHITECTURE.md",
+  "docs/MECHANISM_SPEC.md",
   "docs/KNOWN_LIMITATIONS.md",
   "app/src/components/EvidenceView.tsx",
-  "REPORT_9.md",
-  "REPORT_10.md",
-  "REPORT_11.md",
-  "REPORT_12.md",
-  "REPORT_13.md",
   "research/review/REPORT_9.md",
   "research/review/REPORT_10.md",
   "research/review/REPORT_11.md",
