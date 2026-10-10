@@ -11,7 +11,7 @@ import * as path from "path";
 import { KeeperConfig, BatchSummary, TxLogEntry, VaultStatus } from "./types";
 import { KeeperLogger } from "./logger";
 import { PythOracleService } from "./oracle";
-import idl from "../../target/idl/epoch.json";
+import idl from "./epoch_idl.json";
 
 export class EpochKeeper {
   public config: KeeperConfig;
