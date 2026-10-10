@@ -27,6 +27,7 @@ import { FaucetModal } from "../components/FaucetModal";
 import { DepositWithdrawModal } from "../components/DepositWithdrawModal";
 import { ReferencePriceStrip } from "../components/ReferencePriceStrip";
 import { fetchSolStats, fetchLiveDepth, MarketStats, BookRow } from "../lib/marketData";
+import { parseOrderError } from "../lib/errors";
 
 export default function Home() {
   const { connection } = useConnection();
@@ -51,6 +52,7 @@ export default function Home() {
   const [selectedPrice, setSelectedPrice] = useState<number>(119.60);
   const [selectedOffsetBps, setSelectedOffsetBps] = useState<number>(0);
   const [isPlacingOrder, setIsPlacingOrder] = useState<boolean>(false);
+  const [orderError, setOrderError] = useState<string | null>(null);
 
   // On-Chain Slot & Batch Tracking (B.1: batch_id = (slot - start_slot) / N)
   const [currentSlot, setCurrentSlot] = useState<number>(508012057);
@@ -472,6 +474,7 @@ export default function Home() {
     reduceOnly: boolean;
   }) => {
     setIsPlacingOrder(true);
+    setOrderError(null);
     const numBatches = Math.max(1, Math.min(4, lifetimeBatches || 1));
     const tick = Math.max(0, Math.min(100, 50 + offsetBps));
 
@@ -505,8 +508,12 @@ export default function Home() {
             })
             .rpc();
         }
-      } catch (err) {
-        console.warn("On-chain place_order fell back to local state:", err);
+      } catch (err: any) {
+        const friendlyMsg = parseOrderError(err);
+        console.warn("On-chain place_order failed:", friendlyMsg, err);
+        setOrderError(friendlyMsg);
+        setIsPlacingOrder(false);
+        return;
       }
     } else {
       await new Promise((res) => setTimeout(res, 500));
@@ -778,6 +785,8 @@ export default function Home() {
                 userPositionLots={position?.sizeLots || 0}
                 onPlaceOrder={handlePlaceOrder}
                 onOpenDeposit={() => setDepositWithdrawModal({ isOpen: true, mode: "deposit" })}
+                orderError={orderError}
+                onClearOrderError={() => setOrderError(null)}
               />
             </div>
 

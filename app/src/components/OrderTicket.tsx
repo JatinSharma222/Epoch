@@ -30,6 +30,8 @@ interface OrderTicketProps {
     reduceOnly: boolean;
   }) => Promise<void>;
   onOpenDeposit?: () => void;
+  orderError?: string | null;
+  onClearOrderError?: () => void;
 }
 
 export const OrderTicket: React.FC<OrderTicketProps> = ({
@@ -43,6 +45,8 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
   userPositionLots = 0,
   onPlaceOrder,
   onOpenDeposit,
+  orderError,
+  onClearOrderError,
 }) => {
   const { connected } = useWallet();
   const { setVisible } = useWalletModal();
@@ -639,6 +643,26 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
             <div className="p-2 rounded bg-[#f6465d]/10 border border-[#f6465d]/30 text-[11px] text-[#f6465d] flex items-start gap-1.5">
               <ShieldAlert className="w-3.5 h-3.5 shrink-0 mt-0.5" />
               <span>{validationError}</span>
+            </div>
+          )}
+
+          {/* On-Chain Execution Failure Alert (Round 14: Friendly messages for 6007, 6008, etc.) */}
+          {orderError && (
+            <div className="p-2.5 rounded bg-[#f6465d]/15 border border-[#f6465d]/40 text-[11px] text-[#f6465d] flex items-start justify-between gap-1.5">
+              <div className="flex items-start gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-[#f6465d]" />
+                <span className="font-semibold leading-tight">{orderError}</span>
+              </div>
+              {onClearOrderError && (
+                <button
+                  type="button"
+                  onClick={onClearOrderError}
+                  className="text-[#848e9c] hover:text-white text-[12px] font-bold shrink-0 ml-1 leading-none"
+                  title="Dismiss error"
+                >
+                  ✕
+                </button>
+              )}
             </div>
           )}
 
