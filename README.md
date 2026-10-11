@@ -6,12 +6,11 @@
 
 <p align="center">
   <strong>Frequent Batch Auction (FBA) Perpetual Futures Exchange on Solana</strong><br />
-  Uniform-price on-chain clearing that eliminates priority-fee racing and intra-batch sandwich MEV.
+  Uniform-price on-chain clearing that removes the ordering race inside a batch and ordering-based sandwiches.
 </p>
 
 <p align="center">
   <a href="https://explorer.solana.com/address/CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap?cluster=devnet"><img src="https://img.shields.io/badge/Solana-Devnet_Live-00f0ff.svg" alt="Solana Devnet" /></a>
-  <a href="Makefile"><img src="https://img.shields.io/badge/Make-Check%20Passed-0ecb81.svg" alt="CI Check" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-ISC-blue.svg" alt="License" /></a>
   <a href="https://colosseum.com"><img src="https://img.shields.io/badge/Colosseum-Crypto_World's_Fair_2026-orange.svg" alt="Colosseum" /></a>
 </p>
@@ -25,12 +24,12 @@ Conventional decentralized perpetual exchanges match orders serially in continuo
 **Epoch** replaces continuous serial matching with discrete **Frequent Batch Auctions (FBA)** executing natively on Solana:
 
 1. **Discrete Auction Windows:** Time is partitioned into discrete batch intervals (default: $N = 2$ Solana slots, ~477 ms [MEASURED: 238.67 ms/slot]).
-2. **Oracle-Relative Limit Orders:** Traders submit limit orders pegged as basis-point offsets relative to the Pyth oracle (e.g. *Buy up to Oracle + 4 bps*). Resting quotes automatically track price drift and expire cleanly at batch close, eliminating stale quote sniping.
+2. **Oracle-Relative Limit Orders:** Traders submit limit orders pegged as basis-point offsets relative to the Pyth oracle (e.g. *Buy up to Oracle + 4 bps*). Resting quotes automatically track price drift and expire cleanly at batch close (resting quotes track the oracle; oracle-lag exposure remains).
 3. **On-Chain Deterministic Uniform Price Clearing:** When a batch closes, the Solana program deterministically computes the single market-clearing tick ($P^*$) that maximizes matched volume ($V_{max}$) and minimizes volume imbalance.
 4. **Uniform Execution:** Every crossing order fills at the **exact same uniform clearing price**. Intra-batch transaction arrival order within a batch provides zero price or execution advantage.
-5. **Backstop Vault & Inventory Skew:** Automated on-chain liquidity quoting ladder with Avellaneda-Stoikov inventory skew and safety guards against stale or wide oracle confidence bands.
-6. **Zero-Haircut Liquidation:** Positions falling below Maintenance Margin Requirement (MMR = 500 bps) close out directly against the Backstop Vault at oracle mark price, routing penalties to the insurance fund and booking bad debt transparently without socialized user haircuts.
-7. **Paged Settlement:** Trades settle permissionlessly across lightweight transactions, releasing pending margin and updating balances with zero double-settlement vulnerability.
+5. **Backstop Vault & Inventory Skew:** Automated on-chain liquidity quoting ladder with linear inventory skew and safety guards against stale or wide oracle confidence bands.
+6. **Backstop Liquidation:** Positions falling below Maintenance Margin Requirement (MMR = 500 bps) can be liquidated against the Backstop Vault at oracle mark price, routing penalties to the insurance fund (implemented and verified via unit tests; the vault absorbs delinquent positions).
+7. **Paged Settlement:** Trades settle permissionlessly across lightweight transactions (up to 16 users per page), releasing pending margin and updating balances (guarded by bitmap settlement flags preventing duplicate settlement; verified on devnet).
 
 ### Core Documentation Links
 - **Architecture (As Built):** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
@@ -71,27 +70,27 @@ All metrics are derived from real on-chain execution or calibrated economic simu
 | **Gate G1: Compute Units** | `settle_users` Paged Settlement | **14,791 – 28,380 CU** | **[MEASURED]** (Target $\le 400,000$ CU) |
 | **Gate G2: Differential** | Golden Vectors Parity (TS vs Rust Engine) | **1,001/1,001 Bit-for-bit** | **[MEASURED]** (0 mismatches across 1,001 vectors) |
 | **Gate G2: Differential** | Randomized Multi-Batch Stress Test | **10,000 Batches (0 drift)**| **[MEASURED]** (647,981 orders, 701M matched lots) |
-| **Gate G3: Integration** | Full Lifecycle with Nonzero Fills ($Q^* > 0$) | **10 lots ($1,217.95 notional)** | **[MEASURED]** (13 live Devnet transactions verified) |
+| **Gate G3: Integration** | Full Lifecycle with Nonzero Fills ($Q^* > 0$) | **10 lots (0.01 SOL, about $1.22)** | **[MEASURED]** (13 live Devnet transactions verified) |
 | **Gate G4: Continuous Soak**| Continuous Multi-Trader Soak on Devnet (30+ min) | **100% Invariants Verified** | **[MEASURED]** (Invariants I-1, I-4, I-12 passed) |
 | **Latency: Slot Time** | Measured Average Devnet Slot Time | **238.67 ms/slot** | **[MEASURED]** (Measured over 3,000 slots & 15,058 samples) |
 | **Latency: Close $\to$ Settle**| Close $\to$ Settle Duration (9 slots block distance) | **2,148 ms (9 slots)** | **[COMPUTED]** ($9 \times 238.67\text{ ms/slot}$ from chain block times) |
 | **Latency: Client RTT** | Client Round-Trip Confirmation (Close $\to$ Settled) | **2,506 ms ($P_{50}$)** | **[MEASURED]** (Client wall-clock including RPC network transit) |
-| **Ring Occupancy: Future**| Peak Open Future Batches in Ring ($L = 3$, Lifetime = $L+1$ batches) | **3 / 8 slots** | **[MEASURED]** (Continuous pressure soak) |
+| **Ring Occupancy: Future**| Peak Open Future Batches in Ring ($L = 4$ live market; soak used $L = 3$) | **3 / 8 slots** | **[MEASURED]** (Continuous pressure soak used $L = 3$; live market uses $L = 4$) |
 | **Ring Occupancy: Unsettled**| Peak Closed-Unsettled Batches in Ring | **1 / 8 slots** | **[MEASURED]** (Bundled clearing latency = 0 slots) |
-| **Ring Occupancy: Total** | Peak Total Utilized Ring Slots | **4 / 8 slots (50% headroom)** | **[MEASURED]** (Continuous pressure soak) |
+| **Ring Occupancy: Total** | Peak Total Utilized Ring Slots | **4 / 8 slots (50% headroom)** | **[MEASURED]** (Continuous pressure soak used $L = 3$; live market uses $L = 4$) |
 | **Taker Uniform Clearing Offset** | Single Clearing Price Offset (1.0 SOL taker vs Vault) | **21.00 bps** | **[COMPUTED]** (Spec §6.1 uniform clearing price, not pay-as-bid) |
 | **Taker Protocol Fee** | Standard Taker Fee | **5.00 bps (0.05%)** | **[SOURCED: spec §2.1]** |
 | **Taker Cost: One-Way** | Total One-Way Cost (1.0 SOL taker order) | **26.00 bps** | **[COMPUTED]** (21.00 bps offset + 5.00 bps fee) |
 | **Taker Cost: Round-Trip**| Total Round-Trip Cost (1.0 SOL round-trip) | **52.00 bps** | **[COMPUTED]** ($2 \times 26.00\text{ bps}$) |
 | **Vault Ladder Depth & VWAP** | 3-Rung Ladder (500@12, 1000@18, 2000@25) | **3.50 SOL · 21.1 bps VWAP** | **[COMPUTED]** ($(500\cdot 12 + 1000\cdot 18 + 2000\cdot 25)/3500$) |
 | **Funding Period** | Calibrated on-chain parameter (`120,670` slots) | **8 h at measured devnet slot time** | **[COMPUTED]** ($28,800\text{ s} / 0.23867\text{ s/slot}$) |
-| **Simulation S-1: MEV** | Maker Adverse Selection Reduction ($k = 5$ snipers) | **91.0% Reduction (-12.66 bps)**| **[SIMULATED]** (Model result under stated assumptions) |
-| **Simulation S-1: MEV** | Maker Adverse Selection Reduction ($k = 1$ sniper) | **53.8% Reduction (-3.68 bps)** | **[SIMULATED]** (Model result under stated assumptions) |
-| **Simulation S-5: Landing** | Target Batch Landing Reliability ($L = 4$) | **88.5% landed** | **[SIMULATED]** (Pessimistic simulation next to measured 87.9% on-time rate) |
+| **Adverse selection (model)** | Maker Adverse Selection Reduction ($k = 5$ snipers) | **91.0% Reduction** | **[SIMULATED]** (Model result under stated assumptions; unit: per sniped fill) |
+| **Adverse selection (model)** | Maker Adverse Selection Reduction ($k = 1$ sniper) | **53.8% Reduction** | **[SIMULATED]** (Model result under stated assumptions; unit: per sniped fill) |
+| **Simulation S-5: Landing** | Target Batch Landing Reliability ($L = 4$) | **88.5% landed** | **[SIMULATED]** (Pessimistic simulation next to measured 87.9% on-time rate; calibrated with $L = 4$) |
 | **Invariant I-1: Balance** | Vault Balance $\equiv \sum(C + Q) + \text{fee} + \text{ins}$ | **0.00 micro-USDC Drift** | **[MEASURED]** (Bit-for-bit conservation down to dust) |
 | **Invariant I-4: Volume** | Matched Volume Balance ($\sum \text{buy} \equiv \sum \text{sell} \equiv Q^*$) | **Bit-for-bit Identical** | **[MEASURED]** (Conservation of base lots) |
 | **Invariant I-12: Rationality**| Clearing Tick Within Bid-Ask Crossing Overlap | **$t_a \le t^* \le t_b$** | **[MEASURED]** (Zero trade-through of limit orders) |
-| **Acceptance UX-1..UX-21** | UI Acceptance Test Suite (Automated & Manual) | **21 / 21 Conforming** | **[MEASURED]** (19 MEASURED, 2 MANUAL pending check) |
+| **Acceptance UX-1..UX-21** | UI Acceptance Test Suite (Automated & Manual) | **19/19 automated pass; 2 manual checks pending (UX-6, UX-8)** | **[MEASURED]** (19 automated verified, 2 manual pending) |
 
 
 ---
@@ -114,7 +113,7 @@ The entire lifecycle was executed live on Solana Devnet across trader wallets an
    - Deposit User 1: [`5Y1Pch5G784EJVY5oLsZt9VFRqwhysc42WvqAPefjyLUKG4sh8qaLWcx687o7FGQ7PtDwtouL2PViQnKqA4d7iz3`](https://explorer.solana.com/tx/5Y1Pch5G784EJVY5oLsZt9VFRqwhysc42WvqAPefjyLUKG4sh8qaLWcx687o7FGQ7PtDwtouL2PViQnKqA4d7iz3?cluster=devnet) [MEASURED]
 4. **Order Placement & Batch Crossing:** Backstop Vault placed its 6-order quoting ladder; User 1 placed a BUY order for 10 lots @ tick 62 targeting Batch #6579.
    - Bundle Orders: [`2p5APTN9fChDAcTnaapNcNg3DUa3w7EgXaPhViHjuQQjK4PMpkqmeVmbUNdRYbmr9aVV65gSn2WhENWzxkSmvKMN`](https://explorer.solana.com/tx/2p5APTN9fChDAcTnaapNcNg3DUa3w7EgXaPhViHjuQQjK4PMpkqmeVmbUNdRYbmr9aVV65gSn2WhENWzxkSmvKMN?cluster=devnet) [MEASURED]
-5. **Batch Clearance ($Q^* > 0$):** Batch #6579 cleared at uniform clearing tick 55 ($121.7950) matching **10 lots ($1,217.95 USDC notional) NONZERO [MEASURED]** consuming **17,267 CU**.
+5. **Batch Clearance ($Q^* > 0$):** Batch #6579 cleared at uniform clearing tick 55 ($121.7950) matching **10 lots (0.01 SOL, about $1.22 USDC notional) NONZERO [MEASURED]** consuming **17,267 CU**. *(Note: Demo 1 predates the widened vault ladder; it cleared at +5 bps).*
    - Clear Batch #6579: [`3Yok6mkHUW3kx4cfUZeb22ftF1LtZqxDQ5Yu63dMiusgvk8gQ5tV6smSDwwPwzXws3xbXJqa1rv2dmyAvF7RdCW6`](https://explorer.solana.com/tx/3Yok6mkHUW3kx4cfUZeb22ftF1LtZqxDQ5Yu63dMiusgvk8gQ5tV6smSDwwPwzXws3xbXJqa1rv2dmyAvF7RdCW6?cluster=devnet) [MEASURED]
 6. **Paged Settlement:** Settled positions on-chain against the vault: User 1: **+10 lots (Long)**; Backstop Vault: **-10 lots (Short)**.
    - Settle Users: [`289ehs5W6AqSaXjEvgfKCFNsaKv6Xx558SP6RJVk762VXauFvgnyCGUkYYxX7svdk51ho2tLQ1DxywofyoRoMseW`](https://explorer.solana.com/tx/289ehs5W6AqSaXjEvgfKCFNsaKv6Xx558SP6RJVk762VXauFvgnyCGUkYYxX7svdk51ho2tLQ1DxywofyoRoMseW?cluster=devnet) [MEASURED]
@@ -135,7 +134,7 @@ The entire lifecycle was executed live on Solana Devnet across trader wallets an
 
 ### Demo 3: Vault Inventory Limit & Asymmetric Reversal (Round 12 Verified)
 
-1. **Inventory Limit & Asymmetric Quoting:** Tested with 20 consecutive 1.0 SOL market buys against the Backstop Vault. As inventory accumulated, Avellaneda-Stoikov skew widened clearing offsets from +21 bps up to +30 bps. At Run 10, vault inventory reached the maximum short limit of **-10,000 lots (-10.0 SOL)**.
+1. **Inventory Limit & Asymmetric Quoting:** Tested with 20 consecutive 1.0 SOL market buys against the Backstop Vault. As inventory accumulated, linear inventory skew widened clearing offsets from +21 bps up to +30 bps. At Run 10, vault inventory reached the maximum short limit of **-10,000 lots (-10.0 SOL)**.
 2. **One-Sided Quoting Halt:** In Runs 11–20, the vault halted ask quotes (inventory-increasing side) while continuing to quote bid quotes (inventory-reducing side), resulting in 0 lots matched for subsequent buys.
 3. **Inventory Reversal:** A 1.0 SOL market sell was submitted. Because the vault maintained its bid ladder, the order executed at offset **-11 bps**, matching 1,000 lots and reducing vault short inventory from -10,000 to -9,000 lots:
    - Sell Placement Tx: [`5wBq234e7RatQY1XB7GuBQKV1VUTx6vjrFkPtUqbykNorjcPYf9wRjv1i76VzL3E5R1BpeZaXhMsnxwrBjsQGUas`](https://explorer.solana.com/tx/5wBq234e7RatQY1XB7GuBQKV1VUTx6vjrFkPtUqbykNorjcPYf9wRjv1i76VzL3E5R1BpeZaXhMsnxwrBjsQGUas?cluster=devnet) [MEASURED]
@@ -149,15 +148,15 @@ The entire lifecycle was executed live on Solana Devnet across trader wallets an
 Follow these exact steps from a fresh git clone to install, build, test, and run the complete Epoch protocol:
 
 ### Prerequisites
-- **Rust & Cargo:** `1.75.0` or newer
-- **Solana CLI:** `1.18.0` or newer
-- **Anchor CLI:** `0.30.1` (`avm use 0.30.1`)
-- **Bun:** `1.1.0` or newer (`curl -fsSL https://bun.sh/install | bash`)
+- **Rust & Cargo:** `1.89.0` (pinned in `rust-toolchain.toml`)
+- **Solana CLI:** `3.0.15` (`solana-cli 3.0.15`)
+- **Anchor CLI:** `0.32.0` (`avm use 0.32.0`)
+- **Bun:** `1.3.11` or newer (`curl -fsSL https://bun.sh/install | bash`)
 
 ### Step 1: Repository Setup
 ```bash
-git clone https://github.com/your-org/epoch.git
-cd epoch
+git clone https://github.com/JatinSharma222/Epoch.git
+cd Epoch
 bun install
 ```
 
@@ -166,7 +165,7 @@ bun install
 anchor build
 cargo test
 ```
-*Result:* Compiles the BPF program binary and executes 59 Rust unit tests verifying uniform price clearing, Avellaneda-Stoikov inventory skew, and mathematical conservation invariants (59 / 59 passed).
+*Result:* Compiles the BPF program binary and executes 59 Rust unit tests verifying uniform price clearing, linear inventory skew, and mathematical conservation invariants (59 / 59 passed).
 
 ### Step 3: Build Autonomous Keeper Daemon
 ```bash
@@ -214,7 +213,8 @@ The permissionless keeper daemon (`keeper/src/index.ts`) ensures continuous auto
 ┌─────────────────────────────────────────────────────────────┐
 │                   Autonomous Keeper Loop                    │
 │                                                             │
-│  1. Ring Scanner: Scans R=8 Batch PDAs every slot (~400ms)  │
+│  1. Ring Scanner: Scans R=8 Batch PDAs (slot ~239 ms;       │
+│     clear/settle: 1,000 ms; vault quoting: 2,000 ms)        │
 │  2. Eligibility Filter: Detects closed batches (slot >= close)│
 │  3. Empty Batch Policy: Skips 0-order batches (0 SOL cost)  │
 │  4. Clear Batch: Pushes Pyth Hermes update & executes clear │
@@ -229,9 +229,9 @@ The permissionless keeper daemon (`keeper/src/index.ts`) ensures continuous auto
 ```
 
 ### Key Keeper Policies:
-1. **Empty Batch Skipping Policy:** With $N = 2$ slots (~477 ms), there are ~181,000 batches per day. Clearing empty batches costs ~0.9 SOL/day and ~900,000 RPC calls/day. Because `place_order.rs` allows overwriting empty ring slots directly without clearing, the keeper skips empty batches during quiet periods, preserving funds and RPC quota.
+1. **Empty Batch Skipping Policy:** With $N = 2$ slots (~477 ms at ~239 ms/slot), there are ~181,000 batches per day [ESTIMATE]. Clearing empty batches costs ~0.9 SOL/day [ESTIMATE] and ~900,000 RPC calls/day [ESTIMATE]. Because `place_order.rs` allows overwriting empty ring slots directly without clearing, the keeper skips empty batches during quiet periods, preserving funds and RPC quota.
 2. **Permissionless Redundancy & Racing:** Clearing and settlement calls are idempotent. Multiple independent keepers can race without risking double-clearing, fund loss, or invalid state transitions.
-3. **Systemd Daemon Deployment:** Deployable as a systemd service (`/etc/systemd/system/epoch-keeper.service`) with auto-restart, health-check telemetry, and automated keypair rotation.
+3. **Systemd Daemon Deployment:** Deployable as a systemd service (`/etc/systemd/system/epoch-keeper.service`) with auto-restart and health-check telemetry.
 
 ---
 
@@ -268,21 +268,21 @@ The Epoch trading terminal (`app/`) is built on **Next.js 14**, **Tailwind CSS**
 
 ## 8. Honest Claims, Security Boundaries & Known Limitations
 
-Per the security analysis in [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) and [`research/review/AS_BUILT_DELTA_2.md`](research/review/AS_BUILT_DELTA_2.md):
+Per the security analysis in [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) and [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md):
 
 - **What Epoch Solves (Eliminated by Construction):**
   1. Intra-batch ordering sandwiches: Banned mathematically because all orders execute at the identical uniform price $P^*$.
-  2. Priority-gas wars: Transaction arrival time within an ~480ms window grants zero execution or price priority.
+  2. Priority-gas wars: Arrival order inside a batch grants no priority (landing before the close still matters).
   3. Toxic intra-batch reordering: Matched lots are allocated via deterministic pro-rata math with integer-exact dust rules.
 - **What Epoch Does NOT Solve (Threat R4 Boundary):**
   1. Last-look informational advantage: An actor observing external centralized exchange price jumps at $t = T_{close} - 50$ms can submit late orders into the closing batch against resting quotes. This informational latency advantage is not eliminated.
   2. Oracle update latency: Pyth oracle updates reflect external venue prices with finite latency. Makers must maintain spread buffers (e.g. 12 bps) to offset adverse selection.
 - **Architectural & Operational Boundaries:**
   - **128 Orders per Batch:** Zero-copy layout fixed at 128 orders to fit within Solana account size and single-transaction CU limits.
-  - **Ring Buffer Size ($R=8$):** Lookahead window restricted to $L=3$ batches ($1.43\text{ s}$) to prevent ring collisions.
+  - **Ring Buffer Size ($R=8$):** Lookahead window set to $L=4$ batches (~1.91 s) on the live market account (pressure soak tested at $L=3$) within the $R=8$ ring buffer to prevent ring collisions.
   - **Max Clearing Delay:** Batches un-cleared after 20 slots ($4.78\text{ s}$) expire stale and can be permissionlessly voided via `expire_and_release`.
   - **Paged Settlement:** Batches with $>16$ users unbundle into distinct `clear_batch` and `settle_users` transactions.
-  - **Zero Admin Backdoors:** Audit of all 17 on-chain instructions confirms zero instructions can edit user positions or balances directly. Vault rebalancing proceeds exclusively through the standard auction crossing pipeline.
+  - **Admin Surface:** Our review found no instruction that edits balances or positions directly. Vault rebalancing proceeds exclusively through the standard auction crossing pipeline.
   - Complete details are documented in [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md).
 - **Deployment Scope:** Devnet hackathon prototype. Mainnet deployment is out of scope.
 

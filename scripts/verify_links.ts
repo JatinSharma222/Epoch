@@ -11,10 +11,11 @@ import { Connection, PublicKey } from "@solana/web3.js";
 import * as fs from "fs";
 import * as path from "path";
 
+const rawRpc = process.env.EPOCH_RPC_URL || process.env.NEXT_PUBLIC_RPC_URL;
 const RPC_URL =
-  process.env.EPOCH_RPC_URL ||
-  process.env.NEXT_PUBLIC_RPC_URL ||
-  "https://devnet.helius-rpc.com/?api-key=7f051d79-ac86-4394-bae9-346f64974d1a";
+  rawRpc && !rawRpc.includes("***")
+    ? rawRpc
+    : "https://api.devnet.solana.com";
 
 const connection = new Connection(RPC_URL, "confirmed");
 

@@ -21,7 +21,7 @@ async function main() {
 
   const rpcUrl =
     process.env.EPOCH_RPC_URL ||
-    "https://devnet.helius-rpc.com/?api-key=7f051d79-ac86-4394-bae9-346f64974d1a";
+    "https://devnet.helius-rpc.com/?api-key=***";
   const connection = new Connection(rpcUrl, "confirmed");
 
   const adminKeyPath =
