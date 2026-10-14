@@ -21,6 +21,7 @@ const connection = new Connection(RPC_URL, "confirmed");
 
 const TARGET_FILES = [
   "README.md",
+  "docs/ROADMAP.md",
   "docs/ARCHITECTURE.md",
   "docs/MECHANISM_SPEC.md",
   "docs/KNOWN_LIMITATIONS.md",

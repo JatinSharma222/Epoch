@@ -2,7 +2,7 @@
 
 Status: PROPOSED (v0.1). Test IDs (`X-xx`, `S-x`, `C-1`, `L-1`, `E-1`, `P-x`) refer to `05-TEST_AND_EVIDENCE_PLAN.md`.
 
-**Purpose:** list what can go wrong, what the design actually defends, and what we openly admit it does not. A judge who finds a hole we already documented is a good outcome. A judge who finds one we did not is a bad one.
+**Purpose:** list what can go wrong, what the design actually defends, and what we openly admit it does not. An external reviewer finding a boundary we already documented is transparent; finding an unanalyzed failure mode is an unacceptable risk.
 
 ## 1. What is being protected
 

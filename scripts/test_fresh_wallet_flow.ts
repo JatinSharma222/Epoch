@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Test Fresh-Wallet First-Time Flow & Fill Reliability (Round 9 Track A)
+ * Test Fresh-Wallet First-Time Flow & Fill Reliability (Round 9 Part A)
  * 
  * Verifies:
  * 1. Fresh wallet that has never traded before.

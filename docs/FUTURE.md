@@ -1,6 +1,6 @@
-# Epoch Future Roadmap (Post-Hackathon & V2)
+# Epoch Protocol — Future Architecture & Research Exploration
 
-This document tracks architecture enhancements and features intentionally excluded from the initial Colosseum hackathon scope (per `01-ARCHITECTURE.md` Non-Goals and `04-BUILD_PLAN.md` Rule: "No new ideas after Oct 7; write them in `docs/FUTURE.md`").
+This document tracks architecture enhancements, scaling paths, and features considered for future protocol iterations beyond the initial devnet prototype.
 
 ## 1. Protocol Architecture & Performance
 

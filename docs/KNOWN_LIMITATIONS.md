@@ -33,7 +33,7 @@ This document provides a transparent, rigorous accounting of the current boundar
 | :--- | :--- | :--- |
 | **Single-Page Settlement Limit** | **16 users / transaction** | Solana legacy transaction account limits cap single-transaction user settlements. If a batch contains $>16$ distinct users, clearing and settlement unbundle: `clear_batch` executes first, followed by paged calls to `settle_users` or `expire_and_release`. |
 | **Withdrawal Requirements** | **Flat position ($b = 0$) & 0 active orders** | To strictly prevent margin evasion or front-running pending batch executions, collateral withdrawal requires $b = 0$ and `pending_lots == 0` (Invariants I-1, I-4, I-12). |
-| **Leverage & Margin** | **Max 10x ($1000\text{ bps}$ IMR), 5% MMR ($500\text{ bps}$)** | Conservative hackathon parameters. Cross-margin or portfolio margin across multiple sub-accounts is not implemented in v0. |
+| **Leverage & Margin** | **Max 10x ($1000\text{ bps}$ IMR), 5% MMR ($500\text{ bps}$)** | Conservative initial parameters. Cross-margin or portfolio margin across multiple sub-accounts is not implemented in v0. |
 
 ---
 

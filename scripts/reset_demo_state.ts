@@ -1,7 +1,7 @@
 /**
  * Epoch Protocol - Demo State Reset Script
  * 
- * Prepares the environment for clean judge demo walkthroughs:
+ * Prepares the environment for clean demonstration walkthroughs and live testing:
  * 1. Checks wallet balances on Devnet for demo wallets.
  * 2. Checks on-chain UserAccount state (collateral, positions, active orders).
  * 3. Withdraws remaining collateral if position is flat and active orders are 0.

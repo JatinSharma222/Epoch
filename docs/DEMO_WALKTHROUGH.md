@@ -1,6 +1,6 @@
-# Epoch Protocol — Demo Script & Numerical Reference Guide
+# Epoch Protocol — Demonstration Walkthrough & Numerical Reference Guide
 
-This document defines the exact step-by-step walkthrough for live hackathon judging and demonstrations of **Epoch Protocol** on Solana Devnet. Every action, expected on-chain number, indicative ticket preview, fee, and error/notice state is specified empirically from verified devnet measurements.
+This document defines the exact step-by-step walkthrough for live demonstrations and testing of **Epoch Protocol** on Solana Devnet. Every action, expected on-chain number, indicative ticket preview, fee, and error/notice state is specified empirically from verified devnet measurements.
 
 ---
 

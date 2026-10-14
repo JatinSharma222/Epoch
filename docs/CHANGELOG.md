@@ -26,23 +26,23 @@ All notable changes to the Epoch codebase are documented here.
 - **Task T-06 (Order Intake & Ring Buffer Maintenance):**
   - Implemented `place_order` (in-place upsert, worst-case margin check, tick aggregate maintenance) and `cancel_order`.
   - Added 8-slot batch ring buffer with `[b"batch", &[ring_index]]` PDA addressing and verified Invariant I-8 aggregate consistency over 10,000 random operations.
-- **Task T-07 (Compute Unit Spike & Gate G1 Clearance):**
+- **Task T-07 (Compute Unit Spike & Verification Milestone M1 Clearance):**
   - Implemented `clear_batch` instruction performing full on-chain auction execution and fill allocation.
   - Added `update_market_params` admin instruction.
   - Measured CU consumption across 10, 32, 64, and 128 orders: `place_order` consumes 10,198 - 11,399 CU (Target $\le 60k$ CU); `clear_batch` consumes 16,174 - 31,092 CU (Target $\le 600k$ CU).
-  - Passed Gate G1 with empirical measurements recorded in `evidence/cu.json`.
+  - Passed Verification Milestone M1 with empirical measurements recorded in `evidence/cu.json`.
 - **Task T-08 (Program clear_batch Worked Example & VOID Handling):**
   - Enhanced `clear_batch` with `ClearBatchParams` covering oracle price, confidence, timestamp, and posted slot.
   - Implemented automatic VOID state transition for stale oracle (age > `max_oracle_age_secs`), wide confidence (conf / price > `max_conf_bps`), and delayed clearance (`current_slot > close_slot + max_clear_delay_slots`).
   - Added VOID ring slot re-open lifecycle rule in `place_order`.
   - Re-produced the reference worked example on-chain ($i^* = 51$, $Q^* = 30$, price $150.015) with bit-for-bit fill allocation matching `epoch-ref`.
   - Verified 3 VOID edge-case integration tests on local validator.
-- **Task T-09 (Differential Test Harness & Gate G2 Clearance):**
+- **Task T-09 (Differential Test Harness & Verification Milestone M2 Clearance):**
   - Extracted core auction clearing logic in `programs/epoch` into pure function `execute_batch_auction`.
   - Added `Default` implementations for `Order` and `Batch` for zero-allocation test harnesses.
   - Implemented comprehensive differential test harness in `programs/epoch/tests/differential.rs` running against `crates/epoch-ref`.
   - Evaluated 8 handwritten edge-case corpus batches and 10,000 randomized batches (2,000 adversarial edge cases + 8,000 broad distributions).
-  - Passed Gate G2 with 0 mismatches across 647,981 orders and 701,746,163 matched lots in 0.89s, recorded in `evidence/diff.json`.
+  - Passed Verification Milestone M2 with 0 mismatches across 647,981 orders and 701,746,163 matched lots in 0.89s, recorded in `evidence/diff.json`.
 - **Task T-10 (Program settle_users and Ring Lifecycle):**
   - Implemented `settle_users` permissionless crank instruction with paged settlement across `remaining_accounts`.
   - Implemented quote-ledger updates: `base_position += f`, `quote_position -= notional` for BUY (or vice versa for SELL), and trading fee deduction `fee = ceil(notional * fee_bps / 10000)` into `market.fee_pool`.

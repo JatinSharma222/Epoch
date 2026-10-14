@@ -39,13 +39,13 @@
   - Bit-for-bit parity confirmed between on-chain contract code (`programs/epoch/src/instructions/clear_batch.rs::execute_batch_auction`) and the standalone Rust reference engine (`crates/epoch-ref`).
   - All handwritten edge cases (Worked Example §6, single order, empty book, zero-trade disjoint books, single tick crossing, symmetric plateau midpoint, odd volume rounding, dust remainder allocations) pass identically.
   - Across 10,000 randomized batches, uniform clearing price, volume maximization, and deterministic pro-rata allocations with remainder distribution are fully verified.
-- **Decision:** Gate G2 APPROVED. Proceed to Task T-10 (`settle_users` & Paged Ring Lifecycle).
+- **Decision:** Milestone M2 APPROVED. Proceed to Task T-10 (`settle_users` & Paged Ring Lifecycle).
 
 ## Architecture Decision Records (Summary from Design Review)
 
 | ID | Title | Status | Rationale |
 |---|---|---|---|
-| ADR-01 | Solana-only runtime, devnet target | DECIDED | Colosseum Solana Track scope and $0 devnet cost. |
+| ADR-01 | Solana-only runtime, devnet target | DECIDED | Solana runtime focus and $0 devnet prototyping cost. |
 | ADR-02 | Batch window defined by slot height | DECIDED | Program has no sub-slot clock; `Clock::get()?.slot` is strictly deterministic. |
 | ADR-03 | On-chain clearing from tick aggregates | DECIDED | Solver-verification cannot verify omitted orders; on-chain clearing is trustless. |
 | ADR-04 | Oracle-relative price grid in basis points | DECIDED | Quotes stay valid as oracle moves, mitigating multi-slot landing delay. |

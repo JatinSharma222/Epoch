@@ -101,13 +101,13 @@ export const EvidenceView: React.FC = () => {
           </div>
         </div>
 
-        {/* Gate G1: Compute Units Consumption (Local Worst-Case vs Devnet Live) */}
+        {/* Verification Milestone M1: Compute Units Consumption (Local Worst-Case vs Devnet Live) */}
         <div className="bg-[#0E1217] rounded-lg border bp-border p-4 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Cpu className="w-4 h-4 text-[#0ECB81]" />
               <span className="font-bold text-white text-[13px]">
-                Gate G1 — Compute Unit Consumption Benchmarks (K=101 Ticks)
+                Verification Milestone M1 — Compute Unit Consumption Benchmarks (K=101 Ticks)
               </span>
             </div>
             <span className="px-2 py-0.5 rounded bg-[#162720] text-[#0ECB81] text-[10px] font-bold border border-[#0ECB81]/30 font-mono">
@@ -125,7 +125,7 @@ export const EvidenceView: React.FC = () => {
                 {formatNumber(worstCaseLocalCu, 0)} CU
               </div>
               <div className="text-[9px] text-[#848E9C] mt-1 space-y-0.5">
-                <div>{pctLocalOfG1Budget}% of 600k Gate Target</div>
+                <div>{pctLocalOfG1Budget}% of 600k Target</div>
                 <div className="text-[#0ECB81]">{pctLocalOfTxLimit}% of 1.4M Solana Tx Limit</div>
               </div>
             </div>
@@ -138,7 +138,7 @@ export const EvidenceView: React.FC = () => {
                 {formatNumber(devnetMeasuredCu, 0)} CU
               </div>
               <div className="text-[9px] text-[#848E9C] mt-1 space-y-0.5">
-                <div>{pctDevnetOfG1Budget}% of 600k Gate Target</div>
+                <div>{pctDevnetOfG1Budget}% of 600k Target</div>
                 <div className="text-[#0ECB81]">{pctDevnetOfTxLimit}% of 1.4M Solana Tx Limit</div>
               </div>
             </div>
@@ -203,13 +203,13 @@ export const EvidenceView: React.FC = () => {
           </div>
         </div>
 
-        {/* Gate G4: Continuous Soak Telemetry Report */}
+        {/* Verification Milestone M4: Continuous Soak Telemetry Report */}
         <div className="bg-[#0E1217] rounded-lg border bp-border p-4 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Activity className="w-4 h-4 text-[#00F0FF]" />
               <span className="font-bold text-white text-[13px]">
-                Gate G4 — Continuous Soak Telemetry & Invariant Audit
+                Verification Milestone M4 — Continuous Soak Telemetry & Invariant Audit
               </span>
             </div>
             <span className="px-2 py-0.5 rounded bg-[#162720] text-[#0ECB81] text-[10px] font-bold border border-[#0ECB81]/30 font-mono">
@@ -510,7 +510,7 @@ export const EvidenceView: React.FC = () => {
               </span>
             </div>
             <a
-              href="file:///Users/jatinsharma/Projects/Solana-Hackathon/Colosseum/Epoch/app/public/icons/ATTRIBUTION.md"
+              href="/icons/ATTRIBUTION.md"
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-1 text-[10px] text-[#00F0FF] hover:underline font-mono"
