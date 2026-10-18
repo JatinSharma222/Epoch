@@ -135,4 +135,21 @@ pub enum EpochError {
     /// User account does not match any unsettled order in the batch.
     #[msg("User account does not match any unsettled order in batch")]
     InvalidUserAccount,
+
+    /// Invalid Pyth oracle price update account.
+    #[msg("Invalid Pyth oracle account")]
+    InvalidOracleAccount,
+
+    /// Pyth oracle feed ID mismatch.
+    #[msg("Pyth oracle feed id mismatch")]
+    OracleFeedMismatch,
+
+    /// Pyth oracle price update not fully verified.
+    #[msg("Pyth oracle price update not fully verified")]
+    OracleVerificationFailed,
+
+    /// Pyth oracle price is non-positive or invalid.
+    #[msg("Invalid oracle price")]
+    InvalidOraclePrice,
 }
+

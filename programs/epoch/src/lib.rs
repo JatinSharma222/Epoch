@@ -3,11 +3,13 @@ use anchor_lang::prelude::*;
 pub mod errors;
 pub mod events;
 pub mod instructions;
+pub mod oracle;
 pub mod state;
 
 pub use errors::*;
 pub use events::*;
 pub use instructions::*;
+pub use oracle::*;
 pub use state::*;
 
 declare_id!("CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap");
@@ -74,9 +76,8 @@ pub mod epoch {
         ctx: Context<ClearBatch>,
         batch_id: u64,
         ring_index: u8,
-        params: ClearBatchParams,
     ) -> Result<()> {
-        handle_clear_batch(ctx, batch_id, ring_index, params)
+        handle_clear_batch(ctx, batch_id, ring_index)
     }
 
     /// Admin updates tunable market parameters.
@@ -120,8 +121,8 @@ pub mod epoch {
     }
 
     /// Liquidate an undercollateralized user position directly against the Backstop Vault.
-    pub fn liquidate(ctx: Context<Liquidate>, params: LiquidateParams) -> Result<()> {
-        handle_liquidate(ctx, params)
+    pub fn liquidate(ctx: Context<Liquidate>) -> Result<()> {
+        handle_liquidate(ctx)
     }
 
     /// Voids a stale batch and clears users' pending lots/active_orders and releases margin.

@@ -127,6 +127,12 @@
           "writable": true
         },
         {
+          "name": "price_update",
+          "docs": [
+            "Pyth PriceUpdateV2 account from Pyth Solana Receiver program."
+          ]
+        },
+        {
           "name": "cranker",
           "docs": [
             "Permissionless cranker invoking clear_batch"
@@ -142,14 +148,6 @@
         {
           "name": "ring_index",
           "type": "u8"
-        },
-        {
-          "name": "params",
-          "type": {
-            "defined": {
-              "name": "ClearBatchParams"
-            }
-          }
         }
       ]
     },
@@ -968,6 +966,12 @@
           "name": "liquidatee"
         },
         {
+          "name": "price_update",
+          "docs": [
+            "Pyth PriceUpdateV2 account from Pyth Solana Receiver program."
+          ]
+        },
+        {
           "name": "liquidator",
           "docs": [
             "Permissionless caller / liquidator / keeper triggering the liquidation."
@@ -975,16 +979,7 @@
           "signer": true
         }
       ],
-      "args": [
-        {
-          "name": "params",
-          "type": {
-            "defined": {
-              "name": "LiquidateParams"
-            }
-          }
-        }
-      ]
+      "args": []
     },
     {
       "name": "place_order",
@@ -1296,6 +1291,12 @@
               }
             ]
           }
+        },
+        {
+          "name": "price_update",
+          "docs": [
+            "Pyth PriceUpdateV2 account from Pyth Solana Receiver program."
+          ]
         },
         {
           "name": "cranker",
@@ -1730,6 +1731,26 @@
       "code": 6032,
       "name": "InvalidUserAccount",
       "msg": "User account does not match any unsettled order in batch"
+    },
+    {
+      "code": 6033,
+      "name": "InvalidOracleAccount",
+      "msg": "Invalid Pyth oracle account"
+    },
+    {
+      "code": 6034,
+      "name": "OracleFeedMismatch",
+      "msg": "Pyth oracle feed id mismatch"
+    },
+    {
+      "code": 6035,
+      "name": "OracleVerificationFailed",
+      "msg": "Pyth oracle price update not fully verified"
+    },
+    {
+      "code": 6036,
+      "name": "InvalidOraclePrice",
+      "msg": "Invalid oracle price"
     }
   ],
   "types": [
@@ -1994,30 +2015,6 @@
       }
     },
     {
-      "name": "ClearBatchParams",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "oracle_price",
-            "type": "u64"
-          },
-          {
-            "name": "oracle_conf",
-            "type": "u64"
-          },
-          {
-            "name": "oracle_posted_slot",
-            "type": "u64"
-          },
-          {
-            "name": "oracle_timestamp",
-            "type": "i64"
-          }
-        ]
-      }
-    },
-    {
       "name": "InitializeMarketArgs",
       "docs": [
         "Instruction arguments for initializing market parameters."
@@ -2096,38 +2093,6 @@
           {
             "name": "funding_cap_bps",
             "type": "u16"
-          }
-        ]
-      }
-    },
-    {
-      "name": "LiquidateParams",
-      "docs": [
-        "Parameters passed into the permissionless `liquidate` instruction."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "oracle_price",
-            "docs": [
-              "Oracle price in micro-USDC (6 decimals, e.g. 150_000_000 for $150.00)."
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "oracle_conf",
-            "docs": [
-              "Pyth confidence interval in micro-USDC."
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "oracle_timestamp",
-            "docs": [
-              "Publish timestamp of the oracle price update."
-            ],
-            "type": "i64"
           }
         ]
       }
@@ -2989,18 +2954,6 @@
           {
             "name": "ring_index",
             "type": "u8"
-          },
-          {
-            "name": "oracle_price",
-            "type": "u64"
-          },
-          {
-            "name": "oracle_conf",
-            "type": "u64"
-          },
-          {
-            "name": "oracle_timestamp",
-            "type": "i64"
           }
         ]
       }

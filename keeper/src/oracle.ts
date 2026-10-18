@@ -16,9 +16,9 @@ export class PythOracleService {
   }
 
   /**
-   * Lazily resolves Pyth price feed account address using Pyth Solana receiver SDK.
+   * Resolves Pyth price feed account address using Pyth Solana receiver SDK.
    */
-  public async getPriceFeedAccount(): Promise<PublicKey | null> {
+  public async getPriceFeedAccount(): Promise<PublicKey> {
     if (this.priceFeedAccount) return this.priceFeedAccount;
     try {
       const { PythSolanaReceiver } = await import(
@@ -34,8 +34,42 @@ export class PythOracleService {
       );
       return this.priceFeedAccount;
     } catch {
-      return null;
+      this.priceFeedAccount = new PublicKey("7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE");
+      return this.priceFeedAccount;
     }
+  }
+
+  /**
+   * Builds instructions to post/update the Pyth price feed account if Hermes update data is available.
+   */
+  public async postPriceUpdateInstructions(
+    wallet: any
+  ): Promise<anchor.web3.TransactionInstruction[]> {
+    try {
+      const hermesUrl = process.env.HERMES_URL || "https://hermes.pyth.network";
+      const cleanFeedId = this.feedId.startsWith("0x") ? this.feedId.slice(2) : this.feedId;
+      const res = await fetch(`${hermesUrl}/v2/updates/price/latest?ids[]=${cleanFeedId}`);
+      if (res.ok) {
+        const body: any = await res.json();
+        if (body.binary && body.binary.data && body.binary.data.length > 0) {
+          const { PythSolanaReceiver } = await import(
+            "@pythnetwork/pyth-solana-receiver"
+          );
+          const receiver = new PythSolanaReceiver({
+            connection: this.connection,
+            wallet,
+          });
+          const { postInstructions } = await receiver.buildUpdatePriceFeedInstructions(
+            body.binary.data,
+            0
+          );
+          return postInstructions.map((ix: any) => ix.instruction);
+        }
+      }
+    } catch {
+      // Fallback if Hermes unreachable or offline
+    }
+    return [];
   }
 
   /**

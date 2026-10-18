@@ -1,5 +1,6 @@
 use crate::errors::EpochError;
 use crate::events::{BatchCleared, BatchVoided};
+use crate::oracle::parse_and_validate_pyth_price_update;
 use crate::state::constants::{CENTER_TICK, F_SCALE, K_TICKS, PRICE_TICK, RING_SIZE};
 use crate::state::{Batch, BatchStatus, Market, OrderSide, OrderStatus};
 use anchor_lang::prelude::*;
@@ -20,6 +21,10 @@ pub struct ClearBatch<'info> {
         bump,
     )]
     pub batch: AccountLoader<'info, Batch>,
+
+    /// Pyth PriceUpdateV2 account from Pyth Solana Receiver program.
+    /// CHECK: Validated on-chain by parse_and_validate_pyth_price_update.
+    pub price_update: AccountInfo<'info>,
 
     /// Permissionless cranker invoking clear_batch
     pub cranker: Signer<'info>,
@@ -82,20 +87,11 @@ pub fn compute_clearing_price(
     rounded as u64
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Default)]
-pub struct ClearBatchParams {
-    pub oracle_price: u64,
-    pub oracle_conf: u64,
-    pub oracle_posted_slot: u64,
-    pub oracle_timestamp: i64,
-}
-
 #[allow(clippy::needless_range_loop)]
 pub fn handle_clear_batch(
     ctx: Context<ClearBatch>,
     batch_id: u64,
     ring_index: u8,
-    params: ClearBatchParams,
 ) -> Result<()> {
     // 1. Verify ring index
     let expected_ring_index = (batch_id % RING_SIZE as u64) as u8;
@@ -119,14 +115,16 @@ pub fn handle_clear_batch(
     require_eq!(batch.batch_id, batch_id, EpochError::OrderNotFound);
     require!(batch.status == BatchStatus::OPEN, EpochError::BatchNotOpen);
 
-    // Oracle price resolution
-    let oracle_price = if params.oracle_price > 0 {
-        params.oracle_price
-    } else {
-        market.last_oracle_price
-    };
-    require!(oracle_price > 0, EpochError::OracleStale);
-    market.last_oracle_price = oracle_price;
+    // Cryptographic on-chain Pyth oracle verification
+    let pyth_data = parse_and_validate_pyth_price_update(
+        &ctx.accounts.price_update,
+        &market.oracle_feed_id,
+    )?;
+
+    let oracle_price = pyth_data.price;
+    let oracle_conf = pyth_data.conf;
+    let oracle_posted_slot = pyth_data.posted_slot;
+    let oracle_timestamp = pyth_data.publish_time;
 
     let c = CENTER_TICK;
 
@@ -136,30 +134,18 @@ pub fn handle_clear_batch(
     let is_late = max_delay > 0 && current_slot > close_slot.saturating_add(max_delay);
 
     // b. Oracle confidence too wide: (conf * 10,000) / price > max_conf_bps
-    let is_wide_conf = if oracle_price > 0 && params.oracle_conf > 0 {
-        let max_conf_bps = market.params.max_conf_bps as u128;
-        let conf_bps = (params.oracle_conf as u128 * 10_000) / oracle_price as u128;
-        conf_bps > max_conf_bps
-    } else {
-        false
-    };
+    let max_conf_bps = market.params.max_conf_bps as u128;
+    let conf_bps = (oracle_conf as u128 * 10_000) / oracle_price as u128;
+    let is_wide_conf = conf_bps > max_conf_bps;
 
     // c. Oracle stale: (current_time - oracle_timestamp) > max_oracle_age_secs
-    let is_stale = if params.oracle_timestamp > 0 {
-        let max_age = market.params.max_oracle_age_secs as i64;
-        current_ts > params.oracle_timestamp && (current_ts - params.oracle_timestamp) > max_age
-    } else {
-        false
-    };
+    let max_age = market.params.max_oracle_age_secs as i64;
+    let is_stale = current_ts > oracle_timestamp && (current_ts - oracle_timestamp) > max_age;
 
     // d. Oracle posted slot invalid (spec 01 §7): require posted_slot >= close_slot and posted_slot <= close_slot + max_clear_delay_slots
-    let is_invalid_slot = if params.oracle_posted_slot > 0 {
-        params.oracle_posted_slot < close_slot
-            || (max_delay > 0 && params.oracle_posted_slot > close_slot.saturating_add(max_delay))
-            || params.oracle_posted_slot > current_slot
-    } else {
-        false
-    };
+    let is_invalid_slot = oracle_posted_slot < close_slot
+        || (max_delay > 0 && oracle_posted_slot > close_slot.saturating_add(max_delay))
+        || oracle_posted_slot > current_slot;
 
     if is_late || is_wide_conf || is_stale || is_invalid_slot {
         batch.status = BatchStatus::VOID;
@@ -167,8 +153,8 @@ pub fn handle_clear_batch(
         batch.clearing_price = oracle_price;
         batch.matched_lots = 0;
         batch.oracle_price = oracle_price;
-        batch.oracle_conf = params.oracle_conf;
-        batch.oracle_posted_slot = params.oracle_posted_slot;
+        batch.oracle_conf = oracle_conf;
+        batch.oracle_posted_slot = oracle_posted_slot;
 
         for i in 0..(batch.num_orders as usize) {
             if batch.orders[i].status == OrderStatus::OPEN {
@@ -204,8 +190,10 @@ pub fn handle_clear_batch(
     let (i_star, cl_price, q_star) =
         execute_batch_auction(&mut batch, oracle_price, market.params.tick_bps);
 
-    batch.oracle_conf = params.oracle_conf;
-    batch.oracle_posted_slot = params.oracle_posted_slot;
+    batch.oracle_price = oracle_price;
+    batch.oracle_conf = oracle_conf;
+    batch.oracle_posted_slot = oracle_posted_slot;
+    market.last_oracle_price = oracle_price;
 
     // 12. Update funding index (spec §8)
     let offset_star = (i_star as i32 - c as i32) * market.params.tick_bps as i32;
@@ -230,7 +218,7 @@ pub fn handle_clear_batch(
         offset_bps: offset_star,
         matched_lots: q_star,
         oracle_price,
-        oracle_conf: params.oracle_conf,
+        oracle_conf,
     });
 
     msg!(

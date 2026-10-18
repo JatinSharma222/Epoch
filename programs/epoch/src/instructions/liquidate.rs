@@ -1,19 +1,9 @@
 use crate::errors::EpochError;
 use crate::events::PositionLiquidated;
+use crate::oracle::verify_price_update_strict;
 use crate::state::constants::F_SCALE;
 use crate::state::{Market, UserAccount, UserFlags};
 use anchor_lang::prelude::*;
-
-/// Parameters passed into the permissionless `liquidate` instruction.
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Default)]
-pub struct LiquidateParams {
-    /// Oracle price in micro-USDC (6 decimals, e.g. 150_000_000 for $150.00).
-    pub oracle_price: u64,
-    /// Pyth confidence interval in micro-USDC.
-    pub oracle_conf: u64,
-    /// Publish timestamp of the oracle price update.
-    pub oracle_timestamp: i64,
-}
 
 #[derive(Accounts)]
 pub struct Liquidate<'info> {
@@ -50,6 +40,10 @@ pub struct Liquidate<'info> {
     /// CHECK: Wallet owner of the user account being liquidated.
     pub liquidatee: UncheckedAccount<'info>,
 
+    /// Pyth PriceUpdateV2 account from Pyth Solana Receiver program.
+    /// CHECK: Validated on-chain by verify_price_update_strict.
+    pub price_update: AccountInfo<'info>,
+
     /// Permissionless caller / liquidator / keeper triggering the liquidation.
     pub liquidator: Signer<'info>,
 }
@@ -68,7 +62,7 @@ pub struct Liquidate<'info> {
 /// 5. If user collateral < 0, the deficit is absorbed by `market.insurance_fund` up to its
 ///    balance; any remaining shortfall is recorded as `market.bad_debt` (spec §10.3, Invariant I-11).
 /// 6. Updates `market.open_interest_lots` and emits `PositionLiquidated`.
-pub fn handle_liquidate(ctx: Context<Liquidate>, params: LiquidateParams) -> Result<()> {
+pub fn handle_liquidate(ctx: Context<Liquidate>) -> Result<()> {
     // 1. Prevent self-liquidation of vault against itself
     require_keys_neq!(
         ctx.accounts.user.key(),
@@ -96,30 +90,16 @@ pub fn handle_liquidate(ctx: Context<Liquidate>, params: LiquidateParams) -> Res
     // 4. User must have an open position to liquidate
     require!(user.base_position != 0, EpochError::PositionFlat);
 
-    // 5. Oracle price resolution and safety guards
-    let oracle_price = if params.oracle_price > 0 {
-        params.oracle_price
-    } else {
-        market.last_oracle_price
-    };
-    require!(oracle_price > 0, EpochError::OracleStale);
-
+    // 5. Oracle price resolution and safety guards via Pyth receiver account
     let clock = Clock::get()?;
-    if params.oracle_timestamp > 0 {
-        let age = clock.unix_timestamp.saturating_sub(params.oracle_timestamp);
-        require!(
-            age <= market.params.max_oracle_age_secs as i64,
-            EpochError::OracleStale
-        );
-    }
-
-    if params.oracle_conf > 0 {
-        let conf_bps = (params.oracle_conf as u128 * 10_000) / oracle_price as u128;
-        require!(
-            conf_bps <= market.params.max_conf_bps as u128,
-            EpochError::OracleConfidenceTooWide
-        );
-    }
+    let pyth_data = verify_price_update_strict(
+        &ctx.accounts.price_update,
+        &market.oracle_feed_id,
+        market.params.max_oracle_age_secs,
+        market.params.max_conf_bps,
+        clock.unix_timestamp,
+    )?;
+    let oracle_price = pyth_data.price;
 
     // 6. User pending funding & equity calculation
     let user_delta = market.funding_index.saturating_sub(user.funding_snapshot);

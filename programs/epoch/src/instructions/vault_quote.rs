@@ -1,6 +1,7 @@
 use crate::errors::EpochError;
 use crate::events::{VaultQuoteSkipped, VaultQuoted, VaultSkipReason};
 use crate::instructions::place_order::check_margin_requirement;
+use crate::oracle::parse_and_validate_pyth_price_update;
 use crate::state::constants::{CENTER_TICK, MAX_ORDERS, RING_SIZE};
 use crate::state::{Batch, BatchStatus, Market, OrderSide, OrderStatus, UserAccount};
 use anchor_lang::prelude::*;
@@ -10,9 +11,6 @@ use anchor_lang::prelude::*;
 pub struct VaultQuoteParams {
     pub target_batch: u64,
     pub ring_index: u8,
-    pub oracle_price: u64,
-    pub oracle_conf: u64,
-    pub oracle_timestamp: i64,
 }
 
 #[derive(Accounts)]
@@ -44,6 +42,10 @@ pub struct VaultQuote<'info> {
         bump,
     )]
     pub vault_user: AccountLoader<'info, UserAccount>,
+
+    /// Pyth PriceUpdateV2 account from Pyth Solana Receiver program.
+    /// CHECK: Validated on-chain by parse_and_validate_pyth_price_update.
+    pub price_update: AccountInfo<'info>,
 
     pub cranker: Signer<'info>,
 }
@@ -88,9 +90,24 @@ pub fn handle_vault_quote(ctx: Context<VaultQuote>, params: VaultQuoteParams) ->
         return Ok(());
     }
 
-    // 4. Guards: Check oracle freshness
-    let age = clock.unix_timestamp.saturating_sub(params.oracle_timestamp);
-    if age > market.params.max_oracle_age_secs as i64 {
+    // 4. Guards: Check oracle freshness & confidence via on-chain Pyth account
+    let pyth_data = match parse_and_validate_pyth_price_update(
+        &ctx.accounts.price_update,
+        &market.oracle_feed_id,
+    ) {
+        Ok(data) => data,
+        Err(_) => {
+            emit!(VaultQuoteSkipped {
+                target_batch,
+                ring_index,
+                reason: VaultSkipReason::ORACLE_STALE,
+            });
+            return Ok(());
+        }
+    };
+
+    let age = clock.unix_timestamp.saturating_sub(pyth_data.publish_time);
+    if pyth_data.publish_time > clock.unix_timestamp || age > market.params.max_oracle_age_secs as i64 {
         emit!(VaultQuoteSkipped {
             target_batch,
             ring_index,
@@ -99,15 +116,9 @@ pub fn handle_vault_quote(ctx: Context<VaultQuote>, params: VaultQuoteParams) ->
         return Ok(());
     }
 
-    // 5. Guards: Check oracle confidence
-    let oracle_price = if params.oracle_price > 0 {
-        params.oracle_price
-    } else {
-        market.last_oracle_price
-    };
-    require!(oracle_price > 0, EpochError::OracleStale);
+    let oracle_price = pyth_data.price;
     if !is_oracle_confident(
-        params.oracle_conf,
+        pyth_data.conf,
         oracle_price,
         market.vault_params.max_conf_bps,
     ) {

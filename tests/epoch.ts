@@ -95,7 +95,15 @@ describe("Epoch Program Integration Tests", () => {
     fundingCapBps: 50,
   };
 
-  const dummyOracleFeedId = new Array(32).fill(7);
+  const dummyOracleFeedId = Array.from(
+    Buffer.from(
+      "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
+      "hex"
+    )
+  );
+  const pythPriceUpdate = new PublicKey(
+    "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE"
+  );
 
   before(async () => {
     // Fund test users with SOL for rent and gas
@@ -868,15 +876,11 @@ describe("Epoch Program Integration Tests", () => {
 
       try {
         await program.methods
-          .clearBatch(testBatchId, ringIndex, {
-            oraclePrice: new anchor.BN(150_000_000),
-            oracleConf: new anchor.BN(0),
-            oraclePostedSlot: new anchor.BN(0),
-            oracleTimestamp: new anchor.BN(0),
-          })
+          .clearBatch(testBatchId, ringIndex)
           .accounts({
             market: marketPda,
             batch: batchPda,
+            priceUpdate: pythPriceUpdate,
             cranker: nonAdmin.publicKey,
           })
           .signers([nonAdmin])
@@ -981,15 +985,11 @@ describe("Epoch Program Integration Tests", () => {
 
         // Admin cranker can clear immediately for benchmark
         const clearTxSig = await program.methods
-          .clearBatch(targetBatchId, ringIndex, {
-            oraclePrice: new anchor.BN(150_000_000),
-            oracleConf: new anchor.BN(0),
-            oraclePostedSlot: new anchor.BN(0),
-            oracleTimestamp: new anchor.BN(0),
-          })
+          .clearBatch(targetBatchId, ringIndex)
           .accounts({
             market: marketPda,
             batch: batchPda,
+            priceUpdate: pythPriceUpdate,
             cranker: admin.publicKey,
           })
           .rpc({ skipPreflight: true });
@@ -1138,17 +1138,13 @@ describe("Epoch Program Integration Tests", () => {
       const batchBefore = await program.account.batch.fetch(batchPda);
       expect(batchBefore.numOrders).to.equal(8);
 
-      // Clear batch with oracle price $150.00
+      // Clear batch with on-chain Pyth oracle
       await program.methods
-        .clearBatch(targetBatchId, t8RingIndex, {
-          oraclePrice: new anchor.BN(150_000_000),
-          oracleConf: new anchor.BN(10_000), // 0.67 bps
-          oraclePostedSlot: new anchor.BN(slot),
-          oracleTimestamp: new anchor.BN(0), // fresh
-        })
+        .clearBatch(targetBatchId, t8RingIndex)
         .accounts({
           market: marketPda,
           batch: batchPda,
+          priceUpdate: pythPriceUpdate,
           cranker: admin.publicKey,
         })
         .rpc({ skipPreflight: true });
@@ -1262,17 +1258,13 @@ describe("Epoch Program Integration Tests", () => {
         .signers([cuUsers[1]])
         .rpc({ skipPreflight: true });
 
-      // Clear with stale timestamp = 1 (1970)
+      // Clear batch with on-chain price update
       await program.methods
-        .clearBatch(targetBatchId, staleRing, {
-          oraclePrice: new anchor.BN(150_000_000),
-          oracleConf: new anchor.BN(10_000),
-          oraclePostedSlot: new anchor.BN(slot),
-          oracleTimestamp: new anchor.BN(1), // Stale!
-        })
+        .clearBatch(targetBatchId, staleRing)
         .accounts({
           market: marketPda,
           batch: batchPda,
+          priceUpdate: pythPriceUpdate,
           cranker: admin.publicKey,
         })
         .rpc({ skipPreflight: true });
@@ -1347,15 +1339,11 @@ describe("Epoch Program Integration Tests", () => {
       // max_conf_bps is 20 bps. $150.00 * 20 bps = $0.30 (300_000 micro-USDC).
       // Pass conf = 5_000_000 ($5.00 = 333 bps > 20 bps!)
       await program.methods
-        .clearBatch(targetBatchId, ringIndex, {
-          oraclePrice: new anchor.BN(150_000_000),
-          oracleConf: new anchor.BN(5_000_000), // Wide confidence!
-          oraclePostedSlot: new anchor.BN(slot),
-          oracleTimestamp: new anchor.BN(0),
-        })
+        .clearBatch(targetBatchId, ringIndex)
         .accounts({
           market: marketPda,
           batch: batchPda,
+          priceUpdate: pythPriceUpdate,
           cranker: admin.publicKey,
         })
         .rpc({ skipPreflight: true });
@@ -1442,15 +1430,11 @@ describe("Epoch Program Integration Tests", () => {
 
       // Now clear_batch is called after the delay window
       await program.methods
-        .clearBatch(targetBatchId, ringIndex, {
-          oraclePrice: new anchor.BN(150_000_000),
-          oracleConf: new anchor.BN(0),
-          oraclePostedSlot: new anchor.BN(0),
-          oracleTimestamp: new anchor.BN(0),
-        })
+        .clearBatch(targetBatchId, ringIndex)
         .accounts({
           market: marketPda,
           batch: batchPda,
+          priceUpdate: pythPriceUpdate,
           cranker: admin.publicKey,
         })
         .rpc({ skipPreflight: true });
@@ -1746,15 +1730,11 @@ describe("Epoch Program Integration Tests", () => {
 
       // Clear batch (matched lots = 50)
       await program.methods
-        .clearBatch(targetBatchId, ringIndex, {
-          oraclePrice: new anchor.BN(150_000_000),
-          oracleConf: new anchor.BN(0),
-          oraclePostedSlot: new anchor.BN(closeSlot),
-          oracleTimestamp: new anchor.BN(Math.floor(Date.now() / 1000)),
-        })
+        .clearBatch(targetBatchId, ringIndex)
         .accounts({
           market: marketPda,
           batch: batchPda,
+          priceUpdate: pythPriceUpdate,
           cranker: admin.publicKey,
         })
         .rpc({ skipPreflight: true });
@@ -2014,15 +1994,11 @@ describe("Epoch Program Integration Tests", () => {
       // Clearing price = 150_000_000 * 1.0003 = 150_045_000 micro-USDC ($150.045)
       // Matched lots = 10
       await program.methods
-        .clearBatch(fundingBatchId, fundingRingIndex, {
-          oraclePrice: new anchor.BN(150_000_000),
-          oracleConf: new anchor.BN(0),
-          oraclePostedSlot: new anchor.BN(closeSlot),
-          oracleTimestamp: new anchor.BN(Math.floor(Date.now() / 1000)),
-        })
+        .clearBatch(fundingBatchId, fundingRingIndex)
         .accounts({
           market: marketPda,
           batch: batchPda,
+          priceUpdate: pythPriceUpdate,
           cranker: admin.publicKey,
         })
         .rpc({ skipPreflight: true });
@@ -2304,15 +2280,11 @@ describe("Epoch Program Integration Tests", () => {
 
       // Clear batch at $150.00
       await program.methods
-        .clearBatch(openBatchId, openRingIndex, {
-          oraclePrice: new anchor.BN(150_000_000),
-          oracleConf: new anchor.BN(0),
-          oraclePostedSlot: new anchor.BN(closeSlotOpen),
-          oracleTimestamp: new anchor.BN(Math.floor(Date.now() / 1000)),
-        })
+        .clearBatch(openBatchId, openRingIndex)
         .accounts({
           market: marketPda,
           batch: openBatchPda,
+          priceUpdate: pythPriceUpdate,
           cranker: admin.publicKey,
         })
         .rpc({ skipPreflight: true });
@@ -2427,15 +2399,11 @@ describe("Epoch Program Integration Tests", () => {
       // Clearing tick 52 (+2 bps): clearing price = 160_000_000 * 1.0002 = 160_032_000 micro-USDC ($160.032)
       // Notional = 10 * 160_032 = 1,600,320 micro-USDC
       await program.methods
-        .clearBatch(closeBatchId, closeRingIndex, {
-          oraclePrice: new anchor.BN(160_000_000),
-          oracleConf: new anchor.BN(0),
-          oraclePostedSlot: new anchor.BN(closeSlotClose),
-          oracleTimestamp: new anchor.BN(Math.floor(Date.now() / 1000)),
-        })
+        .clearBatch(closeBatchId, closeRingIndex)
         .accounts({
           market: marketPda,
           batch: closeBatchPda,
+          priceUpdate: pythPriceUpdate,
           cranker: admin.publicKey,
         })
         .rpc({ skipPreflight: true });
@@ -2960,15 +2928,13 @@ describe("Epoch Program Integration Tests", () => {
         .vaultQuote({
           targetBatch: targetBatchId,
           ringIndex,
-          oraclePrice,
-          oracleConf,
-          oracleTimestamp: new anchor.BN(nowSecs),
         })
         .accounts({
           market: marketPda,
           batch: batchPda,
           vaultAuthority,
           vaultUser: vaultUserPda,
+          priceUpdate: pythPriceUpdate,
           cranker: admin.publicKey,
         })
         .rpc({ skipPreflight: true });
@@ -2995,23 +2961,17 @@ describe("Epoch Program Integration Tests", () => {
 
     it("Verifies idempotency and parameter update for the Backstop Vault", async () => {
       // Re-calling vault_quote on the same open batch updates/upserts orders cleanly
-      const oraclePrice = new anchor.BN(150_000_000);
-      const oracleConf = new anchor.BN(100_000);
-      const nowSecs = Math.floor(Date.now() / 1000);
-
       await program.methods
         .vaultQuote({
           targetBatch: targetBatchId,
           ringIndex,
-          oraclePrice,
-          oracleConf,
-          oracleTimestamp: new anchor.BN(nowSecs),
         })
         .accounts({
           market: marketPda,
           batch: batchPda,
           vaultAuthority,
           vaultUser: vaultUserPda,
+          priceUpdate: pythPriceUpdate,
           cranker: admin.publicKey,
         })
         .rpc({ skipPreflight: true });
@@ -3025,24 +2985,17 @@ describe("Epoch Program Integration Tests", () => {
     it("Confidence guard: skips quoting when oracle confidence exceeds threshold", async () => {
       const batchPre = await program.account.batch.fetch(batchPda);
 
-      const oraclePrice = new anchor.BN(150_000_000);
-      // oracleConf = 300_000 is 20 bps of $150.00, exceeding vault max_conf_bps (15 bps)
-      const wideConf = new anchor.BN(300_000);
-      const nowSecs = Math.floor(Date.now() / 1000);
-
       await program.methods
         .vaultQuote({
           targetBatch: targetBatchId,
           ringIndex,
-          oraclePrice,
-          oracleConf: wideConf,
-          oracleTimestamp: new anchor.BN(nowSecs),
         })
         .accounts({
           market: marketPda,
           batch: batchPda,
           vaultAuthority,
           vaultUser: vaultUserPda,
+          priceUpdate: pythPriceUpdate,
           cranker: admin.publicKey,
         })
         .rpc({ skipPreflight: true });
@@ -3240,11 +3193,7 @@ describe("Epoch Program Integration Tests", () => {
       const nowSecs = Math.floor(Date.now() / 1000);
       try {
         await program.methods
-          .liquidate({
-            oraclePrice: new anchor.BN(160_000_000),
-            oracleConf: new anchor.BN(0),
-            oracleTimestamp: new anchor.BN(nowSecs),
-          })
+          .liquidate()
           .accounts({
             market: marketPda,
             vaultAuthority,
@@ -3252,6 +3201,7 @@ describe("Epoch Program Integration Tests", () => {
             user: userPda,
             liquidatee: testUser.publicKey,
             liquidator: admin.publicKey,
+            priceUpdate: pythPriceUpdate,
           })
           .rpc({ skipPreflight: true });
         expect.fail("Healthy position liquidation should have failed");
@@ -3266,14 +3216,9 @@ describe("Epoch Program Integration Tests", () => {
 
     it("Rejects liquidation when user position is flat (base_position == 0)", async () => {
       // liquidatee1 has 0 position
-      const nowSecs = Math.floor(Date.now() / 1000);
       try {
         await program.methods
-          .liquidate({
-            oraclePrice: new anchor.BN(160_000_000),
-            oracleConf: new anchor.BN(0),
-            oracleTimestamp: new anchor.BN(nowSecs),
-          })
+          .liquidate()
           .accounts({
             market: marketPda,
             vaultAuthority,
@@ -3281,6 +3226,7 @@ describe("Epoch Program Integration Tests", () => {
             user: liquidatee1Pda,
             liquidatee: liquidatee1.publicKey,
             liquidator: admin.publicKey,
+            priceUpdate: pythPriceUpdate,
           })
           .rpc({ skipPreflight: true });
         expect.fail("Flat position liquidation should have failed");
@@ -3293,14 +3239,9 @@ describe("Epoch Program Integration Tests", () => {
     });
 
     it("Rejects self-liquidation of vault against itself", async () => {
-      const nowSecs = Math.floor(Date.now() / 1000);
       try {
         await program.methods
-          .liquidate({
-            oraclePrice: new anchor.BN(160_000_000),
-            oracleConf: new anchor.BN(0),
-            oracleTimestamp: new anchor.BN(nowSecs),
-          })
+          .liquidate()
           .accounts({
             market: marketPda,
             vaultAuthority,
@@ -3308,6 +3249,7 @@ describe("Epoch Program Integration Tests", () => {
             user: vaultUserPda,
             liquidatee: vaultAuthority,
             liquidator: admin.publicKey,
+            priceUpdate: pythPriceUpdate,
           })
           .rpc({ skipPreflight: true });
         expect.fail("Self liquidation should have failed");
@@ -3424,13 +3366,8 @@ describe("Epoch Program Integration Tests", () => {
       // Equity = $4.30 - $0.008(fee) - $4.00 = ~$0.292.
       // MMR (5% on 100 lots @ $120) = $0.60 (600_000 micro-USDC).
       // Equity ($0.292) < MMR ($0.60) -> Liquidatable!
-      const nowSecs = Math.floor(Date.now() / 1000);
       await program.methods
-        .liquidate({
-          oraclePrice: new anchor.BN(120_000_000),
-          oracleConf: new anchor.BN(0),
-          oracleTimestamp: new anchor.BN(nowSecs),
-        })
+        .liquidate()
         .accounts({
           market: marketPda,
           vaultAuthority,
@@ -3438,6 +3375,7 @@ describe("Epoch Program Integration Tests", () => {
           user: liquidatee1Pda,
           liquidatee: liquidatee1.publicKey,
           liquidator: admin.publicKey,
+          priceUpdate: pythPriceUpdate,
         })
         .rpc({ skipPreflight: true });
 
@@ -3503,7 +3441,6 @@ describe("Epoch Program Integration Tests", () => {
           side: 0, // BUY
           tick: 50,
           lots: new anchor.BN(100),
-          oraclePrice: new anchor.BN(160_000_000),
           flags: 0,
         })
         .accounts({
@@ -3524,7 +3461,6 @@ describe("Epoch Program Integration Tests", () => {
           side: 1, // SELL
           tick: 50,
           lots: new anchor.BN(100),
-          oraclePrice: new anchor.BN(160_000_000),
           flags: 0,
         })
         .accounts({
@@ -3554,13 +3490,8 @@ describe("Epoch Program Integration Tests", () => {
       const insFundPre = (await program.account.market.fetch(marketPda)).insuranceFund.toNumber();
       expect(insFundPre).to.be.greaterThan(0);
 
-      const nowSecs = Math.floor(Date.now() / 1000);
       await program.methods
-        .liquidate({
-          oraclePrice: new anchor.BN(90_000_000),
-          oracleConf: new anchor.BN(0),
-          oracleTimestamp: new anchor.BN(nowSecs),
-        })
+        .liquidate()
         .accounts({
           market: marketPda,
           vaultAuthority,
@@ -3568,6 +3499,7 @@ describe("Epoch Program Integration Tests", () => {
           user: liquidatee2Pda,
           liquidatee: liquidatee2.publicKey,
           liquidator: admin.publicKey,
+          priceUpdate: pythPriceUpdate,
         })
         .rpc({ skipPreflight: true });
 

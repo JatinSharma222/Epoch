@@ -437,26 +437,18 @@ export class EpochKeeper {
     const batchSlots = market.params.batchSlots;
     const closeSlot = startSlot + (batchId + 1) * batchSlots;
 
-    const oraclePrice = await this.oracle.getLatestPrice(
-      market.lastOraclePrice.toNumber() || 150_000_000
-    );
-    const postedSlot = oraclePrice.isFallback
-      ? new anchor.BN(closeSlot)
-      : oraclePrice.postedSlot;
+    const priceFeedAccount = await this.oracle.getPriceFeedAccount();
+    const postIxs = await this.oracle.postPriceUpdateInstructions(this.wallet);
 
     this._stats.clearAttempts++;
 
     try {
       const clearIx = await this.program.methods
-        .clearBatch(new anchor.BN(batchId), ringIndex, {
-          oraclePrice: oraclePrice.price,
-          oracleConf: oraclePrice.conf,
-          oraclePostedSlot: postedSlot,
-          oracleTimestamp: oraclePrice.publishTime,
-        })
+        .clearBatch(new anchor.BN(batchId), ringIndex)
         .accounts({
           market: this.marketPda,
           batch: batchPda,
+          priceUpdate: priceFeedAccount,
           cranker: this.wallet.publicKey,
         })
         .instruction();
@@ -478,7 +470,8 @@ export class EpochKeeper {
 
       const tx = new Transaction().add(
         ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
-        ComputeBudgetProgram.setComputeUnitLimit({ units: 500_000 }),
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+        ...postIxs,
         clearIx,
         settleIx
       );
@@ -547,26 +540,18 @@ export class EpochKeeper {
     const batchSlots = market.params.batchSlots;
     const closeSlot = startSlot + (batchId + 1) * batchSlots;
 
-    const oraclePrice = await this.oracle.getLatestPrice(
-      market.lastOraclePrice.toNumber() || 150_000_000
-    );
-    const postedSlot = oraclePrice.isFallback
-      ? new anchor.BN(closeSlot)
-      : oraclePrice.postedSlot;
+    const priceFeedAccount = await this.oracle.getPriceFeedAccount();
+    const postIxs = await this.oracle.postPriceUpdateInstructions(this.wallet);
 
     this._stats.clearAttempts++;
 
     try {
       const ix = await this.program.methods
-        .clearBatch(new anchor.BN(batchId), ringIndex, {
-          oraclePrice: oraclePrice.price,
-          oracleConf: oraclePrice.conf,
-          oraclePostedSlot: postedSlot,
-          oracleTimestamp: oraclePrice.publishTime,
-        })
+        .clearBatch(new anchor.BN(batchId), ringIndex)
         .accounts({
           market: this.marketPda,
           batch: batchPda,
+          priceUpdate: priceFeedAccount,
           cranker: this.wallet.publicKey,
         })
         .instruction();
@@ -574,6 +559,7 @@ export class EpochKeeper {
       const tx = new Transaction().add(
         ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
         ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+        ...postIxs,
         ix
       );
 
@@ -883,21 +869,19 @@ export class EpochKeeper {
     this._stats.vaultQuoteAttempts++;
 
     try {
-      const oracleData = await this.oracle.getLatestPrice();
+      const priceFeedAccount = await this.oracle.getPriceFeedAccount();
 
       const ix = await (this.program.methods as any)
         .vaultQuote({
           targetBatch: new anchor.BN(targetBatch),
           ringIndex,
-          oraclePrice: oracleData.price,
-          oracleConf: oracleData.conf,
-          oracleTimestamp: oracleData.publishTime,
         })
         .accounts({
           market: this.marketPda,
           batch: batchPda,
           vaultAuthority: this.vaultAuthority,
           vaultUser: this.vaultUser,
+          priceUpdate: priceFeedAccount,
           cranker: this.wallet.publicKey,
         })
         .instruction();
@@ -986,18 +970,17 @@ export class EpochKeeper {
     );
 
     try {
+      const priceFeedAccount = await this.oracle.getPriceFeedAccount();
+
       const ix = await this.program.methods
-        .liquidate({
-          oraclePrice: oraclePrice.price,
-          oracleConf: oraclePrice.conf,
-          oracleTimestamp: oraclePrice.publishTime,
-        })
+        .liquidate()
         .accounts({
           market: this.marketPda,
           vaultAuthority: this.vaultAuthority,
           vaultUser: this.vaultUser,
           user: userPda,
           liquidatee: liquidateeOwner,
+          priceUpdate: priceFeedAccount,
           liquidator: this.wallet.publicKey,
         })
         .instruction();
