@@ -28,13 +28,15 @@ pub struct FundVault<'info> {
     #[account(
         mut,
         token::authority = funder,
+        token::mint = collateral_vault.mint,
     )]
     pub funder_token_account: Account<'info, TokenAccount>,
 
     #[account(
         mut,
         seeds = [b"collateral_vault"],
-        bump
+        bump,
+        token::authority = market,
     )]
     pub collateral_vault: Account<'info, TokenAccount>,
 

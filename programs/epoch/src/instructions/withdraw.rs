@@ -21,13 +21,15 @@ pub struct Withdraw<'info> {
     #[account(
         mut,
         token::authority = owner,
+        token::mint = collateral_vault.mint,
     )]
     pub user_token_account: Account<'info, TokenAccount>,
 
     #[account(
         mut,
         seeds = [b"collateral_vault"],
-        bump
+        bump,
+        token::authority = market,
     )]
     pub collateral_vault: Account<'info, TokenAccount>,
 
