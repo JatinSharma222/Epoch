@@ -44,8 +44,11 @@ pub fn handle_update_vault_params(
     ctx: Context<UpdateVaultParams>,
     new_params: UpdateVaultParamsArgs,
 ) -> Result<()> {
+    let params: VaultParams = new_params.into();
+    params.validate()?;
+
     let mut market = ctx.accounts.market.load_mut()?;
-    market.vault_params = new_params.into();
+    market.vault_params = params;
     msg!(
         "Backstop Vault parameters updated by admin: {}",
         ctx.accounts.admin.key()

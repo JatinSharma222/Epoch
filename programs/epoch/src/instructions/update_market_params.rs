@@ -20,13 +20,10 @@ pub fn handle_update_market_params(
     ctx: Context<UpdateMarketParams>,
     new_params: InitializeMarketArgs,
 ) -> Result<()> {
-    require!(new_params.batch_slots > 0, EpochError::MathOverflow);
-    require!(
-        new_params.k_ticks > 0 && new_params.k_ticks % 2 == 1,
-        EpochError::InvalidTick
-    );
+    let params: crate::state::MarketParams = new_params.into();
+    params.validate()?;
 
     let mut market = ctx.accounts.market.load_mut()?;
-    market.params = new_params.into();
+    market.params = params;
     Ok(())
 }

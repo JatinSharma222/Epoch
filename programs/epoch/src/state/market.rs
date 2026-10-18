@@ -1,4 +1,6 @@
 use anchor_lang::prelude::*;
+use crate::errors::EpochError;
+use crate::state::constants::{K_TICKS, MAX_ORDERS, RING_SIZE};
 
 /// Market parameters stored inline in the Market account.
 /// All defaults are from `02-MECHANISM_SPEC.md` §1, §9 and `01-ARCHITECTURE.md` §5.1.
@@ -44,6 +46,36 @@ pub struct MarketParams {
     pub funding_cap_bps: u16,
     /// Padding for 8-byte alignment (offset 62 -> 64).
     pub _pad0: [u8; 2],
+}
+
+impl MarketParams {
+    pub fn validate(&self) -> Result<()> {
+        require!(self.price_tick > 0, EpochError::InvalidMarketParameter);
+        require!(self.base_lot > 0, EpochError::InvalidMarketParameter);
+        require!(self.batch_slots > 0, EpochError::InvalidMarketParameter);
+        require!(self.funding_period_slots > 0, EpochError::InvalidMarketParameter);
+        require!(self.mmr_bps > 0, EpochError::InvalidMarketParameter);
+        require!(self.imr_bps > self.mmr_bps, EpochError::InvalidMarketParameter);
+        require!(self.imr_bps <= 10_000, EpochError::InvalidMarketParameter);
+        require!(self.fee_bps <= 1000, EpochError::InvalidMarketParameter);
+        require!(
+            self.k_ticks > 0 && self.k_ticks % 2 == 1 && (self.k_ticks as usize) <= K_TICKS,
+            EpochError::InvalidTick
+        );
+        require!(self.tick_bps > 0, EpochError::InvalidMarketParameter);
+        require!(
+            self.lookahead > 0 && (self.lookahead as usize) < (RING_SIZE as usize),
+            EpochError::InvalidMarketParameter
+        );
+        require!(
+            self.max_orders_per_batch > 0 && (self.max_orders_per_batch as usize) <= MAX_ORDERS,
+            EpochError::InvalidMarketParameter
+        );
+        require!(self.max_oracle_age_secs > 0, EpochError::InvalidMarketParameter);
+        require!(self.max_conf_bps > 0, EpochError::InvalidMarketParameter);
+        require!(self.max_clear_delay_slots > 0, EpochError::InvalidMarketParameter);
+        Ok(())
+    }
 }
 
 impl Default for MarketParams {
@@ -93,6 +125,26 @@ pub struct VaultParams {
     pub is_active: u8,
     /// Padding to 8-byte boundary.
     pub _pad1: [u8; 3],
+}
+
+impl VaultParams {
+    pub fn validate(&self) -> Result<()> {
+        require!(self.max_inventory_lots > 0, EpochError::InvalidVaultParameter);
+        require!(self.is_active <= 1, EpochError::InvalidVaultParameter);
+        require!(self.max_conf_bps > 0, EpochError::InvalidVaultParameter);
+        for &lot in &self.quote_lots {
+            require!(lot > 0, EpochError::InvalidVaultParameter);
+        }
+        for &off in &self.quote_offset_bps {
+            require!(off > 0, EpochError::InvalidVaultParameter);
+        }
+        require!(
+            self.quote_offset_bps[0] < self.quote_offset_bps[1]
+                && self.quote_offset_bps[1] < self.quote_offset_bps[2],
+            EpochError::InvalidVaultParameter
+        );
+        Ok(())
+    }
 }
 
 impl Default for VaultParams {

@@ -151,5 +151,13 @@ pub enum EpochError {
     /// Pyth oracle price is non-positive or invalid.
     #[msg("Invalid oracle price")]
     InvalidOraclePrice,
+
+    /// Market parameter out of acceptable bounds.
+    #[msg("Invalid market parameter")]
+    InvalidMarketParameter,
+
+    /// Vault parameter out of acceptable bounds.
+    #[msg("Invalid vault parameter")]
+    InvalidVaultParameter,
 }
 

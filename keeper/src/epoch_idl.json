@@ -1751,6 +1751,16 @@
       "code": 6036,
       "name": "InvalidOraclePrice",
       "msg": "Invalid oracle price"
+    },
+    {
+      "code": 6037,
+      "name": "InvalidMarketParameter",
+      "msg": "Invalid market parameter"
+    },
+    {
+      "code": 6038,
+      "name": "InvalidVaultParameter",
+      "msg": "Invalid vault parameter"
     }
   ],
   "types": [
