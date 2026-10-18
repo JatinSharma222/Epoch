@@ -249,7 +249,7 @@ Per the security analysis in [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) and 
   - **Ring Buffer Size ($R=8$):** Lookahead window set to $L=4$ batches (~1.91 s) on the live market account (pressure soak tested at $L=3$) within the $R=8$ ring buffer to prevent ring collisions.
   - **Max Clearing Delay:** Batches un-cleared after 20 slots ($4.78\text{ s}$) expire stale and can be permissionlessly voided via `expire_and_release`.
   - **Paged Settlement:** Batches with $>16$ users unbundle into distinct `clear_batch` and `settle_users` transactions.
-  - **Admin Surface:** Our review found no instruction that edits balances or positions directly. Vault rebalancing proceeds exclusively through the standard auction crossing pipeline.
+  - **Admin Surface:** No privileged backdoor instructions exist for the admin to arbitrarily edit user positions, collaterals, or balances outside the standard invariant-constrained state machine (deposit, withdraw, auction settlement, and liquidation). Vault rebalancing proceeds exclusively through the standard auction crossing pipeline.
   - Complete details are documented in [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md).
 - **Deployment Scope:** Standalone devnet research prototype. Mainnet deployment is out of scope.
 

@@ -49,16 +49,16 @@ This document provides a transparent, rigorous accounting of the current boundar
 
 ## 5. Privileged & Admin Instruction Audit (Round 12 Freeze Audit)
 
-Epoch strictly enforces mathematical invariants ($I-1$ to $I-12$). An audit of all 17 on-chain instructions confirms that **zero instructions exist that can directly edit user positions, collaterals, or balances**.
+Epoch strictly enforces mathematical invariants ($I-1$ to $I-12$). An audit of all on-chain instructions confirms that **no privileged backdoor instructions exist for the admin to arbitrarily edit user positions, collaterals, or balances outside the standard invariant-constrained state machine (deposit, withdraw, auction settlement, and liquidation)**.
 
 | Instruction | Privilege Level | Permitted Scope & Mutation Target | Impact on Positions / Balances |
 | :--- | :--- | :--- | :--- |
 | `initialize_market` | Initializer (One-time) | Initializes global `Market` PDA and sets initial risk bounds. | Cannot edit balances or positions. |
 | `create_user` | Permissionless | Allocates new `UserAccount` PDA for caller. | Zero balance / zero position initialized. |
-| `faucet` | Devnet/Testnet Only | Mints mock USDC SPL tokens to caller ATA (capped at $2,000$ USDC). | Does not alter internal margin ledger. |
+| `faucet` | Devnet/Testnet Only | Mints mock USDC SPL tokens to caller ATA (capped at $10,000$ USDC with 60s cooldown). | Does not alter internal margin ledger. |
 | `deposit` | Permissionless (User) | Transfers SPL tokens into vault; credits caller collateral. | Conserves Invariant $I-1$ ($\Delta C = \text{tokens}$). |
 | `withdraw` | Permissionless (User) | Debits caller collateral; transfers SPL tokens (flat position only). | Conserves Invariant $I-1$ ($b = 0$, pending $= 0$). |
-| `initialize_batch` | Permissionless (Cranker) | Initializes zero-copy `Batch` ring buffer slot. | Cannot edit user positions or balances. |
+| `initialize_batch` | Admin (`market.admin`) | Initializes zero-copy `Batch` ring buffer slot with ring index bounds. | Cannot edit user positions or balances. |
 | `place_order` | Permissionless (User) | Enqueues user order into target batch; locks margin. | Standard order placement; user-signed only. |
 | `cancel_order` | Permissionless (User) | Cancels pending order before batch close; unlocks margin. | Caller-owned orders only. |
 | `clear_batch` | Permissionless (Cranker) | Computes uniform clearing price $P^*$ via socialized crossing. | Deterministic auction math; cannot inject fills. |
