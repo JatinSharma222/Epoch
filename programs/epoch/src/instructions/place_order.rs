@@ -188,31 +188,35 @@ pub fn handle_place_order(ctx: Context<PlaceOrder>, args: PlaceOrderArgs) -> Res
         }
     }
 
-    // 5. Check if an open order already exists with the same (user_pda, slot_id) -> UPSERT
+    // 5. Check if an order already exists with the same (user_pda, slot_id) -> UPSERT or REUSE CANCELLED
     let mut existing_order_idx = None;
     for i in 0..(batch.num_orders as usize) {
         let order = &batch.orders[i];
-        if order.user_pda == user_pda
-            && order.slot_id == slot_id
-            && order.status == OrderStatus::OPEN
-        {
-            existing_order_idx = Some(i);
-            break;
+        if order.user_pda == user_pda && order.slot_id == slot_id {
+            if order.status == OrderStatus::OPEN || order.status == OrderStatus::CANCELLED {
+                existing_order_idx = Some(i);
+                break;
+            }
         }
     }
 
     let (adj_buy_lots, adj_sell_lots, this_buy, this_sell) = if let Some(idx) = existing_order_idx {
         let old = &batch.orders[idx];
-        let (ab, asell) = if old.side == OrderSide::BUY {
-            (
-                user.pending_buy_lots.saturating_sub(old.lots),
-                user.pending_sell_lots,
-            )
+        let (ab, asell) = if old.status == OrderStatus::OPEN {
+            if old.side == OrderSide::BUY {
+                (
+                    user.pending_buy_lots.saturating_sub(old.lots),
+                    user.pending_sell_lots,
+                )
+            } else {
+                (
+                    user.pending_buy_lots,
+                    user.pending_sell_lots.saturating_sub(old.lots),
+                )
+            }
         } else {
-            (
-                user.pending_buy_lots,
-                user.pending_sell_lots.saturating_sub(old.lots),
-            )
+            // Reusing a CANCELLED order whose lots were already subtracted upon cancellation
+            (user.pending_buy_lots, user.pending_sell_lots)
         };
         let (tb, ts) = if side == OrderSide::BUY {
             (lots, 0)
@@ -247,15 +251,27 @@ pub fn handle_place_order(ctx: Context<PlaceOrder>, args: PlaceOrderArgs) -> Res
 
     // 7. Update aggregates and state
     if let Some(idx) = existing_order_idx {
-        // Replacement (upsert)
-        let old_side = batch.orders[idx].side;
-        let old_tick = batch.orders[idx].tick as usize;
-        let old_lots = batch.orders[idx].lots;
-
-        if old_side == OrderSide::BUY {
-            batch.bid_qty[old_tick] = batch.bid_qty[old_tick].saturating_sub(old_lots);
+        let is_reactivating_cancelled = batch.orders[idx].status == OrderStatus::CANCELLED;
+        if is_reactivating_cancelled {
+            require!(
+                user.active_orders < MAX_SLOTS_PER_USER,
+                EpochError::InvalidSlotId
+            );
+            user.active_orders = user.active_orders.saturating_add(1);
+            batch.settled_orders = batch.settled_orders.saturating_sub(1);
+            batch.orders[idx].status = OrderStatus::OPEN;
+            batch.orders[idx].filled_lots = 0;
         } else {
-            batch.ask_qty[old_tick] = batch.ask_qty[old_tick].saturating_sub(old_lots);
+            // Replacement (upsert) of open order: deduct previous aggregate
+            let old_side = batch.orders[idx].side;
+            let old_tick = batch.orders[idx].tick as usize;
+            let old_lots = batch.orders[idx].lots;
+
+            if old_side == OrderSide::BUY {
+                batch.bid_qty[old_tick] = batch.bid_qty[old_tick].saturating_sub(old_lots);
+            } else {
+                batch.ask_qty[old_tick] = batch.ask_qty[old_tick].saturating_sub(old_lots);
+            }
         }
 
         if side == OrderSide::BUY {
@@ -282,7 +298,12 @@ pub fn handle_place_order(ctx: Context<PlaceOrder>, args: PlaceOrderArgs) -> Res
     } else {
         // New order
         require!(
-            (batch.num_orders as usize) < MAX_ORDERS,
+            user.active_orders < MAX_SLOTS_PER_USER,
+            EpochError::InvalidSlotId
+        );
+        let max_batch_orders = (market.params.max_orders_per_batch as usize).min(MAX_ORDERS);
+        require!(
+            (batch.num_orders as usize) < max_batch_orders,
             EpochError::BatchFull
         );
         let new_idx = batch.num_orders as usize;
@@ -298,7 +319,10 @@ pub fn handle_place_order(ctx: Context<PlaceOrder>, args: PlaceOrderArgs) -> Res
             _padding: [0; 10],
         };
         batch.num_orders += 1;
-        user.active_orders += 1;
+        user.active_orders = user
+            .active_orders
+            .checked_add(1)
+            .ok_or(EpochError::MathOverflow)?;
         user.pending_buy_lots = user
             .pending_buy_lots
             .checked_add(this_buy)
