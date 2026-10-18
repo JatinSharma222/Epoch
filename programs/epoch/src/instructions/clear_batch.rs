@@ -196,19 +196,19 @@ pub fn handle_clear_batch(
     market.last_oracle_price = oracle_price;
 
     // 12. Update funding index (spec §8)
+    // Accrue funding continuously across all cleared batches.
+    // When q_star == 0 (no matched trades), i_star is center tick c, yielding offset_star = 0 (oracle parity).
     let offset_star = (i_star as i32 - c as i32) * market.params.tick_bps as i32;
-    if q_star > 0 {
-        let rate = offset_star.clamp(
-            -(market.params.funding_cap_bps as i32),
-            market.params.funding_cap_bps as i32,
-        );
-        let funding_period_slots = market.params.funding_period_slots as i128;
-        if funding_period_slots > 0 {
-            let accrual =
-                (rate as i128 * oracle_price as i128 * n_slots as i128 * (F_SCALE / 1000))
-                    / (10_000 * funding_period_slots);
-            market.funding_index = market.funding_index.saturating_add(accrual);
-        }
+    let rate = offset_star.clamp(
+        -(market.params.funding_cap_bps as i32),
+        market.params.funding_cap_bps as i32,
+    );
+    let funding_period_slots = market.params.funding_period_slots as i128;
+    if funding_period_slots > 0 {
+        let accrual =
+            (rate as i128 * oracle_price as i128 * n_slots as i128 * (F_SCALE / 1000))
+                / (10_000 * funding_period_slots);
+        market.funding_index = market.funding_index.saturating_add(accrual);
     }
     market.next_batch_to_clear = batch_id + 1;
 
