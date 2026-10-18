@@ -16,10 +16,40 @@ Status: PROPOSED (v0.1). Test IDs (`X-xx`, `S-x`, `C-1`, `L-1`, `E-1`, `P-x`) re
 
 ## 2. Trust assumptions
 
-1. The Solana runtime executes the program correctly. Validators/leaders can **delay, reorder, or censor** transactions within their slot. We do not claim otherwise.
-2. Pyth publishes a price that lags the true market by some amount and has a confidence interval. We treat the oracle as the reference price and lag as an attack surface.
-3. The keeper is **untrusted**: it can be late or malicious but cannot cause an incorrect clearing result.
-4. On devnet there is an **admin key** that can change parameters and fund the vault. This is a demo shortcut and not a decentralization claim.
+1. **Solana Runtime & Consensus:** The Solana runtime executes the program correctly. Validators/leaders can **delay, reorder, or censor** transactions within their slot. We do not claim otherwise.
+2. **Pyth Oracle & Hermes Liveness:** 
+   - Pyth price updates originate from the Pyth Network off-chain oracle network and are streamed via Hermes endpoints.
+   - The protocol relies on the keeper or callers to fetch updates from Hermes and post them to the Pyth Receiver program on-chain (`PriceUpdateV2`).
+   - If Hermes experiences an outage, or the RPC is congested, fresh updates cannot be posted on-chain. Batches closing without a timely oracle update will exceed `max_clear_delay_slots` and become VOID, safe from stale fills but halting volume.
+   - All on-chain consumers (`clear_batch`, `vault_quote`, `liquidate`) strictly verify that the `PriceUpdateV2` account is owned by `rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ`, has `VerificationLevel::Full`, matches `market.oracle_feed_id`, and satisfies `max_oracle_age_secs` and `max_conf_bps`.
+3. **Stored Price Staleness:**
+   - Margin checks during `place_order` and `withdraw` evaluate against `market.last_oracle_price`.
+   - The protocol enforces a hard staleness bound: `current_slot - market.last_oracle_slot <= max_stale_slots` (where `max_stale_slots = max(max_oracle_age_secs * 3, 25)`). If no batch has cleared within this window, `place_order` and `withdraw` fail with `OracleStale` until the market is refreshed.
+4. **The Keeper is Untrusted for State, Critical for Liveness:**
+   - The keeper cannot forge prices, steal funds, or alter clearing prices, as all clearing math and oracle validations are executed deterministically on-chain.
+   - However, protocol liveness depends on at least one keeper actively posting Hermes price updates and cranking `clear_batch` and `settle_users`.
+5. **Devnet Admin Key:**
+   - On devnet, an admin key exists for initial parameter configuration, batch initialization, and vault funding. This is a research prototype constraint, not a decentralization claim.
+
+## 2.1 Audit Scope and Coverage
+
+The protocol underwent an intensive adversarial security review focusing on on-chain state transitions, numeric safety, and cryptographic boundaries.
+
+### What the Audit Covered
+- **Oracle Trust & Verification:** Removed caller-supplied oracle prices. Full validation of Pyth `PriceUpdateV2` accounts (owner, feed ID, age, confidence, verification level, and `oracle_posted_slot >= close_slot`).
+- **Authorization & Access Control Matrix:** Complete verification of signers, account ownership, PDA derivations, and privilege levels across all 17 on-chain instructions.
+- **Account & Layout Invariants:** Zero-copy layout verification for `Market` (384 bytes, 16-byte alignment), `Batch`, and `UserAccount`. Checked padding, alignment, and field offsets.
+- **Settlement & Ring Lifecycle:** Verified duplicate and forged account rejection in `settle_users` and `expire_and_release`. Verified prevention of ring-slot re-allocation while unsettled orders exist.
+- **Order Buffer & Griefing Defenses:** Enforced slot reuse on order cancellation, per-user order caps, and `max_orders_per_batch`.
+- **Numeric & Arithmetic Safety:** Replaced all unchecked `as` casts and `.unwrap()` calls with `TryFrom` checked conversions and explicit error variants. Verified dust preservation and notional rounding.
+- **Parameter Bounds:** Strict bounds validation on all initialization and governance parameter update instructions.
+
+### What the Audit Did NOT Cover (Out of Scope)
+- **Validator Collusion & Censorship:** Malicious leader nodes censoring user cancel transactions or keeper transactions in MEV bundles.
+- **Economic Viability of Backstop Vault:** LP profitability under sustained directional toxic flow or extreme volatility regimes.
+- **Pyth Wormhole Bridge Security:** Integrity of Pyth off-chain consensus or Wormhole guardian multisig signatures.
+- **Frontend & Wallet Security:** Client-side wallet adapter hygiene, browser extensions, or third-party RPC integrity.
+- **Cross-Margin:** Multi-market portfolio margin (v0/v1 supports single-market isolated margin only).
 
 ## 3. Risk register (ranked)
 
