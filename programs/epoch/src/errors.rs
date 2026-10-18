@@ -16,6 +16,10 @@ pub enum EpochError {
     #[msg("Faucet limit exceeded")]
     FaucetCapExceeded,
 
+    /// Faucet claim cooldown is currently active.
+    #[msg("Faucet claim cooldown active")]
+    FaucetCooldownActive,
+
     /// Cannot withdraw while having open/pending orders.
     #[msg("Cannot withdraw with pending orders")]
     HasPendingOrders,

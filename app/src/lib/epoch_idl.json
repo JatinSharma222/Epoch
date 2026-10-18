@@ -441,12 +441,43 @@
           "writable": true
         },
         {
+          "name": "faucet_record",
+          "docs": [
+            "PDA tracking last faucet claim time for rate limiting."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  97,
+                  117,
+                  99,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "recipient"
+              }
+            ]
+          }
+        },
+        {
           "name": "recipient",
+          "writable": true,
           "signer": true
         },
         {
           "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
@@ -1455,6 +1486,19 @@
       ]
     },
     {
+      "name": "FaucetRecord",
+      "discriminator": [
+        181,
+        214,
+        230,
+        141,
+        21,
+        65,
+        171,
+        108
+      ]
+    },
+    {
       "name": "Market",
       "discriminator": [
         219,
@@ -1605,181 +1649,186 @@
     },
     {
       "code": 6003,
+      "name": "FaucetCooldownActive",
+      "msg": "Faucet claim cooldown active"
+    },
+    {
+      "code": 6004,
       "name": "HasPendingOrders",
       "msg": "Cannot withdraw with pending orders"
     },
     {
-      "code": 6004,
+      "code": 6005,
       "name": "PositionNotFlat",
       "msg": "Position must be flat to withdraw"
     },
     {
-      "code": 6005,
+      "code": 6006,
       "name": "InsufficientCollateral",
       "msg": "Insufficient collateral"
     },
     {
-      "code": 6006,
+      "code": 6007,
       "name": "MathOverflow",
       "msg": "Arithmetic overflow"
     },
     {
-      "code": 6007,
+      "code": 6008,
       "name": "RingSlotBusy",
       "msg": "Ring slot is busy with an unsettled batch"
     },
     {
-      "code": 6008,
+      "code": 6009,
       "name": "BatchClosed",
       "msg": "Batch has already closed"
     },
     {
-      "code": 6009,
+      "code": 6010,
       "name": "BatchNotOpen",
       "msg": "Batch is not open"
     },
     {
-      "code": 6010,
+      "code": 6011,
       "name": "BatchInPast",
       "msg": "Target batch is in the past"
     },
     {
-      "code": 6011,
+      "code": 6012,
       "name": "BatchTooFarAhead",
       "msg": "Target batch is beyond lookahead window"
     },
     {
-      "code": 6012,
+      "code": 6013,
       "name": "BatchFull",
       "msg": "Batch order buffer is full"
     },
     {
-      "code": 6013,
+      "code": 6014,
       "name": "InvalidSlotId",
       "msg": "Invalid order slot id"
     },
     {
-      "code": 6014,
+      "code": 6015,
       "name": "InvalidTick",
       "msg": "Invalid tick index"
     },
     {
-      "code": 6015,
+      "code": 6016,
       "name": "InvalidSide",
       "msg": "Invalid order side"
     },
     {
-      "code": 6016,
+      "code": 6017,
       "name": "OrderNotFound",
       "msg": "Order not found"
     },
     {
-      "code": 6017,
+      "code": 6018,
       "name": "OrderTooSmall",
       "msg": "Order quantity below minimum lots"
     },
     {
-      "code": 6018,
+      "code": 6019,
       "name": "OrderNotionalTooSmall",
       "msg": "Order notional below minimum"
     },
     {
-      "code": 6019,
+      "code": 6020,
       "name": "InsufficientMargin",
       "msg": "Insufficient margin"
     },
     {
-      "code": 6020,
+      "code": 6021,
       "name": "BatchNotCleared",
       "msg": "Batch is not cleared or void"
     },
     {
-      "code": 6021,
+      "code": 6022,
       "name": "BatchAlreadySettled",
       "msg": "Batch is already settled"
     },
     {
-      "code": 6022,
+      "code": 6023,
       "name": "BatchIdMismatch",
       "msg": "Batch ID mismatch"
     },
     {
-      "code": 6023,
+      "code": 6024,
       "name": "DuplicateUserAccount",
       "msg": "Duplicate user account in settlement"
     },
     {
-      "code": 6024,
+      "code": 6025,
       "name": "OracleStale",
       "msg": "Oracle price is stale"
     },
     {
-      "code": 6025,
+      "code": 6026,
       "name": "OracleConfidenceTooWide",
       "msg": "Oracle confidence interval is too wide"
     },
     {
-      "code": 6026,
+      "code": 6027,
       "name": "NotLiquidatable",
       "msg": "Position is not liquidatable"
     },
     {
-      "code": 6027,
+      "code": 6028,
       "name": "PositionFlat",
       "msg": "Position is flat"
     },
     {
-      "code": 6028,
+      "code": 6029,
       "name": "SelfLiquidation",
       "msg": "Cannot liquidate vault against itself"
     },
     {
-      "code": 6029,
+      "code": 6030,
       "name": "ReduceOnlyExceedsPosition",
       "msg": "Reduce-only order exceeds current opposite position"
     },
     {
-      "code": 6030,
+      "code": 6031,
       "name": "BatchNotStale",
       "msg": "Batch is not stale yet"
     },
     {
-      "code": 6031,
+      "code": 6032,
       "name": "CannotExpireClearedBatch",
       "msg": "Cannot expire a cleared batch with matched trades"
     },
     {
-      "code": 6032,
+      "code": 6033,
       "name": "InvalidUserAccount",
       "msg": "User account does not match any unsettled order in batch"
     },
     {
-      "code": 6033,
+      "code": 6034,
       "name": "InvalidOracleAccount",
       "msg": "Invalid Pyth oracle account"
     },
     {
-      "code": 6034,
+      "code": 6035,
       "name": "OracleFeedMismatch",
       "msg": "Pyth oracle feed id mismatch"
     },
     {
-      "code": 6035,
+      "code": 6036,
       "name": "OracleVerificationFailed",
       "msg": "Pyth oracle price update not fully verified"
     },
     {
-      "code": 6036,
+      "code": 6037,
       "name": "InvalidOraclePrice",
       "msg": "Invalid oracle price"
     },
     {
-      "code": 6037,
+      "code": 6038,
       "name": "InvalidMarketParameter",
       "msg": "Invalid market parameter"
     },
     {
-      "code": 6038,
+      "code": 6039,
       "name": "InvalidVaultParameter",
       "msg": "Invalid vault parameter"
     }
@@ -2041,6 +2090,18 @@
           {
             "name": "reason",
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "FaucetRecord",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "last_claim_time",
+            "type": "i64"
           }
         ]
       }
