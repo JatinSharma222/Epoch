@@ -1,12 +1,21 @@
-use crate::state::{Batch, BatchStatus, Order, K_TICKS, MAX_ORDERS};
+use crate::errors::EpochError;
+use crate::state::constants::RING_SIZE;
+use crate::state::{Batch, BatchStatus, Market, Order, K_TICKS, MAX_ORDERS};
 use anchor_lang::prelude::*;
 
 #[derive(Accounts)]
 #[instruction(ring_index: u8)]
 pub struct InitializeBatch<'info> {
     #[account(
+        seeds = [b"market"],
+        bump = market.load()?.bump,
+        has_one = admin @ EpochError::Unauthorized,
+    )]
+    pub market: AccountLoader<'info, Market>,
+
+    #[account(
         init,
-        payer = payer,
+        payer = admin,
         space = 8 + std::mem::size_of::<Batch>(),
         seeds = [b"batch".as_ref(), &[ring_index]],
         bump
@@ -14,7 +23,7 @@ pub struct InitializeBatch<'info> {
     pub batch: AccountLoader<'info, Batch>,
 
     #[account(mut)]
-    pub payer: Signer<'info>,
+    pub admin: Signer<'info>,
 
     pub system_program: Program<'info, System>,
 }
@@ -24,6 +33,11 @@ pub fn handle_initialize_batch(
     ring_index: u8,
     batch_id: u64,
 ) -> Result<()> {
+    require!(ring_index < RING_SIZE, EpochError::InvalidSlotId);
+    let expected_ring_index = (batch_id % RING_SIZE as u64) as u8;
+    require_eq!(ring_index, expected_ring_index, EpochError::InvalidSlotId);
+    require_eq!(batch_id, ring_index as u64, EpochError::InvalidSlotId);
+
     let mut batch = ctx.accounts.batch.load_init()?;
     batch.batch_id = batch_id;
     batch.status = BatchStatus::OPEN;

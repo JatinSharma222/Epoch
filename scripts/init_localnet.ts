@@ -58,29 +58,8 @@ async function main() {
   console.log(`Vault Authority PDA:  ${vaultAuthorityPda.toBase58()}`);
   console.log(`Vault User PDA:       ${vaultUserPda.toBase58()}`);
 
-  // 1. Initialize 8 Ring Batches
-  console.log("\n[1/3] Initializing 8 Ring Batches...");
-  for (let r = 0; r < 8; r++) {
-    const [batchPda] = getBatchPda(r);
-    const existing = await connection.getAccountInfo(batchPda);
-    if (!existing) {
-      console.log(`  Initializing Batch Ring Slot ${r}...`);
-      await program.methods
-        .initializeBatch(r, new anchor.BN(r))
-        .accounts({
-          batch: batchPda,
-          payer: payer.publicKey,
-          systemProgram: SystemProgram.programId,
-        })
-        .rpc();
-      console.log(`  ✓ Ring Slot ${r} initialized: ${batchPda.toBase58()}`);
-    } else {
-      console.log(`  ✓ Ring Slot ${r} already exists.`);
-    }
-  }
-
-  // 2. Initialize Market
-  console.log("\n[2/3] Initializing Market...");
+  // 1. Initialize Market
+  console.log("\n[1/3] Initializing Market...");
   const marketInfo = await connection.getAccountInfo(marketPda);
   if (!marketInfo) {
     const defaultMarketArgs = {
@@ -121,6 +100,28 @@ async function main() {
     console.log(`  ✓ Market initialized successfully.`);
   } else {
     console.log(`  ✓ Market already initialized.`);
+  }
+
+  // 2. Initialize 8 Ring Batches
+  console.log("\n[2/3] Initializing 8 Ring Batches...");
+  for (let r = 0; r < 8; r++) {
+    const [batchPda] = getBatchPda(r);
+    const existing = await connection.getAccountInfo(batchPda);
+    if (!existing) {
+      console.log(`  Initializing Batch Ring Slot ${r}...`);
+      await program.methods
+        .initializeBatch(r, new anchor.BN(r))
+        .accounts({
+          market: marketPda,
+          batch: batchPda,
+          admin: payer.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+      console.log(`  ✓ Ring Slot ${r} initialized: ${batchPda.toBase58()}`);
+    } else {
+      console.log(`  ✓ Ring Slot ${r} already exists.`);
+    }
   }
 
   // 3. Initialize Backstop Vault User

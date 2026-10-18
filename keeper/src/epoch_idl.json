@@ -594,13 +594,34 @@
       ],
       "accounts": [
         {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
           "name": "batch",
           "writable": true
         },
         {
-          "name": "payer",
+          "name": "admin",
           "writable": true,
-          "signer": true
+          "signer": true,
+          "relations": [
+            "market"
+          ]
         },
         {
           "name": "system_program",

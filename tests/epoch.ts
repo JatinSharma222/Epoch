@@ -128,28 +128,6 @@ describe("Epoch Program Integration Tests", () => {
     );
   });
 
-  describe("T-02: Zero-copy Batch Ring PDA Initialization", () => {
-    it("Initializes all 8 zero-copy batch PDAs in the ring", async () => {
-      for (let r = 0; r < 8; r++) {
-        const batchPda = getBatchPda(r);
-        await program.methods
-          .initializeBatch(r, new anchor.BN(r))
-          .accounts({
-            batch: batchPda,
-            payer: admin.publicKey,
-            systemProgram: anchor.web3.SystemProgram.programId,
-          })
-          .rpc();
-
-        const batchAccount = await program.account.batch.fetch(batchPda);
-        expect(batchAccount.batchId.toNumber()).to.equal(r);
-        expect(batchAccount.status).to.equal(1); // BatchStatus::OPEN
-        expect(batchAccount.numOrders).to.equal(0);
-        expect(batchAccount.settledOrders).to.equal(0);
-      }
-    });
-  });
-
   describe("T-05: Market Initialization", () => {
     it("Initializes the Market, mock USDC mint, and collateral vault", async () => {
       await program.methods
@@ -179,6 +157,51 @@ describe("Epoch Program Integration Tests", () => {
       expect(marketAccount.params.batchSlots).to.equal(2);
       expect(marketAccount.params.kTicks).to.equal(101);
       expect(marketAccount.params.imrBps).to.equal(1000);
+    });
+  });
+
+  describe("T-02: Zero-copy Batch Ring PDA Initialization", () => {
+    it("Initializes all 8 zero-copy batch PDAs in the ring", async () => {
+      for (let r = 0; r < 8; r++) {
+        const batchPda = getBatchPda(r);
+        await program.methods
+          .initializeBatch(r, new anchor.BN(r))
+          .accounts({
+            market: marketPda,
+            batch: batchPda,
+            admin: admin.publicKey,
+            systemProgram: anchor.web3.SystemProgram.programId,
+          })
+          .rpc();
+
+        const batchAccount = await program.account.batch.fetch(batchPda);
+        expect(batchAccount.batchId.toNumber()).to.equal(r);
+        expect(batchAccount.status).to.equal(1); // BatchStatus::OPEN
+        expect(batchAccount.numOrders).to.equal(0);
+        expect(batchAccount.settledOrders).to.equal(0);
+      }
+    });
+
+    it("Rejects non-admin attempting initializeBatch", async () => {
+      try {
+        const [fakeBatch] = PublicKey.findProgramAddressSync(
+          [Buffer.from("batch"), Buffer.from([9])],
+          program.programId
+        );
+        await program.methods
+          .initializeBatch(9, new anchor.BN(9))
+          .accounts({
+            market: marketPda,
+            batch: fakeBatch,
+            admin: unauthorizedUser.publicKey,
+            systemProgram: anchor.web3.SystemProgram.programId,
+          })
+          .signers([unauthorizedUser])
+          .rpc();
+        expect.fail("Non-admin should not be able to initialize batch");
+      } catch (err: any) {
+        expect(err.toString()).to.include("Unauthorized");
+      }
     });
   });
 
