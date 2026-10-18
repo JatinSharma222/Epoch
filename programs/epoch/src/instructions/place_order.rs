@@ -155,6 +155,14 @@ pub fn handle_place_order(ctx: Context<PlaceOrder>, args: PlaceOrderArgs) -> Res
 
     let oracle_price = market.last_oracle_price;
     require!(oracle_price > 0, EpochError::OracleStale);
+
+    let max_stale_slots = ((market.params.max_oracle_age_secs as u64) * 3).max(25);
+    require!(
+        market.last_oracle_slot > 0
+            && current_slot.saturating_sub(market.last_oracle_slot) <= max_stale_slots,
+        EpochError::OracleStale
+    );
+
     let notional = ((lots as u128 * oracle_price as u128) / 1000) as u64;
     require!(
         notional >= market.params.min_order_notional,

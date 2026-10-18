@@ -142,9 +142,13 @@ pub fn handle_clear_batch(
     let max_age = market.params.max_oracle_age_secs as i64;
     let is_stale = current_ts > oracle_timestamp && (current_ts - oracle_timestamp) > max_age;
 
-    // d. Oracle posted slot invalid (spec 01 §7): require posted_slot >= close_slot and posted_slot <= close_slot + max_clear_delay_slots
-    let is_invalid_slot = oracle_posted_slot < close_slot
-        || (max_delay > 0 && oracle_posted_slot > close_slot.saturating_add(max_delay))
+    // d. Oracle selection rule (spec 01 §7): require posted_slot >= close_slot
+    require!(
+        oracle_posted_slot >= close_slot,
+        EpochError::OraclePostedBeforeClose
+    );
+
+    let is_invalid_slot = (max_delay > 0 && oracle_posted_slot > close_slot.saturating_add(max_delay))
         || oracle_posted_slot > current_slot;
 
     if is_late || is_wide_conf || is_stale || is_invalid_slot {
@@ -194,6 +198,7 @@ pub fn handle_clear_batch(
     batch.oracle_conf = oracle_conf;
     batch.oracle_posted_slot = oracle_posted_slot;
     market.last_oracle_price = oracle_price;
+    market.last_oracle_slot = current_slot;
 
     // 12. Update funding index (spec §8)
     // Accrue funding continuously across all cleared batches.

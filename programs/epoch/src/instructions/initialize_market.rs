@@ -121,6 +121,7 @@ pub fn handle_initialize_market(
     market.next_batch_to_clear = 0;
     market.funding_index = 0;
     market.last_oracle_price = INITIAL_ORACLE_PRICE;
+    market.last_oracle_slot = clock.slot;
     market.open_interest_lots = 0;
     market.fee_pool = 0;
     market.insurance_fund = 0;

@@ -44,6 +44,16 @@ pub fn handle_withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
     let market = ctx.accounts.market.load()?;
     let market_bump = market.bump;
     let market_funding_index = market.funding_index;
+
+    // Enforce staleness bound on market stored price
+    if market.last_oracle_price > 0 && market.last_oracle_slot > 0 {
+        let current_slot = Clock::get()?.slot;
+        let max_stale_slots = ((market.params.max_oracle_age_secs as u64) * 3).max(25);
+        require!(
+            current_slot.saturating_sub(market.last_oracle_slot) <= max_stale_slots,
+            EpochError::OracleStale
+        );
+    }
     drop(market);
 
     let mut user = ctx.accounts.user.load_mut()?;

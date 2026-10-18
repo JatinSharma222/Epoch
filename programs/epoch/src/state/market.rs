@@ -191,6 +191,8 @@ pub struct Market {
     pub next_batch_to_clear: u64,
     /// Last observed oracle price (for display and coarse checks).
     pub last_oracle_price: u64,
+    /// Slot at which last_oracle_price was cleared/observed.
+    pub last_oracle_slot: u64,
     /// Sum of all long positions in lots (= sum of all short positions).
     pub open_interest_lots: u64,
     /// Accrued trading fees in micro-USDC.
@@ -206,7 +208,7 @@ pub struct Market {
     /// Padding to align to 8-byte boundary.
     pub _pad_bump: [u8; 7],
     /// Reserved space for future fields without reallocation.
-    pub _reserved: [u8; 64],
+    pub _reserved: [u8; 56],
 }
 
 const _: () = {

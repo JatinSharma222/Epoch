@@ -34,6 +34,7 @@ fn mock_market(oracle_feed_id: [u8; 32]) -> Market {
         start_slot: 100,
         next_batch_to_clear: 0,
         last_oracle_price: 150_000_000, // $150.00
+        last_oracle_slot: 100,
         open_interest_lots: 0,
         fee_pool: 0,
         insurance_fund: 1_000_000_000,
@@ -41,7 +42,7 @@ fn mock_market(oracle_feed_id: [u8; 32]) -> Market {
         vault_params: VaultParams::default(),
         bump: 255,
         _pad_bump: [0; 7],
-        _reserved: [0; 64],
+        _reserved: [0; 56],
     }
 }
 

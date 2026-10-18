@@ -108,6 +108,10 @@ pub enum EpochError {
     #[msg("Oracle price is stale")]
     OracleStale,
 
+    /// Oracle price update posted slot is before batch close slot.
+    #[msg("Oracle update posted before batch close")]
+    OraclePostedBeforeClose,
+
     /// Oracle confidence interval is too wide.
     #[msg("Oracle confidence interval is too wide")]
     OracleConfidenceTooWide,
