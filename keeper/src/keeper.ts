@@ -24,6 +24,20 @@ const BALANCE_CHECK_INTERVAL_MS = 60_000;
 const LOW_BALANCE_WARN_SOL = 3.0;
 const LOW_BALANCE_STOP_SOL = 0.5;
 
+/**
+ * Derives the WebSocket URL from an RPC URL.
+ * Automatically maps standard localnet JSON-RPC port (8899) to the PubSub WebSocket port (8900).
+ */
+export function deriveWsUrl(rpcUrl: string, explicitWsUrl?: string): string {
+  if (explicitWsUrl) return explicitWsUrl;
+  let ws = rpcUrl.replace(/^https:\/\//, "wss://").replace(/^http:\/\//, "ws://");
+  // If localnet default port 8899 is targeted, map to Solana PubSub port 8900
+  if (ws.includes(":8899")) {
+    ws = ws.replace(":8899", ":8900");
+  }
+  return ws;
+}
+
 export class EpochKeeper {
   public config: KeeperConfig;
   public connection: Connection;
@@ -78,7 +92,7 @@ export class EpochKeeper {
   constructor(config: KeeperConfig, walletKeypair?: Keypair) {
     this.config = config;
     // Derive WebSocket URL from RPC URL if not explicitly set
-    const wsEndpoint = config.wsUrl || config.rpcUrl.replace("https://", "wss://").replace("http://", "ws://");
+    const wsEndpoint = deriveWsUrl(config.rpcUrl, config.wsUrl);
     this.connection = new Connection(
       config.rpcUrl,
       {
