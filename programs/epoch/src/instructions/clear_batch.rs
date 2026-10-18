@@ -142,16 +142,21 @@ pub fn handle_clear_batch(
     let max_age = market.params.max_oracle_age_secs as i64;
     let is_stale = current_ts > oracle_timestamp && (current_ts - oracle_timestamp) > max_age;
 
-    // d. Oracle selection rule (spec 01 §7): require posted_slot >= close_slot
+    // d. Oracle selection rule (spec 01 §7): require close_slot <= posted_slot <= close_slot + max_clear_delay_slots
     require!(
         oracle_posted_slot >= close_slot,
         EpochError::OraclePostedBeforeClose
     );
+    require!(
+        max_delay == 0 || oracle_posted_slot <= close_slot.saturating_add(max_delay),
+        EpochError::OraclePostedAfterWindow
+    );
+    require!(
+        oracle_posted_slot <= current_slot,
+        EpochError::InvalidOracleAccount
+    );
 
-    let is_invalid_slot = (max_delay > 0 && oracle_posted_slot > close_slot.saturating_add(max_delay))
-        || oracle_posted_slot > current_slot;
-
-    if is_late || is_wide_conf || is_stale || is_invalid_slot {
+    if is_late || is_wide_conf || is_stale {
         batch.status = BatchStatus::VOID;
         batch.clearing_tick = c as u16;
         batch.clearing_price = oracle_price;
@@ -181,12 +186,11 @@ pub fn handle_clear_batch(
 
         market.next_batch_to_clear = batch_id + 1;
         msg!(
-            "Batch {} marked VOID: late={}, wide_conf={}, stale={}, invalid_slot={}",
+            "Batch {} marked VOID: late={}, wide_conf={}, stale={}",
             batch_id,
             is_late,
             is_wide_conf,
-            is_stale,
-            is_invalid_slot
+            is_stale
         );
         return Ok(());
     }

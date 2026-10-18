@@ -112,6 +112,10 @@ pub enum EpochError {
     #[msg("Oracle update posted before batch close")]
     OraclePostedBeforeClose,
 
+    /// Oracle price update posted slot is after batch clear window.
+    #[msg("Oracle update posted after clear window")]
+    OraclePostedAfterWindow,
+
     /// Oracle confidence interval is too wide.
     #[msg("Oracle confidence interval is too wide")]
     OracleConfidenceTooWide,
