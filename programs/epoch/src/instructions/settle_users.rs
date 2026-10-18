@@ -210,12 +210,14 @@ pub fn handle_settle_users<'info>(
 
     // Spec §8: Funding residual (payers' round-ups minus receivers' round-downs) goes to fee_pool
     if total_funding_residual > 0 {
+        let residual_u64 = u64::try_from(total_funding_residual).map_err(|_| EpochError::MathOverflow)?;
         market.fee_pool = market
             .fee_pool
-            .checked_add(total_funding_residual as u64)
+            .checked_add(residual_u64)
             .ok_or(EpochError::MathOverflow)?;
     } else if total_funding_residual < 0 {
-        let neg = (-total_funding_residual) as u64;
+        let neg = u64::try_from(total_funding_residual.checked_abs().ok_or(EpochError::MathOverflow)?)
+            .map_err(|_| EpochError::MathOverflow)?;
         market.fee_pool = market
             .fee_pool
             .checked_sub(neg)

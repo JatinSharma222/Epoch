@@ -259,13 +259,21 @@ pub fn handle_place_order(ctx: Context<PlaceOrder>, args: PlaceOrderArgs) -> Res
         }
 
         if side == OrderSide::BUY {
-            batch.bid_qty[tick as usize] = batch.bid_qty[tick as usize].checked_add(lots).unwrap();
+            batch.bid_qty[tick as usize] = batch.bid_qty[tick as usize]
+                .checked_add(lots)
+                .ok_or(EpochError::MathOverflow)?;
         } else {
-            batch.ask_qty[tick as usize] = batch.ask_qty[tick as usize].checked_add(lots).unwrap();
+            batch.ask_qty[tick as usize] = batch.ask_qty[tick as usize]
+                .checked_add(lots)
+                .ok_or(EpochError::MathOverflow)?;
         }
 
-        user.pending_buy_lots = adj_buy_lots + this_buy;
-        user.pending_sell_lots = adj_sell_lots + this_sell;
+        user.pending_buy_lots = adj_buy_lots
+            .checked_add(this_buy)
+            .ok_or(EpochError::MathOverflow)?;
+        user.pending_sell_lots = adj_sell_lots
+            .checked_add(this_sell)
+            .ok_or(EpochError::MathOverflow)?;
 
         batch.orders[idx].side = side;
         batch.orders[idx].tick = tick;
@@ -291,13 +299,23 @@ pub fn handle_place_order(ctx: Context<PlaceOrder>, args: PlaceOrderArgs) -> Res
         };
         batch.num_orders += 1;
         user.active_orders += 1;
-        user.pending_buy_lots += this_buy;
-        user.pending_sell_lots += this_sell;
+        user.pending_buy_lots = user
+            .pending_buy_lots
+            .checked_add(this_buy)
+            .ok_or(EpochError::MathOverflow)?;
+        user.pending_sell_lots = user
+            .pending_sell_lots
+            .checked_add(this_sell)
+            .ok_or(EpochError::MathOverflow)?;
 
         if side == OrderSide::BUY {
-            batch.bid_qty[tick as usize] = batch.bid_qty[tick as usize].checked_add(lots).unwrap();
+            batch.bid_qty[tick as usize] = batch.bid_qty[tick as usize]
+                .checked_add(lots)
+                .ok_or(EpochError::MathOverflow)?;
         } else {
-            batch.ask_qty[tick as usize] = batch.ask_qty[tick as usize].checked_add(lots).unwrap();
+            batch.ask_qty[tick as usize] = batch.ask_qty[tick as usize]
+                .checked_add(lots)
+                .ok_or(EpochError::MathOverflow)?;
         }
     }
 

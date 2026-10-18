@@ -37,7 +37,7 @@ pub struct Withdraw<'info> {
 
 pub fn handle_withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
     require!(amount > 0, EpochError::ZeroAmount);
-    require!(amount <= i64::MAX as u64, EpochError::MathOverflow);
+    let withdraw_amount = i64::try_from(amount).map_err(|_| EpochError::MathOverflow)?;
 
     let market = ctx.accounts.market.load()?;
     let market_bump = market.bump;
@@ -62,9 +62,10 @@ pub fn handle_withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
 
     // Fold realized PnL from quote_position into collateral when flat (spec §7)
     if user.quote_position != 0 {
+        let quote_pnl = i64::try_from(user.quote_position).map_err(|_| EpochError::MathOverflow)?;
         user.collateral = user
             .collateral
-            .checked_add(user.quote_position as i64)
+            .checked_add(quote_pnl)
             .ok_or(EpochError::MathOverflow)?;
         user.quote_position = 0;
     }
@@ -72,14 +73,14 @@ pub fn handle_withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
 
     // Check available collateral
     require!(
-        user.collateral >= amount as i64,
+        user.collateral >= withdraw_amount,
         EpochError::InsufficientCollateral
     );
 
     // Deduct collateral
     user.collateral = user
         .collateral
-        .checked_sub(amount as i64)
+        .checked_sub(withdraw_amount)
         .ok_or(EpochError::MathOverflow)?;
 
     // Transfer mock USDC from collateral vault to user's token account

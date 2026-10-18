@@ -174,9 +174,10 @@ pub fn handle_liquidate(ctx: Context<Liquidate>) -> Result<()> {
     }
 
     // 9. Fold liquidatee's realized PnL into collateral (user is now flat)
+    let quote_pnl = i64::try_from(user.quote_position).map_err(|_| EpochError::MathOverflow)?;
     user.collateral = user
         .collateral
-        .checked_add(user.quote_position as i64)
+        .checked_add(quote_pnl)
         .ok_or(EpochError::MathOverflow)?;
     user.quote_position = 0;
 
@@ -188,11 +189,13 @@ pub fn handle_liquidate(ctx: Context<Liquidate>) -> Result<()> {
     if user.collateral > 0 {
         // Positive remaining equity: charge liquidation penalty (capped by remaining equity)
         let raw_penalty = (notional as u128 * market.params.liq_penalty_bps as u128) / 10_000;
-        let actual_penalty = raw_penalty.min(user.collateral as u128) as u64;
+        let user_collat_u128 = u128::try_from(user.collateral).map_err(|_| EpochError::MathOverflow)?;
+        let actual_penalty = u64::try_from(raw_penalty.min(user_collat_u128)).map_err(|_| EpochError::MathOverflow)?;
         if actual_penalty > 0 {
+            let actual_penalty_i64 = i64::try_from(actual_penalty).map_err(|_| EpochError::MathOverflow)?;
             user.collateral = user
                 .collateral
-                .checked_sub(actual_penalty as i64)
+                .checked_sub(actual_penalty_i64)
                 .ok_or(EpochError::MathOverflow)?;
             market.insurance_fund = market
                 .insurance_fund
@@ -202,16 +205,18 @@ pub fn handle_liquidate(ctx: Context<Liquidate>) -> Result<()> {
         }
     } else if user.collateral < 0 {
         // Deficit: absorbed by insurance fund up to its balance, remainder recorded as bad debt
-        let deficit = (-user.collateral) as u64;
+        let deficit = u64::try_from(user.collateral.checked_abs().ok_or(EpochError::MathOverflow)?)
+            .map_err(|_| EpochError::MathOverflow)?;
         let covered = deficit.min(market.insurance_fund);
         if covered > 0 {
             market.insurance_fund = market
                 .insurance_fund
                 .checked_sub(covered)
                 .ok_or(EpochError::MathOverflow)?;
+            let covered_i64 = i64::try_from(covered).map_err(|_| EpochError::MathOverflow)?;
             user.collateral = user
                 .collateral
-                .checked_add(covered as i64)
+                .checked_add(covered_i64)
                 .ok_or(EpochError::MathOverflow)?;
             insurance_covered = covered;
         }

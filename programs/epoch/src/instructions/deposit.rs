@@ -37,7 +37,7 @@ pub struct Deposit<'info> {
 
 pub fn handle_deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
     require!(amount > 0, EpochError::ZeroAmount);
-    require!(amount <= i64::MAX as u64, EpochError::MathOverflow);
+    let deposit_amount = i64::try_from(amount).map_err(|_| EpochError::MathOverflow)?;
 
     let mut user = ctx.accounts.user.load_mut()?;
     require_keys_eq!(
@@ -58,7 +58,7 @@ pub fn handle_deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
     // Credit collateral in the user account ledger
     user.collateral = user
         .collateral
-        .checked_add(amount as i64)
+        .checked_add(deposit_amount)
         .ok_or(EpochError::MathOverflow)?;
 
     if user.base_position == 0 {
