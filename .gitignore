@@ -39,6 +39,7 @@ dist/
 !evidence/*.json
 id.json
 keys/
+*.pem
 
 # IDE
 .idea/
