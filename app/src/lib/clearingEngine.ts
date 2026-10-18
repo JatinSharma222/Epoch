@@ -146,12 +146,39 @@ export function clear(
   };
 }
 
+let wasmInstance: any = null;
+
+export function initEpochRefWasm(wasmBytes: Uint8Array): void {
+  const wasmModule = new WebAssembly.Module(wasmBytes);
+  wasmInstance = new WebAssembly.Instance(wasmModule, {});
+}
+
+export function clearingPriceWasm(
+  oraclePrice: number | bigint,
+  clearingTick: number,
+  kTicks: number = 101,
+  tickBps: number = 1,
+  priceTick: number = 1000
+): number {
+  if (wasmInstance && wasmInstance.exports.wasm_clearing_price) {
+    const res = wasmInstance.exports.wasm_clearing_price(
+      BigInt(oraclePrice),
+      clearingTick,
+      kTicks,
+      tickBps,
+      BigInt(priceTick)
+    );
+    return Number(res);
+  }
+  return clearingPrice(oraclePrice, clearingTick, kTicks, tickBps, priceTick);
+}
+
 /**
  * Calculates uniform discrete clearing price in micro-USDC.
- * Formula (spec §4):
+ * Formula (spec §4 & crates/epoch-ref):
  * offset_bps = (tick - c) * tick_bps
- * raw = round(oracle_price * (10,000 + offset_bps) / 10,000)
- * rounded = round(raw / price_tick) * price_tick
+ * raw = (oracle_price * (10000 + offset_bps)) / 10000
+ * rounded = nearest multiple of price_tick, ties broken toward oracle_price.
  */
 export function clearingPrice(
   oraclePrice: number | bigint,
@@ -165,10 +192,32 @@ export function clearingPrice(
   const offsetTicks = BigInt(clearingTick) - c;
   const offsetBps = offsetTicks * BigInt(tickBps);
 
-  const num = p * (BigInt(10_000) + offsetBps);
-  const raw = (num + BigInt(5_000)) / BigInt(10_000);
+  let raw: bigint;
+  if (offsetBps >= 0n) {
+    raw = (p * (10_000n + offsetBps)) / 10_000n;
+  } else {
+    const absOffset = -offsetBps;
+    raw = (p * (10_000n - absOffset)) / 10_000n;
+  }
+
   const pt = BigInt(priceTick);
-  const rounded = ((raw + pt / BigInt(2)) / pt) * pt;
+  const remainder = raw % pt;
+  const half = pt / 2n;
+
+  let rounded: bigint;
+  if (remainder > half) {
+    rounded = raw - remainder + pt;
+  } else if (remainder < half) {
+    rounded = raw - remainder;
+  } else {
+    // Exact tie: round toward oracle_price
+    const down = raw - remainder;
+    const up = down + pt;
+    const diffDown = p > down ? p - down : down - p;
+    const diffUp = p > up ? p - up : up - p;
+    rounded = diffDown <= diffUp ? down : up;
+  }
+
   return Number(rounded);
 }
 

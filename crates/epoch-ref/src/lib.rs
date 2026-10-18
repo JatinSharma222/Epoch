@@ -330,6 +330,31 @@ pub fn notional(lots: u64, price: u64) -> u64 {
     lots * (price / 1000)
 }
 
+/// WASM export for clearing price computation.
+#[no_mangle]
+pub extern "C" fn wasm_clearing_price(
+    oracle_price: u64,
+    tick: u16,
+    k: u16,
+    tick_bps: u16,
+    price_tick: u64,
+) -> u64 {
+    clearing_price(oracle_price, tick, k, tick_bps, price_tick)
+}
+
+/// WASM export for midpoint tie-breaking.
+#[no_mangle]
+pub extern "C" fn wasm_midpoint(lo: u32, hi: u32, c: u32) -> u32 {
+    midpoint(lo as usize, hi as usize, c as usize) as u32
+}
+
+/// WASM export for notional calculation.
+#[no_mangle]
+pub extern "C" fn wasm_notional(lots: u64, price: u64) -> u64 {
+    notional(lots, price)
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;

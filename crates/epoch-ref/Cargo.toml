@@ -5,5 +5,8 @@ edition = "2021"
 description = "Epoch independent reference clearing engine and simulator"
 license = "ISC"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
-# Empty reference crate scaffold for T-00
+
