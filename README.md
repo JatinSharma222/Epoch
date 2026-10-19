@@ -26,21 +26,38 @@ Epoch replaces continuous serial matching with discrete **Frequent Batch Auction
 
 ### On-Chain Devnet Deployments & Verified Addresses
 
-#### v0 Deployment (Historical / Pre-Audit Devnet Prototype)
+#### v1 Deployment (Live / Audited Devnet Protocol)
 
-> [!NOTE]
-> The addresses below correspond to the initial hackathon submission and pre-audit research prototype (**v0**). Following the comprehensive adversarial security audit and on-chain oracle hardening, a fresh deployment (**v1**) with segregated keys and updated account layouts will replace these endpoints.
+The Epoch v1 protocol is live and verified on **Solana Devnet** with hardened cryptographic Pyth oracle verification, parameter boundaries, and fresh segregated keypairs:
 
 | Account / Entity | On-Chain Public Key / Address | Explorer Link |
 |:---|:---|:---:|
-| **Epoch Program ID (v0)** | `CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap` | [Solana Explorer](https://explorer.solana.com/address/CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap?cluster=devnet) |
-| **Upgrade Authority (v0)** | `D2Lf1YPGLDLKBpm6h5tWGYmkxVs7ArDLudGqCzDrxaeR` | [Solana Explorer](https://explorer.solana.com/address/D2Lf1YPGLDLKBpm6h5tWGYmkxVs7ArDLudGqCzDrxaeR?cluster=devnet) |
-| **Market PDA (v0)** | `9XoVtk3h7EbNnJPQU8JrN8cQwHoLdswZasi4wYojwFCP` | [Solana Explorer](https://explorer.solana.com/address/9XoVtk3h7EbNnJPQU8JrN8cQwHoLdswZasi4wYojwFCP?cluster=devnet) |
-| **Backstop Vault User PDA (v0)** | `6fEkCVBBFpBNVaJ2BeRud8jXnYnkLdv8BEAHU6mU4m6T` | [Solana Explorer](https://explorer.solana.com/address/6fEkCVBBFpBNVaJ2BeRud8jXnYnkLdv8BEAHU6mU4m6T?cluster=devnet) |
-| **Collateral Vault PDA (v0)** | `2Vj53nWYb95KxS1Zgbh5dvJryWrPmaprz3hRDuW4aZPG` | [Solana Explorer](https://explorer.solana.com/address/2Vj53nWYb95KxS1Zgbh5dvJryWrPmaprz3hRDuW4aZPG?cluster=devnet) |
-| **Mock USDC Mint (v0)** | `7VR6BNMZ5Y4bPRyndLAhXm9EN3GASHum6kym1hbrT2Xs` | [Solana Explorer](https://explorer.solana.com/address/7VR6BNMZ5Y4bPRyndLAhXm9EN3GASHum6kym1hbrT2Xs?cluster=devnet) |
+| **Epoch Program ID (v1)** | `ER8SSfvp7roW6asG429Uv3mHY1aEd1jxGBdigLu27284` | [Solana Explorer](https://explorer.solana.com/address/ER8SSfvp7roW6asG429Uv3mHY1aEd1jxGBdigLu27284?cluster=devnet) |
+| **Upgrade Authority (v1)** | `4vyQiHC1BqTsXQHkTPjQ3WMe6EoDi1Jeh2LZku8mwjTV` | [Solana Explorer](https://explorer.solana.com/address/4vyQiHC1BqTsXQHkTPjQ3WMe6EoDi1Jeh2LZku8mwjTV?cluster=devnet) |
+| **Market PDA (v1)** | `EaN2QU5w5RVTepYExdqxcuu49pg7MHSFWBEYpN2QKYsF` | [Solana Explorer](https://explorer.solana.com/address/EaN2QU5w5RVTepYExdqxcuu49pg7MHSFWBEYpN2QKYsF?cluster=devnet) |
+| **Backstop Vault User PDA (v1)** | `EJx8SbY1p6LV7JC8MjE6kF8fJgNEjewYNvJnZq6i86Eu` | [Solana Explorer](https://explorer.solana.com/address/EJx8SbY1p6LV7JC8MjE6kF8fJgNEjewYNvJnZq6i86Eu?cluster=devnet) |
+| **Vault Authority PDA (v1)** | `ALjbMKvwkfoy234kMwSUB6svmAu4TeXWzLtbMC36dJyv` | [Solana Explorer](https://explorer.solana.com/address/ALjbMKvwkfoy234kMwSUB6svmAu4TeXWzLtbMC36dJyv?cluster=devnet) |
+| **Collateral Vault PDA (v1)** | `CkaBNrXFLqJTCQCbSenDmkbXc2apXXE2HTKSopvX8ku6` | [Solana Explorer](https://explorer.solana.com/address/CkaBNrXFLqJTCQCbSenDmkbXc2apXXE2HTKSopvX8ku6?cluster=devnet) |
+| **Mock USDC Mint (v1)** | `9ncxNM7tiBo3Gfeo6T2CrC71T3WsbaubpkRbK2YN2XTd` | [Solana Explorer](https://explorer.solana.com/address/9ncxNM7tiBo3Gfeo6T2CrC71T3WsbaubpkRbK2YN2XTd?cluster=devnet) |
+| **Keeper Cranker Key (v1)** | `ENpGtE1uv89juataka3Qc1BUZ9ytATsmr7Zy18ahSZPM` | [Solana Explorer](https://explorer.solana.com/address/ENpGtE1uv89juataka3Qc1BUZ9ytATsmr7Zy18ahSZPM?cluster=devnet) |
 | **Pyth SOL/USD Feed** | `7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE` | [Solana Explorer](https://explorer.solana.com/address/7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE?cluster=devnet) |
-| **Latest Upgrade Tx (v0)** | `5HRnbiYa51Vo93KTVEG5oSj4goUCgqNrMCRehgA2Mujfk7gvwhqRnuFDNzvTSmL3xeu2PmmYGPbQnyQxnpGwpTzX` | [Solana Explorer](https://explorer.solana.com/tx/5HRnbiYa51Vo93KTVEG5oSj4goUCgqNrMCRehgA2Mujfk7gvwhqRnuFDNzvTSmL3xeu2PmmYGPbQnyQxnpGwpTzX?cluster=devnet) |
+| **Deployment Transaction** | `4ATjm2zfZNZcpUKDHQaQy8mfdT7Ke3Cu6GxmXvyqQwE6DVDJkYbuuVH2w4s2TNsevxMBZeVtvmx45yKjC1G3uTKr` | [Solana Explorer](https://explorer.solana.com/tx/4ATjm2zfZNZcpUKDHQaQy8mfdT7Ke3Cu6GxmXvyqQwE6DVDJkYbuuVH2w4s2TNsevxMBZeVtvmx45yKjC1G3uTKr?cluster=devnet) |
+| **Market Init Transaction** | `2yyVqG2PAWEHvW38YtYpqmY8NKGDu5t7XK4UzFs7Foa4ByZom2CBLex6Kyqw3JkuecZcDfrfTN15HeRypj8E7H3r` | [Solana Explorer](https://explorer.solana.com/tx/2yyVqG2PAWEHvW38YtYpqmY8NKGDu5t7XK4UzFs7Foa4ByZom2CBLex6Kyqw3JkuecZcDfrfTN15HeRypj8E7H3r?cluster=devnet) |
+
+#### v0 Deployment (SUPERSEDED / Pre-Audit Devnet Prototype)
+
+> [!WARNING]
+> The addresses below correspond to the initial hackathon submission and pre-audit research prototype (**v0**). This deployment has been **SUPERSEDED** by v1 and is documented here for historical audit integrity. Do not interact with v0.
+
+| Account / Entity | On-Chain Public Key / Address | Explorer Link | Status |
+|:---|:---|:---:|:---:|
+| **Epoch Program ID (v0)** | `CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap` | [Solana Explorer](https://explorer.solana.com/address/CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap?cluster=devnet) | SUPERSEDED |
+| **Upgrade Authority (v0)** | `D2Lf1YPGLDLKBpm6h5tWGYmkxVs7ArDLudGqCzDrxaeR` | [Solana Explorer](https://explorer.solana.com/address/D2Lf1YPGLDLKBpm6h5tWGYmkxVs7ArDLudGqCzDrxaeR?cluster=devnet) | SUPERSEDED |
+| **Market PDA (v0)** | `9XoVtk3h7EbNnJPQU8JrN8cQwHoLdswZasi4wYojwFCP` | [Solana Explorer](https://explorer.solana.com/address/9XoVtk3h7EbNnJPQU8JrN8cQwHoLdswZasi4wYojwFCP?cluster=devnet) | SUPERSEDED |
+| **Backstop Vault User PDA (v0)** | `6fEkCVBBFpBNVaJ2BeRud8jXnYnkLdv8BEAHU6mU4m6T` | [Solana Explorer](https://explorer.solana.com/address/6fEkCVBBFpBNVaJ2BeRud8jXnYnkLdv8BEAHU6mU4m6T?cluster=devnet) | SUPERSEDED |
+| **Collateral Vault PDA (v0)** | `2Vj53nWYb95KxS1Zgbh5dvJryWrPmaprz3hRDuW4aZPG` | [Solana Explorer](https://explorer.solana.com/address/2Vj53nWYb95KxS1Zgbh5dvJryWrPmaprz3hRDuW4aZPG?cluster=devnet) | SUPERSEDED |
+| **Mock USDC Mint (v0)** | `7VR6BNMZ5Y4bPRyndLAhXm9EN3GASHum6kym1hbrT2Xs` | [Solana Explorer](https://explorer.solana.com/address/7VR6BNMZ5Y4bPRyndLAhXm9EN3GASHum6kym1hbrT2Xs?cluster=devnet) | SUPERSEDED |
+| **Latest Upgrade Tx (v0)** | `5HRnbiYa51Vo93KTVEG5oSj4goUCgqNrMCRehgA2Mujfk7gvwhqRnuFDNzvTSmL3xeu2PmmYGPbQnyQxnpGwpTzX` | [Solana Explorer](https://explorer.solana.com/tx/5HRnbiYa51Vo93KTVEG5oSj4goUCgqNrMCRehgA2Mujfk7gvwhqRnuFDNzvTSmL3xeu2PmmYGPbQnyQxnpGwpTzX?cluster=devnet) | HISTORICAL |
 
 ### Core Documentation Links
 - **Roadmap & Priorities:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
