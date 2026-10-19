@@ -12,7 +12,7 @@ pub use instructions::*;
 pub use oracle::*;
 pub use state::*;
 
-declare_id!("CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap");
+declare_id!("ER8SSfvp7roW6asG429Uv3mHY1aEd1jxGBdigLu27284");
 
 #[program]
 pub mod epoch {

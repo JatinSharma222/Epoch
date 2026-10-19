@@ -6,10 +6,10 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-epoch = "CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap"
+epoch = "ER8SSfvp7roW6asG429Uv3mHY1aEd1jxGBdigLu27284"
 
 [programs.devnet]
-epoch = "CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap"
+epoch = "ER8SSfvp7roW6asG429Uv3mHY1aEd1jxGBdigLu27284"
 
 [registry]
 url = "https://api.apr.dev"

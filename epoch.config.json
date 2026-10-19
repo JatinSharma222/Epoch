@@ -1,0 +1,22 @@
+{
+  "network": "devnet",
+  "programId": "ER8SSfvp7roW6asG429Uv3mHY1aEd1jxGBdigLu27284",
+  "upgradeAuthority": "4vyQiHC1BqTsXQHkTPjQ3WMe6EoDi1Jeh2LZku8mwjTV",
+  "keeper": "ENpGtE1uv89juataka3Qc1BUZ9ytATsmr7Zy18ahSZPM",
+  "market": "EaN2QU5w5RVTepYExdqxcuu49pg7MHSFWBEYpN2QKYsF",
+  "collateralVault": "CkaBNrXFLqJTCQCbSenDmkbXc2apXXE2HTKSopvX8ku6",
+  "quoteMint": "9ncxNM7tiBo3Gfeo6T2CrC71T3WsbaubpkRbK2YN2XTd",
+  "vaultAuthority": "ALjbMKvwkfoy234kMwSUB6svmAu4TeXWzLtbMC36dJyv",
+  "vaultUser": "EJx8SbY1p6LV7JC8MjE6kF8fJgNEjewYNvJnZq6i86Eu",
+  "pythFeed": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
+  "pythReceiver": "rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ",
+  "v0": {
+    "programId": "CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap",
+    "upgradeAuthority": "D2Lf1YPGLDLKBpm6h5tWGYmkxVs7ArDLudGqCzDrxaeR",
+    "keeper": "EARRxREsGyHaeNwQmeaMnL6osLoyiwHsA5XSYqqQC5j2",
+    "market": "9XoVtk3h7EbNnJPQU8JrN8cQwHoLdswZasi4wYojwFCP",
+    "collateralVault": "2Vj53nWYb95KxS1Zgbh5dvJryWrPmaprz3hRDuW4aZPG",
+    "quoteMint": "7VR6BNMZ5Y4bPRyndLAhXm9EN3GASHum6kym1hbrT2Xs",
+    "vaultUser": "6fEkCVBBFpBNVaJ2BeRud8jXnYnkLdv8BEAHU6mU4m6T"
+  }
+}

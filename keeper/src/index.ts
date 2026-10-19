@@ -9,11 +9,21 @@ import { PublicKey } from "@solana/web3.js";
 import { EpochKeeper } from "./keeper";
 import { KeeperConfig } from "./types";
 
+import * as fs from "fs";
+import * as path from "path";
+
+let defaultProgramId = "ER8SSfvp7roW6asG429Uv3mHY1aEd1jxGBdigLu27284";
+try {
+  const configPath = path.resolve(__dirname, "../../epoch.config.json");
+  if (fs.existsSync(configPath)) {
+    const raw = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    if (raw.programId) defaultProgramId = raw.programId;
+  }
+} catch {}
+
 const rpcUrl = process.env.EPOCH_RPC_URL || "https://api.devnet.solana.com";
 const wsUrl = process.env.EPOCH_WS_URL;
-const programIdStr =
-  process.env.EPOCH_PROGRAM_ID ||
-  "CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap";
+const programIdStr = process.env.EPOCH_PROGRAM_ID || defaultProgramId;
 const keypairPath =
   process.env.EPOCH_KEEPER_KEYPAIR_PATH || process.env.EPOCH_KEEPER_KEYPAIR;
 const databaseUrl = process.env.EPOCH_DATABASE_URL;

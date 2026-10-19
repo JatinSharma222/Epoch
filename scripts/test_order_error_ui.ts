@@ -32,8 +32,7 @@ async function main() {
   );
 
   const programId = new PublicKey(
-    process.env.EPOCH_PROGRAM_ID ||
-      "CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap"
+    process.env.EPOCH_PROGRAM_ID || PROGRAM_ID.toBase58()
   );
   const provider = new anchor.AnchorProvider(
     connection,

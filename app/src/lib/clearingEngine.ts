@@ -149,7 +149,7 @@ export function clear(
 let wasmInstance: any = null;
 
 export function initEpochRefWasm(wasmBytes: Uint8Array): void {
-  const wasmModule = new WebAssembly.Module(wasmBytes);
+  const wasmModule = new WebAssembly.Module(wasmBytes as any);
   wasmInstance = new WebAssembly.Instance(wasmModule, {});
 }
 

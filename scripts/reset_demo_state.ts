@@ -15,6 +15,8 @@ import * as path from "path";
 import epochIdl from "../app/src/lib/epoch_idl.json";
 import { rebalanceVault } from "./rebalance_vault";
 
+import { PROGRAM_ID } from "../app/src/lib/constants";
+
 const DEVNET_RPC = process.env.NEXT_PUBLIC_RPC_URL || "https://api.devnet.solana.com";
 
 async function main() {
@@ -28,7 +30,7 @@ async function main() {
   await rebalanceVault();
 
   const connection = new Connection(DEVNET_RPC, "confirmed");
-  const programId = new PublicKey("CcEnJJnyCAPRJXJQHQKdmMpcfhrmmQHaoumnmbbcgHap");
+  const programId = new PublicKey(process.env.EPOCH_PROGRAM_ID || PROGRAM_ID.toBase58());
   const [marketPda] = PublicKey.findProgramAddressSync([Buffer.from("market")], programId);
 
   console.log(`Program ID: ${programId.toBase58()}`);
