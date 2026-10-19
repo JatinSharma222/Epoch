@@ -178,6 +178,10 @@ async function main() {
 
   // Claim Faucet mock USDC
   const [mintAuthPda] = PublicKey.findProgramAddressSync([Buffer.from("mint_authority")], PROGRAM_ID);
+  const [faucetRecordPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("faucet"), stuckUser.publicKey.toBuffer()],
+    PROGRAM_ID
+  );
   const faucetTx = new Transaction().add(
     ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
     await (program.methods as any)
@@ -186,8 +190,10 @@ async function main() {
         quoteMint: quoteMintPda,
         mintAuthority: mintAuthPda,
         recipientTokenAccount: stuckUserAta,
+        faucetRecord: faucetRecordPda,
         recipient: stuckUser.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
       })
       .instruction()
   );

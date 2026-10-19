@@ -431,8 +431,8 @@ export const EvidenceView: React.FC = () => {
             {/* Round 11 Card */}
             <div className="p-3 rounded bg-[#12161C] border bp-border space-y-2">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-white">Round 11: Sell-Side Fills & Oversize Depth</span>
-                <span className="text-[10px] font-mono text-[#848E9C]">4 Execution Runs</span>
+                <span className="font-bold text-white">Round 11: Sell-Side Fills (v0 Historical)</span>
+                <span className="text-[10px] font-mono text-[#848E9C]">v0 Prototype</span>
               </div>
               <div className="space-y-1.5 font-mono text-[10px]">
                 <div className="p-1.5 rounded bg-[#0B0E11] border bp-border flex justify-between items-center">
@@ -470,30 +470,28 @@ export const EvidenceView: React.FC = () => {
               </div>
             </div>
 
-            {/* Round 12 Card */}
+            {/* Round 12 & v1 Deployment Card */}
             <div className="p-3 rounded bg-[#12161C] border bp-border space-y-2">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-white">Round 12: Inventory Limit Reversal</span>
-                <span className="text-[10px] font-mono text-[#0ECB81]">Upgrade Slot 509174017</span>
+                <span className="font-bold text-white">v1 Audited Protocol Verifications</span>
+                <span className="text-[10px] font-mono text-[#0ECB81]">Live Devnet [MEASURED]</span>
               </div>
               <div className="space-y-1.5 font-mono text-[10px]">
-                <div className="p-1.5 rounded bg-[#0B0E11] border bp-border space-y-1">
-                  <div className="text-white font-bold">20 Buys Soak & Limit Quoting Halt:</div>
-                  <div className="text-[#848E9C]">
-                    Buys 1–10 filled 100% (-10,000 lots hit). Asks halted, bids kept active. Buys 11–20 expired unfilled.
-                  </div>
+                <div className="p-1.5 rounded bg-[#0B0E11] border bp-border flex justify-between items-center">
+                  <span>1. Flat Withdrawal (Stale Outage Safe)</span>
+                  <a href="https://explorer.solana.com/tx/5Ks8ExMAXRRi98dGky6wYNDG1wRaJqFTrRqrDLoVCsZWgKhG4ieFgyXtFTZYzMa6MpBe4zSGdf1k4fr6dzs7QCTY?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">View Tx</a>
                 </div>
                 <div className="p-1.5 rounded bg-[#0B0E11] border bp-border flex justify-between items-center">
-                  <span>1.0 SOL Sell Reversal (100% fill @ -11 bps)</span>
-                  <div className="flex gap-1.5">
-                    <a href="https://explorer.solana.com/tx/5wBq234e7RatQY1XB7GuBQKV1VUTx6vjrFkPtUqbykNorjcPYf9wRjv1i76VzL3E5R1BpeZaXhMsnxwrBjsQGUas?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">Place</a>
-                    <span className="text-[#848E9C]">·</span>
-                    <a href="https://explorer.solana.com/tx/5aidNPa7H3yNBALk6i3CUFE7LTJ7nHsFBW6yFFkLvPvAx66TacrRjGmC8E887H1cgw3wgR8hddhDMFk6ANBvj5MA?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">Clear</a>
-                  </div>
+                  <span>2. Backstop Vault Quoting (CU: 21,148)</span>
+                  <a href="https://explorer.solana.com/tx/2bAx78v7rZ3JB8mfVjJyoRrY6T9m72UQCCFx1g8ZMn9vGd2VW2zrEtx1wFhzF86k3igge97UcP1tD7ujCUnDkj2G?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">View Tx</a>
                 </div>
                 <div className="p-1.5 rounded bg-[#0B0E11] border bp-border flex justify-between items-center">
-                  <span>Contract Upgrade Signature</span>
-                  <a href="https://explorer.solana.com/tx/5HRnbiYa51Vo93KTVEG5oSj4goUCgqNrMCRehgA2Mujfk7gvwhqRnuFDNzvTSmL3xeu2PmmYGPbQnyQxnpGwpTzX?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#0ECB81] hover:underline">View Upgrade Tx</a>
+                  <span>3. Ring Slot Expire & Release (CU: 9,872)</span>
+                  <a href="https://explorer.solana.com/tx/3ihyaVt2QKafiuMqRmYpbdpku3nvi5XXe6uuPUj1YPaQU1SWZXwF2CTQBmTMmquMYX1mE9mC1dASLuHVsAZbe9Wn?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">View Tx</a>
+                </div>
+                <div className="p-1.5 rounded bg-[#0B0E11] border bp-border flex justify-between items-center">
+                  <span>4. Vault Sizing 3.5 SOL (Tx 5HHPbD...)</span>
+                  <a href="https://explorer.solana.com/tx/5HHPbDuVQEkLNs93XJsDZccFviwqfCjERTmKW1AGHSCTFuruiC42w1UXiHmuYovpUZQRx5pzRRfCkYPCFewErGBi?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#0ECB81] hover:underline">View Tx</a>
                 </div>
               </div>
             </div>

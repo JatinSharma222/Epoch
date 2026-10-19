@@ -67,9 +67,12 @@ async function main() {
   const connection = new Connection(rpcUrl, { commitment: "confirmed", wsEndpoint: wsUrl });
 
   // Load admin/funder keypair
+  // Load admin/funder keypair
   const adminKeyPath =
     process.env.ANCHOR_WALLET ||
-    path.join(process.env.HOME || "", ".config/solana/id.json");
+    (fs.existsSync(path.join(process.env.HOME || "", ".config/solana/epoch-v1-keys/epoch-authority-keypair.json"))
+      ? path.join(process.env.HOME || "", ".config/solana/epoch-v1-keys/epoch-authority-keypair.json")
+      : path.join(process.env.HOME || "", ".config/solana/id.json"));
   const adminSecret = JSON.parse(fs.readFileSync(adminKeyPath, "utf-8"));
   const admin = Keypair.fromSecretKey(Uint8Array.from(adminSecret));
 
@@ -122,6 +125,10 @@ async function main() {
 
   // Faucet 1,000 mock USDC to user ATA
   console.log("Fauceting 1,000 mock USDC to user ATA...");
+  const [faucetRecordPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("faucet"), freshUser.publicKey.toBuffer()],
+    program.programId
+  );
   const faucetTx = new Transaction().add(
     await program.methods
       .faucet(new anchor.BN(1_000_000_000))
@@ -129,8 +136,10 @@ async function main() {
         quoteMint: quoteMintPda,
         mintAuthority: mintAuthorityPda,
         recipientTokenAccount: userAta,
+        faucetRecord: faucetRecordPda,
         recipient: freshUser.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
       })
       .instruction()
   );
@@ -203,32 +212,32 @@ async function main() {
         ringIndex = targetBatch % 8;
         [targetBatchPda] = getBatchPda(ringIndex);
 
+        const priceFeedAccount = await oracleService.getPriceFeedAccount();
+
         // 1. Vault quotes liquidity ladder: Asks at +12, +18, +25 bps
         const vQuoteIx = await program.methods
           .vaultQuote({
             targetBatch: new anchor.BN(targetBatch),
             ringIndex,
-            oraclePrice: oracleData.price,
-            oracleConf: oracleData.conf,
-            oracleTimestamp: oracleData.publishTime,
           })
           .accounts({
             market: marketPda,
             batch: targetBatchPda,
             vaultAuthority: vaultAuthorityPda,
             vaultUser: vaultUserPda,
+            priceUpdate: priceFeedAccount,
             cranker: admin.publicKey,
           })
           .instruction();
 
-        // 2. Default order: Market BUY 10 lots (0.010 SOL) at collar tick 100 (+50 bps)
+        // 2. Default order: Market BUY at collar tick 100 (+50 bps)
         const placeOrderIx = await program.methods
           .placeOrder({
             targetBatch: new anchor.BN(targetBatch),
             ringIndex,
             slotId: 0,
-            side: 0, // BUY
-            tick: 100, // Band edge (+50 bps) guarantees fill against demo vault ladder
+            side: run % 2 === 1 ? 0 : 1, // alternate BUY (runs 1,3,5) and SELL (runs 2,4)
+            tick: run % 2 === 1 ? 100 : 0, // Band edge guarantees fill against demo vault ladder
             lots: new anchor.BN(orderLots),
             flags: 0,
           })
@@ -271,17 +280,13 @@ async function main() {
     let clearSig = "";
     while (!clearSig) {
       try {
-        const clearOracle = await oracleService.getLatestPrice();
+        const priceFeedAccount = await oracleService.getPriceFeedAccount();
         const clearIx = await program.methods
-          .clearBatch(new anchor.BN(targetBatch), ringIndex, {
-            oraclePrice: clearOracle.price,
-            oracleConf: clearOracle.conf,
-            oraclePostedSlot: new anchor.BN(closeSlot),
-            oracleTimestamp: clearOracle.publishTime,
-          })
+          .clearBatch(new anchor.BN(targetBatch), ringIndex)
           .accounts({
             market: marketPda,
             batch: targetBatchPda,
+            priceUpdate: priceFeedAccount,
             cranker: admin.publicKey,
           })
           .instruction();
