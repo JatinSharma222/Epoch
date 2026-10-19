@@ -75,7 +75,10 @@ async function runPreflight(): Promise<boolean> {
   try {
     const adminKeyPath =
       process.env.ANCHOR_WALLET ||
-      path.join(process.env.HOME || "", ".config/solana/id.json");
+      process.env.EPOCH_AUTHORITY_KEYPAIR ||
+      (fs.existsSync(path.join(process.env.HOME || "", ".config/solana/epoch-v1-keys/epoch-authority-keypair.json"))
+        ? path.join(process.env.HOME || "", ".config/solana/epoch-v1-keys/epoch-authority-keypair.json")
+        : path.join(process.env.HOME || "", ".config/solana/id.json"));
     let adminSol = 0;
     if (fs.existsSync(adminKeyPath)) {
       const adminSecret = JSON.parse(fs.readFileSync(adminKeyPath, "utf-8"));
@@ -84,7 +87,11 @@ async function runPreflight(): Promise<boolean> {
       adminSol = bal / 1e9;
     }
 
-    const keeperKeyPath = path.resolve(__dirname, "../keeper/keeper-keypair.json");
+    const keeperKeyPath =
+      process.env.EPOCH_KEEPER_KEYPAIR ||
+      (fs.existsSync(path.join(process.env.HOME || "", ".config/solana/epoch-v1-keys/epoch-keeper-keypair.json"))
+        ? path.join(process.env.HOME || "", ".config/solana/epoch-v1-keys/epoch-keeper-keypair.json")
+        : path.resolve(__dirname, "../keeper/keeper-keypair.json"));
     let keeperSol = 0;
     if (fs.existsSync(keeperKeyPath)) {
       const keeperSecret = JSON.parse(fs.readFileSync(keeperKeyPath, "utf-8"));
@@ -93,11 +100,11 @@ async function runPreflight(): Promise<boolean> {
       keeperSol = bal / 1e9;
     }
 
-    const passes = adminSol >= 0.5;
+    const passes = adminSol >= 0.5 && keeperSol >= 0.1;
     recordCheck(
       "Wallet Balances",
       passes,
-      `Admin: ${adminSol.toFixed(2)} SOL (min 0.50), Keeper: ${keeperSol.toFixed(2)} SOL`
+      `Admin: ${adminSol.toFixed(2)} SOL (min 0.50), Keeper: ${keeperSol.toFixed(2)} SOL (min 0.10)`
     );
   } catch (err: any) {
     recordCheck("Wallet Balances", false, err.message);
