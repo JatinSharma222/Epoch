@@ -24,6 +24,21 @@ const BALANCE_CHECK_INTERVAL_MS = 60_000;
 const LOW_BALANCE_WARN_SOL = 3.0;
 const LOW_BALANCE_STOP_SOL = 0.5;
 
+// ─── Compute Unit & Priority Fee Calibration ────────────────────────────────
+// CU limits calibrated to measured execution + 40-50% margin:
+const CU_LIMIT_CLEAR_AND_SETTLE = 130_000; // measured ~60k-95k CU with Pyth post
+const CU_LIMIT_CLEAR_STANDALONE = 130_000; // measured ~50k-85k CU with Pyth post
+const CU_LIMIT_SETTLE_STANDALONE = 60_000; // measured ~20k-40k CU
+const CU_LIMIT_VAULT_QUOTE = 60_000;       // measured ~21k CU
+const CU_LIMIT_EXPIRE_RELEASE = 50_000;    // measured ~7k-11k CU
+const CU_LIMIT_LIQUIDATE = 80_000;         // measured ~40k CU
+const CU_LIMIT_ORACLE_CADENCE = 80_000;    // measured ~35k-50k CU
+
+// Default priority fee: 10,000 micro-lamports (10x reduction from 100,000).
+// At 130,000 CU: 130,000 * 10,000 / 1e6 = 1,300 lamports (0.0000013 SOL).
+// Prevents priority fee drain (formerly 40,000 lamports/tx = 100k microLamports * 400k CU).
+const DEFAULT_PRIORITY_FEE_MICRO_LAMPORTS = 10_000;
+
 /**
  * Derives the WebSocket URL from an RPC URL.
  * Automatically maps standard localnet JSON-RPC port (8899) to the PubSub WebSocket port (8900).
@@ -57,6 +72,9 @@ export class EpochKeeper {
   private isRunning: boolean = false;
   private clearSettleTimeout: NodeJS.Timeout | null = null;
   private vaultQuoteTimeout: NodeJS.Timeout | null = null;
+  private oracleCadenceTimeout: NodeJS.Timeout | null = null;
+  private _lastCadencePostMs: number = 0;
+  public priorityFeeMicroLamports: number;
   private slotSubId: number | null = null;
 
   /** Locally tracked slot from slotSubscribe — updated by WebSocket, never fetched. */
@@ -158,6 +176,11 @@ export class EpochKeeper {
       config.programId
     );
     this.vaultUser = vaultUser;
+
+    this.priorityFeeMicroLamports = parseInt(
+      process.env.EPOCH_PRIORITY_FEE_MICRO_LAMPORTS || String(DEFAULT_PRIORITY_FEE_MICRO_LAMPORTS),
+      10
+    );
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -483,8 +506,8 @@ export class EpochKeeper {
         .instruction();
 
       const tx = new Transaction().add(
-        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
-        ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: this.priorityFeeMicroLamports }),
+        ComputeBudgetProgram.setComputeUnitLimit({ units: CU_LIMIT_CLEAR_AND_SETTLE }),
         ...postIxs,
         clearIx,
         settleIx
@@ -571,8 +594,8 @@ export class EpochKeeper {
         .instruction();
 
       const tx = new Transaction().add(
-        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
-        ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: this.priorityFeeMicroLamports }),
+        ComputeBudgetProgram.setComputeUnitLimit({ units: CU_LIMIT_CLEAR_STANDALONE }),
         ...postIxs,
         ix
       );
@@ -685,8 +708,8 @@ export class EpochKeeper {
           .instruction();
 
         const tx = new Transaction().add(
-          ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
-          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          ComputeBudgetProgram.setComputeUnitPrice({ microLamports: this.priorityFeeMicroLamports }),
+          ComputeBudgetProgram.setComputeUnitLimit({ units: CU_LIMIT_SETTLE_STANDALONE }),
           ix
         );
 
@@ -799,8 +822,8 @@ export class EpochKeeper {
           .instruction();
 
         const tx = new Transaction().add(
-          ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
-          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          ComputeBudgetProgram.setComputeUnitPrice({ microLamports: this.priorityFeeMicroLamports }),
+          ComputeBudgetProgram.setComputeUnitLimit({ units: CU_LIMIT_EXPIRE_RELEASE }),
           ix
         );
 
@@ -901,8 +924,8 @@ export class EpochKeeper {
         .instruction();
 
       const tx = new Transaction().add(
-        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
-        ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: this.priorityFeeMicroLamports }),
+        ComputeBudgetProgram.setComputeUnitLimit({ units: CU_LIMIT_VAULT_QUOTE }),
         ix
       );
 
@@ -1000,8 +1023,8 @@ export class EpochKeeper {
         .instruction();
 
       const tx = new Transaction().add(
-        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
-        ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: this.priorityFeeMicroLamports }),
+        ComputeBudgetProgram.setComputeUnitLimit({ units: CU_LIMIT_LIQUIDATE }),
         ix
       );
 
@@ -1243,7 +1266,33 @@ export class EpochKeeper {
   // ─── Start / Stop ────────────────────────────────────────────────────────
 
   /**
-   * Starts the keeper with TWO independent loops and WebSocket slot tracking.
+   * Posts a standalone price update on a regular cadence (every 10s)
+   * if no clear transactions have occurred recently, keeping on-chain feed fresh.
+   */
+  public async postOracleCadenceIfNeeded(): Promise<boolean> {
+    const now = Date.now();
+    if (now - this._lastCadencePostMs < 10_000) return false;
+    try {
+      const postIxs = await this.oracle.postPriceUpdateInstructions(this.wallet);
+      if (postIxs.length === 0) return false;
+
+      const tx = new Transaction().add(
+        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: this.priorityFeeMicroLamports }),
+        ComputeBudgetProgram.setComputeUnitLimit({ units: CU_LIMIT_ORACLE_CADENCE }),
+        ...postIxs
+      );
+
+      const sig = await this.sendTx(tx);
+      this._lastCadencePostMs = now;
+      this.logger.info(`[keeper] Oracle cadence update posted: ${sig} [MEASURED]`);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Starts the keeper with TWO independent loops, WebSocket slot tracking, and Hermes price streaming.
    */
   public async start(): Promise<void> {
     if (this.isRunning) return;
@@ -1255,8 +1304,19 @@ export class EpochKeeper {
     // Check initial balance
     await this.checkBalance();
 
+    // Start Hermes SSE streaming in background
+    try {
+      this.oracle.startPriceStream();
+      const summary = this.oracle.getConfigSummary();
+      this.logger.info(
+        `Hermes price streaming active: endpoint=${summary.endpoint} authenticated=${summary.hasKey} [MEASURED]`
+      );
+    } catch (err) {
+      this.logger.warn("Failed to initiate Hermes price stream:", err);
+    }
+
     this.logger.info(
-      `Epoch Keeper started on ${this.config.network || "devnet"} (mode=WebSocket slotSubscribe, dual-loop)`
+      `Epoch Keeper started on ${this.config.network || "devnet"} (mode=WebSocket slotSubscribe, dual-loop, priorityFee=${this.priorityFeeMicroLamports}uL)`
     );
 
     // 1. Subscribe to slot changes over WebSocket — updates _trackedSlot only
@@ -1279,6 +1339,7 @@ export class EpochKeeper {
       this._clearSettleBusy = true;
       try {
         await this.clearSettleTick();
+        await this.postOracleCadenceIfNeeded();
       } catch (err) {
         this.logger.error("Error in clearSettle loop:", err);
       } finally {
@@ -1318,6 +1379,7 @@ export class EpochKeeper {
    */
   public stop(): void {
     this.isRunning = false;
+    this.oracle.stopPriceStream();
     if (this.slotSubId !== null) {
       this.connection.removeSlotChangeListener(this.slotSubId).catch(() => {});
       this.slotSubId = null;
@@ -1329,6 +1391,10 @@ export class EpochKeeper {
     if (this.vaultQuoteTimeout) {
       clearTimeout(this.vaultQuoteTimeout);
       this.vaultQuoteTimeout = null;
+    }
+    if (this.oracleCadenceTimeout) {
+      clearTimeout(this.oracleCadenceTimeout);
+      this.oracleCadenceTimeout = null;
     }
     this.logger.info("Epoch Keeper stopped.");
   }
