@@ -128,6 +128,63 @@ pub fn parse_and_validate_pyth_price_update(
     })
 }
 
+/// Deserializes and validates an Authority Oracle `AuthorityPriceUpdate` account.
+pub fn parse_and_validate_authority_price_update(
+    price_update_info: &AccountInfo,
+    market_key: &Pubkey,
+) -> Result<ParsedPriceUpdate> {
+    require_keys_eq!(
+        *price_update_info.owner,
+        crate::ID,
+        EpochError::Unauthorized
+    );
+
+    let (expected_pda, _bump) = Pubkey::find_program_address(
+        &[crate::instructions::post_price::AuthorityPriceUpdate::SEED, market_key.as_ref()],
+        &crate::ID,
+    );
+    require_keys_eq!(
+        price_update_info.key(),
+        expected_pda,
+        EpochError::InvalidOracleAccount
+    );
+
+    let data = price_update_info.try_borrow_data()?;
+    require!(data.len() >= 8, EpochError::InvalidOracleAccount);
+    let mut slice: &[u8] = &data[..];
+    let account = crate::instructions::post_price::AuthorityPriceUpdate::try_deserialize(&mut slice)
+        .map_err(|_| EpochError::InvalidOracleAccount)?;
+
+    require!(account.price > 0, EpochError::InvalidOraclePrice);
+    require!(account.conf > 0, EpochError::OracleConfidenceTooLow);
+
+    Ok(ParsedPriceUpdate {
+        price: account.price,
+        conf: account.conf,
+        publish_time: account.publish_time,
+        posted_slot: account.posted_slot,
+    })
+}
+
+/// Single verified-price account parser.
+/// Routes based on compile-time feature flag "authority-oracle".
+pub fn parse_and_validate_oracle_price_account(
+    price_update_info: &AccountInfo,
+    expected_feed_id: &[u8; 32],
+    market_key: &Pubkey,
+) -> Result<ParsedPriceUpdate> {
+    #[cfg(feature = "authority-oracle")]
+    {
+        let _ = expected_feed_id;
+        parse_and_validate_authority_price_update(price_update_info, market_key)
+    }
+    #[cfg(not(feature = "authority-oracle"))]
+    {
+        let _ = market_key;
+        parse_and_validate_pyth_price_update(price_update_info, expected_feed_id)
+    }
+}
+
 /// Fully validates freshness and confidence interval for strict instructions (e.g. liquidate).
 pub fn verify_price_update_strict(
     price_update_info: &AccountInfo,
@@ -136,7 +193,26 @@ pub fn verify_price_update_strict(
     max_conf_bps: u16,
     current_timestamp: i64,
 ) -> Result<ParsedPriceUpdate> {
-    let parsed = parse_and_validate_pyth_price_update(price_update_info, expected_feed_id)?;
+    verify_price_update_strict_with_market(
+        price_update_info,
+        expected_feed_id,
+        price_update_info.key,
+        max_oracle_age_secs,
+        max_conf_bps,
+        current_timestamp,
+    )
+}
+
+/// Fully validates freshness and confidence with explicit market PDA verification.
+pub fn verify_price_update_strict_with_market(
+    price_update_info: &AccountInfo,
+    expected_feed_id: &[u8; 32],
+    market_key: &Pubkey,
+    max_oracle_age_secs: u16,
+    max_conf_bps: u16,
+    current_timestamp: i64,
+) -> Result<ParsedPriceUpdate> {
+    let parsed = parse_and_validate_oracle_price_account(price_update_info, expected_feed_id, market_key)?;
 
     // Staleness check
     let age = current_timestamp.saturating_sub(parsed.publish_time);

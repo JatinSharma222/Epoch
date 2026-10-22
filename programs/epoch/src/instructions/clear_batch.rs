@@ -1,6 +1,6 @@
 use crate::errors::EpochError;
 use crate::events::{BatchCleared, BatchVoided};
-use crate::oracle::parse_and_validate_pyth_price_update;
+use crate::oracle::parse_and_validate_oracle_price_account;
 use crate::state::constants::{CENTER_TICK, F_SCALE, K_TICKS, PRICE_TICK, RING_SIZE};
 use crate::state::{Batch, BatchStatus, Market, OrderSide, OrderStatus};
 use anchor_lang::prelude::*;
@@ -115,16 +115,17 @@ pub fn handle_clear_batch(
     require_eq!(batch.batch_id, batch_id, EpochError::OrderNotFound);
     require!(batch.status == BatchStatus::OPEN, EpochError::BatchNotOpen);
 
-    // Cryptographic on-chain Pyth oracle verification
-    let pyth_data = parse_and_validate_pyth_price_update(
+    // Cryptographic on-chain oracle verification (Pyth or Authority mode)
+    let oracle_data = parse_and_validate_oracle_price_account(
         &ctx.accounts.price_update,
         &market.oracle_feed_id,
+        &ctx.accounts.market.key(),
     )?;
 
-    let oracle_price = pyth_data.price;
-    let oracle_conf = pyth_data.conf;
-    let oracle_posted_slot = pyth_data.posted_slot;
-    let oracle_timestamp = pyth_data.publish_time;
+    let oracle_price = oracle_data.price;
+    let oracle_conf = oracle_data.conf;
+    let oracle_posted_slot = oracle_data.posted_slot;
+    let oracle_timestamp = oracle_data.publish_time;
 
     let c = CENTER_TICK;
 

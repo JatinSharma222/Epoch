@@ -94,6 +94,7 @@ fn create_mock_price_update_data(
 }
 
 #[test]
+#[cfg(not(feature = "authority-oracle"))]
 fn test_pyth_price_update_valid_full_quorum() {
     let feed_id = [0x55; 32];
     let now = 1700000000i64;
@@ -234,6 +235,7 @@ fn test_pyth_price_update_rejects_mismatched_feed_id() {
 }
 
 #[test]
+#[cfg(not(feature = "authority-oracle"))]
 fn test_pyth_price_update_rejects_stale_price() {
     let feed_id = [0x55; 32];
     let now = 1700000000i64;
@@ -268,6 +270,7 @@ fn test_pyth_price_update_rejects_stale_price() {
 }
 
 #[test]
+#[cfg(not(feature = "authority-oracle"))]
 fn test_pyth_price_update_rejects_wide_confidence() {
     let feed_id = [0x55; 32];
     let now = 1700000000i64;

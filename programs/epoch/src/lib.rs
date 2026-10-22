@@ -133,6 +133,16 @@ pub mod epoch {
     ) -> Result<()> {
         handle_expire_and_release(ctx, batch_id, ring_index)
     }
+
+    /// Authority-only price post instruction for Authority Oracle mode.
+    pub fn post_price(
+        ctx: Context<PostPrice>,
+        price: u64,
+        conf: u64,
+        publish_time: i64,
+    ) -> Result<()> {
+        handle_post_price(ctx, price, conf, publish_time)
+    }
 }
 
 #[cfg(test)]

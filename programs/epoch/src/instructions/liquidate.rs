@@ -1,6 +1,6 @@
 use crate::errors::EpochError;
 use crate::events::PositionLiquidated;
-use crate::oracle::verify_price_update_strict;
+use crate::oracle::verify_price_update_strict_with_market;
 use crate::state::constants::F_SCALE;
 use crate::state::{Market, UserAccount, UserFlags};
 use anchor_lang::prelude::*;
@@ -90,11 +90,12 @@ pub fn handle_liquidate(ctx: Context<Liquidate>) -> Result<()> {
     // 4. User must have an open position to liquidate
     require!(user.base_position != 0, EpochError::PositionFlat);
 
-    // 5. Oracle price resolution and safety guards via Pyth receiver account
+    // 5. Oracle price resolution and safety guards via oracle account
     let clock = Clock::get()?;
-    let pyth_data = verify_price_update_strict(
+    let pyth_data = verify_price_update_strict_with_market(
         &ctx.accounts.price_update,
         &market.oracle_feed_id,
+        &ctx.accounts.market.key(),
         market.params.max_oracle_age_secs,
         market.params.max_conf_bps,
         clock.unix_timestamp,

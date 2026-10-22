@@ -14,6 +14,7 @@ import * as path from "path";
 import { KeeperConfig, BatchSummary, TxLogEntry, VaultStatus } from "./types";
 import { KeeperLogger } from "./logger";
 import { PythOracleService } from "./oracle";
+import { AuthorityOracleService } from "./authority_oracle";
 import idl from "./epoch_idl.json";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -61,7 +62,7 @@ export class EpochKeeper {
   public provider: anchor.AnchorProvider;
   public program: anchor.Program;
   public logger: KeeperLogger;
-  public oracle: PythOracleService;
+  public oracle: PythOracleService | AuthorityOracleService;
 
   public marketPda: PublicKey;
   public marketBump: number;
@@ -153,10 +154,6 @@ export class EpochKeeper {
     );
 
     this.logger = new KeeperLogger(config.logFilePath);
-    this.oracle = new PythOracleService(
-      this.connection,
-      config.oracleFeedId
-    );
 
     const [marketPda, marketBump] = PublicKey.findProgramAddressSync(
       [Buffer.from("market")],
@@ -176,6 +173,23 @@ export class EpochKeeper {
       config.programId
     );
     this.vaultUser = vaultUser;
+
+    const oracleMode =
+      config.oracleMode ||
+      (process.env.EPOCH_ORACLE_MODE === "authority" ? "authority" : "pyth");
+
+    if (oracleMode === "authority") {
+      this.oracle = new AuthorityOracleService(
+        this.connection,
+        this.marketPda,
+        this.program
+      );
+    } else {
+      this.oracle = new PythOracleService(
+        this.connection,
+        config.oracleFeedId
+      );
+    }
 
     this.priorityFeeMicroLamports = parseInt(
       process.env.EPOCH_PRIORITY_FEE_MICRO_LAMPORTS || String(DEFAULT_PRIORITY_FEE_MICRO_LAMPORTS),

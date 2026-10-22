@@ -171,5 +171,13 @@ pub enum EpochError {
     /// Vault parameter out of acceptable bounds.
     #[msg("Invalid vault parameter")]
     InvalidVaultParameter,
+
+    /// Oracle confidence must be greater than zero.
+    #[msg("Oracle confidence must be greater than zero")]
+    OracleConfidenceTooLow,
+
+    /// Oracle price change exceeds maximum allowed move per update.
+    #[msg("Oracle price jump exceeds maximum allowed move")]
+    OraclePriceJumpTooLarge,
 }
 

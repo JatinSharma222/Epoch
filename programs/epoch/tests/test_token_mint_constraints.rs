@@ -1,5 +1,4 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::TokenAccount;
 
 #[test]
 fn test_token_mint_constraint_mismatch_detected() {

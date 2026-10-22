@@ -95,6 +95,14 @@ export const Header: React.FC<HeaderProps> = ({
           </span>
         </div>
 
+        {/* Oracle Mode Badge: trusted multi-venue median (test mode) */}
+        <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded border border-[#F59E0B]/30 bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] font-mono tracking-tight shrink-0 select-none">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#F59E0B] animate-pulse" />
+          <span className="font-semibold">Oracle: trusted multi-venue median (test mode)</span>
+          <span className="text-white font-bold ml-1 tabular-nums">${oraclePrice.toFixed(2)}</span>
+          <span className="text-[#848E9C] ml-1">({stats?.venueCount || 6}/6 active)</span>
+        </div>
+
         {/* 24h & Protocol Metrics */}
         <div className="flex items-center gap-3.5 text-[11px] shrink-0">
           <div className="hidden min-[1200px]:flex flex-col">

@@ -498,6 +498,114 @@ export const EvidenceView: React.FC = () => {
           </div>
         </div>
 
+        {/* Trusted Multi-Venue Oracle Median Benchmark & Test Mode [MEASURED] */}
+        <div className="bg-[#0E1217] rounded-lg border bp-border p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Activity className="w-4 h-4 text-[#F59E0B]" />
+              <span className="font-bold text-white text-[13px]">
+                Trusted Multi-Venue Oracle Median Benchmark & Mode [MEASURED]
+              </span>
+            </div>
+            <span className="text-[10px] font-mono text-[#F59E0B] bg-[#F59E0B]/10 border border-[#F59E0B]/30 px-2 py-0.5 rounded">
+              Oracle: trusted multi-venue median (test mode)
+            </span>
+          </div>
+
+          <p className="text-[11px] text-[#848E9C]">
+            To eliminate external single-point-of-failure oracle downtime during localnet and development cycles, Epoch integrates an on-chain Authority Oracle backed by an off-chain WebSocket aggregator combining real-time top-of-book (L1 BBO) feeds from 6 major venues: Coinbase, Kraken, Bybit, Backpack, Hyperliquid, and Binance.
+          </p>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left font-mono text-[11px]">
+              <thead>
+                <tr className="border-b bp-border text-[#848E9C] text-[10px]">
+                  <th className="py-1.5 px-2">Venue / Pair</th>
+                  <th className="py-1.5 px-2">Rate (msg/s)</th>
+                  <th className="py-1.5 px-2">P50 Gap</th>
+                  <th className="py-1.5 px-2">P95 Gap</th>
+                  <th className="py-1.5 px-2">Mean Age</th>
+                  <th className="py-1.5 px-2">Reconnect</th>
+                  <th className="py-1.5 px-2">Assessment</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#1B222D]">
+                <tr>
+                  <td className="py-1.5 px-2 text-white font-bold">Backpack (SOL_USDC)</td>
+                  <td className="py-1.5 px-2 text-[#0ECB81]">4.6 msg/s</td>
+                  <td className="py-1.5 px-2">5 ms</td>
+                  <td className="py-1.5 px-2">643 ms</td>
+                  <td className="py-1.5 px-2">43 ms</td>
+                  <td className="py-1.5 px-2 text-[#848E9C]">N/A</td>
+                  <td className="py-1.5 px-2 text-[#0ECB81] font-bold">EXCELLENT</td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 px-2 text-white font-bold">Binance (SOLUSDC p443)</td>
+                  <td className="py-1.5 px-2 text-[#0ECB81]">5.0 msg/s</td>
+                  <td className="py-1.5 px-2">2 ms</td>
+                  <td className="py-1.5 px-2">592 ms</td>
+                  <td className="py-1.5 px-2 text-[#848E9C]">N/A</td>
+                  <td className="py-1.5 px-2">811 ms</td>
+                  <td className="py-1.5 px-2 text-[#0ECB81] font-bold">EXCELLENT</td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 px-2 text-white font-bold">Bybit (SOLUSDC)</td>
+                  <td className="py-1.5 px-2 text-[#0ECB81]">2.9 msg/s</td>
+                  <td className="py-1.5 px-2">82 ms</td>
+                  <td className="py-1.5 px-2">699 ms</td>
+                  <td className="py-1.5 px-2">17 ms</td>
+                  <td className="py-1.5 px-2 text-[#848E9C]">N/A</td>
+                  <td className="py-1.5 px-2 text-[#0ECB81] font-bold">EXCELLENT</td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 px-2 text-white">Coinbase (SOL-USD)</td>
+                  <td className="py-1.5 px-2">0.6 msg/s</td>
+                  <td className="py-1.5 px-2">32 ms</td>
+                  <td className="py-1.5 px-2">3,623 ms</td>
+                  <td className="py-1.5 px-2">130 ms</td>
+                  <td className="py-1.5 px-2 text-[#848E9C]">N/A</td>
+                  <td className="py-1.5 px-2 text-[#00F0FF]">HEALTHY</td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 px-2 text-white">Kraken (SOL/USD)</td>
+                  <td className="py-1.5 px-2 text-[#848E9C]">0.1 msg/s</td>
+                  <td className="py-1.5 px-2">2,935 ms</td>
+                  <td className="py-1.5 px-2">14,822 ms</td>
+                  <td className="py-1.5 px-2">113 ms</td>
+                  <td className="py-1.5 px-2 text-[#848E9C]">N/A</td>
+                  <td className="py-1.5 px-2 text-[#EAB308]">Depth-Filtered</td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 px-2 text-white">Hyperliquid (SOL Perp-Mid)</td>
+                  <td className="py-1.5 px-2 text-[#848E9C]">0.1 msg/s</td>
+                  <td className="py-1.5 px-2">5,385 ms</td>
+                  <td className="py-1.5 px-2">5,608 ms</td>
+                  <td className="py-1.5 px-2 text-[#848E9C]">424 ms</td>
+                  <td className="py-1.5 px-2">739 ms</td>
+                  <td className="py-1.5 px-2 text-[#EAB308]">Depth-Filtered</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1 text-[11px] font-mono">
+            <div className="p-3 rounded bg-[#12161C] border bp-border space-y-1">
+              <div className="font-bold text-white">Aggregator Invariant Rules</div>
+              <div className="text-[#848E9C]">1. Freshness Cutoff: ≤ 2,000 ms</div>
+              <div className="text-[#848E9C]">2. Outlier Rejection: Drop sources &gt; 30 bps from median</div>
+              <div className="text-[#848E9C]">3. Quorum: Requires ≥ 3 fresh, non-outlier sources</div>
+              <div className="text-[#848E9C]">4. Confidence: Cross-venue spread (flagged low if &gt; 10 bps)</div>
+            </div>
+            <div className="p-3 rounded bg-[#12161C] border bp-border space-y-1">
+              <div className="font-bold text-white">On-Chain Safety Invariants (post_price)</div>
+              <div className="text-[#848E9C]">1. Max Jump: 100 bps per update within 50 slots</div>
+              <div className="text-[#848E9C]">2. Outage Bypass: &gt; 50 slots elapsed permits large catch-up</div>
+              <div className="text-[#848E9C]">3. Slot Monotonicity: Clock slot &gt; previous publish_slot</div>
+              <div className="text-[#848E9C]">4. Non-Zero Confidence: conf &gt; 0 enforced</div>
+            </div>
+          </div>
+        </div>
+
         {/* Asset Vector Logos & Open License Attribution */}
         <div className="bg-[#0E1217] rounded-lg border bp-border p-4 space-y-3">
           <div className="flex items-center justify-between">

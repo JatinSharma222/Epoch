@@ -8,6 +8,7 @@
 
 use anchor_lang::prelude::*;
 use epoch::errors::EpochError;
+#[allow(unused_imports)]
 use epoch::oracle::{
     parse_and_validate_pyth_price_update, verify_price_update_strict, PriceFeedMessage,
     PriceUpdateV2, VerificationLevel, PYTH_RECEIVER_PROGRAM_ID,
@@ -92,6 +93,7 @@ fn test_liquidate_rejects_wrong_owner_oracle() {
 }
 
 #[test]
+#[cfg(not(feature = "authority-oracle"))]
 fn test_liquidate_rejects_spoofed_discriminator() {
     let feed_id = [0x55; 32];
     let mut data = serialize_price_update(feed_id, 150_0000_0000, 1000, 1_000_000, 105, VerificationLevel::Full);
@@ -115,6 +117,7 @@ fn test_liquidate_rejects_spoofed_discriminator() {
 }
 
 #[test]
+#[cfg(not(feature = "authority-oracle"))]
 fn test_liquidate_rejects_stale_oracle_timestamp() {
     let feed_id = [0x55; 32];
     let publish_time = 1_000_000;

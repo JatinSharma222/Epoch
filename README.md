@@ -251,6 +251,24 @@ bun run scripts/reset_demo_state.ts
 ```
 *Result:* Verifies demo wallet balances, inspects Backstop Vault inventory, and rebalances the vault to flat (0 lots) through the on-chain auction pipeline to guarantee clean demonstration conditions. Full step-by-step test instructions are detailed in [`docs/DEMO_WALKTHROUGH.md`](docs/DEMO_WALKTHROUGH.md).
 
+### Local Lifecycle & Authority Oracle Mode (`local:up` / `local:down`)
+Epoch provides a one-command complete local development and testing environment with dynamic slot-time profiling and an off-chain multi-venue median aggregator:
+
+```bash
+# Start local validator, dynamic slot profiler, authority-oracle deployment, keeper, and app:
+bun run local:up
+
+# Execute comprehensive 8-step local end-to-end verification suite:
+bun run test:local:e2e
+
+# Cleanly stop local validator, keeper, and app:
+bun run local:down
+```
+
+- **Dynamic Slot-Time Parameter Calculation:** Profiles local slot duration across real slot transitions (measured ~400 ms nominal), deriving dynamic `batchSlots` (targeting ~1.0 s), `clearWindowSlots` (targeting ~8.0 s), and `fundingPeriodSlots`.
+- **Authority Oracle & Multi-Venue Median:** Subscribes to 6 live exchange L1 BBO feeds (Coinbase, Kraken, Bybit, Backpack, Hyperliquid, Binance), requiring $\ge 3$ sources, $\le 2\text{ s}$ freshness, $30\text{ bps}$ outlier dropping, and on-chain 100 bps max price jump per update.
+- **Local E2E Verification:** Tests user deposits, 0.1 and 1.0 SOL trade executions, oversize order margin rejection, flat account withdrawal, withdrawal during oracle outage, keeper crash recovery, venue disconnects, and on-chain collateral conservation invariants (I-1, I-8, I-10).
+
 ---
 
 ## 5. Known Limitations

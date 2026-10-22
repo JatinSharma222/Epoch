@@ -1110,6 +1110,74 @@
       ]
     },
     {
+      "name": "post_price",
+      "docs": [
+        "Authority-only price post instruction for Authority Oracle mode."
+      ],
+      "discriminator": [
+        130,
+        245,
+        138,
+        141,
+        114,
+        50,
+        13,
+        48
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "price_update",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  114,
+                  97,
+                  99,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "price",
+          "type": "u64"
+        },
+        {
+          "name": "conf",
+          "type": "u64"
+        },
+        {
+          "name": "publish_time",
+          "type": "i64"
+        }
+      ]
+    },
+    {
       "name": "settle_users",
       "docs": [
         "Settle users for a cleared or void batch in pages."
@@ -1472,6 +1540,19 @@
     }
   ],
   "accounts": [
+    {
+      "name": "AuthorityPriceUpdate",
+      "discriminator": [
+        51,
+        50,
+        106,
+        101,
+        70,
+        168,
+        210,
+        172
+      ]
+    },
     {
       "name": "Batch",
       "discriminator": [
@@ -1841,9 +1922,63 @@
       "code": 6041,
       "name": "InvalidVaultParameter",
       "msg": "Invalid vault parameter"
+    },
+    {
+      "code": 6042,
+      "name": "OracleConfidenceTooLow",
+      "msg": "Oracle confidence must be greater than zero"
+    },
+    {
+      "code": 6043,
+      "name": "OraclePriceJumpTooLarge",
+      "msg": "Oracle price jump exceeds maximum allowed move"
     }
   ],
   "types": [
+    {
+      "name": "AuthorityPriceUpdate",
+      "docs": [
+        "On-chain Authority oracle price update account layout."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "price",
+            "type": "u64"
+          },
+          {
+            "name": "conf",
+            "type": "u64"
+          },
+          {
+            "name": "publish_time",
+            "type": "i64"
+          },
+          {
+            "name": "publish_slot",
+            "type": "u64"
+          },
+          {
+            "name": "posted_slot",
+            "type": "u64"
+          },
+          {
+            "name": "_reserved",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
     {
       "name": "Batch",
       "docs": [

@@ -11,6 +11,7 @@ name = "epoch"
 
 [features]
 default = []
+authority-oracle = []
 cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []

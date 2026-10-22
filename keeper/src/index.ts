@@ -21,7 +21,14 @@ try {
   }
 } catch {}
 
-const rpcUrl = process.env.EPOCH_RPC_URL || "https://api.devnet.solana.com";
+let rpcUrl = process.env.EPOCH_RPC_URL || "https://api.devnet.solana.com";
+if (process.argv.includes("--local") || process.argv.includes("--localnet")) {
+  rpcUrl = "http://127.0.0.1:8899";
+}
+const rpcIdx = process.argv.indexOf("--rpc");
+if (rpcIdx !== -1 && process.argv[rpcIdx + 1]) {
+  rpcUrl = process.argv[rpcIdx + 1];
+}
 const wsUrl = process.env.EPOCH_WS_URL;
 const programIdStr = process.env.EPOCH_PROGRAM_ID || defaultProgramId;
 const keypairPath =
@@ -29,6 +36,10 @@ const keypairPath =
 const databaseUrl = process.env.EPOCH_DATABASE_URL;
 
 const isOnce = process.argv.includes("--once");
+const oracleMode: "pyth" | "authority" =
+  process.argv.includes("--authority") || process.env.EPOCH_ORACLE_MODE === "authority"
+    ? "authority"
+    : "pyth";
 const pollIntervalMs = parseInt(
   process.env.EPOCH_KEEPER_INTERVAL_MS || "1000",
   10
@@ -43,6 +54,7 @@ const config: KeeperConfig = {
   commitment: "confirmed",
   pollIntervalMs,
   pageSize: 10,
+  oracleMode,
   network: rpcUrl.includes("devnet")
     ? "devnet"
     : rpcUrl.includes("localhost") || rpcUrl.includes("127.0.0.1")
@@ -54,6 +66,7 @@ async function main() {
   console.log("=== Epoch Permissionless Keeper v1 ===");
   console.log(`RPC URL:     ${config.rpcUrl}`);
   console.log(`Program ID:  ${config.programId.toBase58()}`);
+  console.log(`Oracle Mode: ${config.oracleMode} [CONFIGURED]`);
   console.log(`Network:     ${config.network} [SOURCED]`);
   console.log(`Mode:        ${isOnce ? "Single Tick (--once)" : "Continuous Loop"}`);
   console.log("======================================");

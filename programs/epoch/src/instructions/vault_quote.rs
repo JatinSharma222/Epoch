@@ -1,7 +1,7 @@
 use crate::errors::EpochError;
 use crate::events::{VaultQuoteSkipped, VaultQuoted, VaultSkipReason};
 use crate::instructions::place_order::check_margin_requirement;
-use crate::oracle::parse_and_validate_pyth_price_update;
+use crate::oracle::parse_and_validate_oracle_price_account;
 use crate::state::constants::{CENTER_TICK, MAX_ORDERS, RING_SIZE};
 use crate::state::{Batch, BatchStatus, Market, OrderSide, OrderStatus, UserAccount};
 use anchor_lang::prelude::*;
@@ -90,10 +90,11 @@ pub fn handle_vault_quote(ctx: Context<VaultQuote>, params: VaultQuoteParams) ->
         return Ok(());
     }
 
-    // 4. Guards: Check oracle freshness & confidence via on-chain Pyth account
-    let pyth_data = match parse_and_validate_pyth_price_update(
+    // 4. Guards: Check oracle freshness & confidence via on-chain oracle account
+    let pyth_data = match parse_and_validate_oracle_price_account(
         &ctx.accounts.price_update,
         &market.oracle_feed_id,
+        &ctx.accounts.market.key(),
     ) {
         Ok(data) => data,
         Err(_) => {

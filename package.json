@@ -1,6 +1,9 @@
 {
   "license": "ISC",
   "scripts": {
+    "local:up": "bun run scripts/local_up.ts",
+    "local:down": "bun run scripts/local_down.ts",
+    "test:local:e2e": "EPOCH_RPC_URL=http://127.0.0.1:8899 bun run scripts/test_local_e2e.ts",
     "export:snapshot": "bun run scripts/export_snapshot.ts",
     "soak": "bun run scripts/soak_test.ts",
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",

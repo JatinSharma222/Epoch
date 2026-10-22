@@ -12,6 +12,7 @@ export interface KeeperConfig {
   pollIntervalMs?: number;
   pageSize?: number;
   oracleFeedId?: string;
+  oracleMode?: "pyth" | "authority";
   network?: "devnet" | "localnet" | "mainnet";
 }
 

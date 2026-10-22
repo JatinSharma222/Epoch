@@ -50,6 +50,10 @@ This document provides a transparent, rigorous accounting of the current boundar
    - The Epoch UI handles RPC outages via an explicit, non-simulated warning banner (`DEVNET RPC OUTAGE: Solana Devnet RPC cluster is unreachable. Live widgets are frozen.`), completely disabling synthetic fallbacks.
 3. **Keeper Centralization in Devnet Release:**
    - While the on-chain protocol is 100% permissionless (anyone can crank `clear_batch`, `settle_users`, or `expire_and_release`), the automated keeper is currently provided as a local node daemon. In a production mainnet deployment, a distributed cranker network with MEV-resistant tips is required.
+4. **Oracle Availability Modes & Multi-Venue Redistribution Terms:**
+   - **Pyth Mode:** Pull oracle architecture consuming `PriceUpdateV2` from the Pyth Solana Receiver program. Dependent on Pyth Hermes endpoint availability and rate limits.
+   - **Authority Oracle (Test / Local Mode):** Compile-time feature `authority-oracle` enabling authority-signed median prices derived from 6 independent L1 book-ticker feeds (Coinbase, Kraken, Bybit, Backpack, Hyperliquid, Binance). Enforces $\le 2\text{ s}$ freshness, $30\text{ bps}$ outlier dropping, quorum $\ge 3$, 100 bps max price jump per update (bypassed after 50 slots outage), and slot monotonicity.
+   - **Data Redistribution Limits:** Major exchange terms of service (Coinbase Market Data Terms, Kraken API Terms, Binance/Bybit API agreements) prohibit commercial redistribution of raw tick streams or derived works without formal licensing. Accordingly, Epoch displays only the consolidated aggregate median price and active venue count in client UIs, strictly suppressing raw individual venue feeds.
 
 ---
 
