@@ -1,0 +1,148 @@
+{
+  "timestamp": "2026-10-22T04:56:53.403Z",
+  "networkEnvironment": "local-laptop",
+  "medianPrice": 105.42,
+  "healthyCount": 7,
+  "venues": [
+    {
+      "id": "coinbase",
+      "name": "Coinbase Exchange",
+      "pair": "SOL-USD",
+      "basis": "USD",
+      "restStatus": 200,
+      "restLatencyMs": 216,
+      "restPrice": 105.44,
+      "wsConnected": true,
+      "wsLatencyMs": 1905,
+      "wsPrice": 105.43,
+      "regionBlocked": false,
+      "keyNeeded": false,
+      "rateLimits": {
+        "rest": "10-15 req/sec per IP",
+        "ws": "750 msg/sec, 10-100 subscriptions per connection"
+      },
+      "termsUrl": "https://www.coinbase.com/legal/user_agreement",
+      "deviationFromMedianBps": 0.9
+    },
+    {
+      "id": "kraken",
+      "name": "Kraken",
+      "pair": "SOL/USD",
+      "basis": "USD",
+      "restStatus": 200,
+      "restLatencyMs": 427,
+      "restPrice": 105.42,
+      "wsConnected": true,
+      "wsLatencyMs": 1826,
+      "wsPrice": 105.42,
+      "regionBlocked": false,
+      "keyNeeded": false,
+      "rateLimits": {
+        "rest": "Tiered token pool (decay 0.33-1 pt/s; ~1 req/s safe)",
+        "ws": "150 connections per IP, 50 subscriptions per socket"
+      },
+      "termsUrl": "https://www.kraken.com/legal",
+      "deviationFromMedianBps": 0
+    },
+    {
+      "id": "backpack",
+      "name": "Backpack Exchange",
+      "pair": "SOL_USDC",
+      "basis": "USDC",
+      "restStatus": 200,
+      "restLatencyMs": 405,
+      "restPrice": 105.33,
+      "wsConnected": true,
+      "wsLatencyMs": 1220,
+      "wsPrice": 105.33,
+      "regionBlocked": false,
+      "keyNeeded": false,
+      "rateLimits": {
+        "rest": "2,000 req/min per subaccount/IP",
+        "ws": "10 connections per IP, 100 subscriptions per stream"
+      },
+      "termsUrl": "https://backpack.exchange/terms",
+      "deviationFromMedianBps": -8.5
+    },
+    {
+      "id": "hyperliquid",
+      "name": "Hyperliquid",
+      "pair": "SOL",
+      "basis": "Perp-Mid (USDC)",
+      "restStatus": 200,
+      "restLatencyMs": 300,
+      "restPrice": 105.485,
+      "wsConnected": true,
+      "wsLatencyMs": 2245,
+      "wsPrice": 105.485,
+      "regionBlocked": false,
+      "keyNeeded": false,
+      "rateLimits": {
+        "rest": "1,200 weight units/min per IP",
+        "ws": "10 concurrent connections, 1,000 subscriptions per IP"
+      },
+      "termsUrl": "https://hyperliquid.xyz/terms",
+      "deviationFromMedianBps": 6.2
+    },
+    {
+      "id": "binance",
+      "name": "Binance",
+      "pair": "SOLUSDC",
+      "basis": "USDC",
+      "restStatus": 200,
+      "restLatencyMs": 301,
+      "restPrice": 105.45,
+      "wsConnected": true,
+      "wsLatencyMs": 3807,
+      "wsPrice": 105.45,
+      "regionBlocked": false,
+      "keyNeeded": false,
+      "rateLimits": {
+        "rest": "1,200 weight units/min per IP",
+        "ws": "5 incoming msg/sec, 300 connections per IP"
+      },
+      "termsUrl": "https://www.binance.com/en/terms",
+      "deviationFromMedianBps": 2.8
+    },
+    {
+      "id": "bybit",
+      "name": "Bybit",
+      "pair": "SOLUSDC",
+      "basis": "USDC",
+      "restStatus": 200,
+      "restLatencyMs": 316,
+      "restPrice": 105.4,
+      "wsConnected": true,
+      "wsLatencyMs": 670,
+      "wsPrice": 105.4,
+      "regionBlocked": false,
+      "keyNeeded": false,
+      "rateLimits": {
+        "rest": "120 req/sec per IP for public endpoints",
+        "ws": "500 subscriptions per connection; 20s heartbeat ping"
+      },
+      "termsUrl": "https://www.bybit.com/en/terms-service/terms-of-service/",
+      "deviationFromMedianBps": -1.9
+    },
+    {
+      "id": "okx",
+      "name": "OKX",
+      "pair": "SOL-USDC",
+      "basis": "USDC",
+      "restStatus": "TIMEOUT",
+      "restLatencyMs": 4005,
+      "restPrice": null,
+      "wsConnected": true,
+      "wsLatencyMs": 1122,
+      "wsPrice": 105.41,
+      "regionBlocked": false,
+      "keyNeeded": false,
+      "rateLimits": {
+        "rest": "20 req / 2 seconds per IP",
+        "ws": "480 connections/hour; 30s heartbeat"
+      },
+      "termsUrl": "https://www.okx.com/help/okx-terms-of-service",
+      "deviationFromMedianBps": -0.9
+    }
+  ]
+}
