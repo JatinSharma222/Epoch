@@ -177,6 +177,8 @@ pub struct Market {
     pub funding_index: i128,
     /// Admin authority (devnet only; can update params and fund vault).
     pub admin: Pubkey,
+    /// Dedicated oracle authority for posting prices in Authority Oracle mode.
+    pub oracle_authority: Pubkey,
     /// Mock USDC mint address.
     pub quote_mint: Pubkey,
     /// SPL token account holding all user collateral.
@@ -208,7 +210,7 @@ pub struct Market {
     /// Padding to align to 8-byte boundary.
     pub _pad_bump: [u8; 7],
     /// Reserved space for future fields without reallocation.
-    pub _reserved: [u8; 56],
+    pub _reserved: [u8; 24],
 }
 
 const _: () = {

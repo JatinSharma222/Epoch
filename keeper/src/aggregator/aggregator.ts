@@ -21,7 +21,45 @@
 import * as fs from "fs";
 import * as path from "path";
 import { VenueFeed, FeedConfig } from "./venue_feed";
-import { AggregatePrice, VenueHealth, AggregatorLogEntry } from "./types";
+import { AggregatePrice, VenueHealth, AggregatorLogEntry, AggregatorOptions, VenueDecision, InclusionDecision } from "./types";
+
+function createCoinbaseLevel2BatchParser() {
+  const bids = new Map<number, number>();
+  const asks = new Map<number, number>();
+  let bestBid = 0;
+  let bestAsk = 0;
+
+  return (msg: any, recvMs: number) => {
+    if (msg.type === "snapshot" && msg.bids && msg.asks) {
+      bids.clear();
+      asks.clear();
+      for (const [pStr, sStr] of msg.bids) bids.set(parseFloat(pStr), parseFloat(sStr));
+      for (const [pStr, sStr] of msg.asks) asks.set(parseFloat(pStr), parseFloat(sStr));
+      bestBid = 0;
+      for (const p of bids.keys()) if (p > bestBid) bestBid = p;
+      bestAsk = Infinity;
+      for (const p of asks.keys()) if (p < bestAsk) bestAsk = p;
+      return { bid: bestBid, ask: bestAsk, exchTimeMs: recvMs };
+    } else if (msg.type === "l2update" && msg.changes) {
+      for (const [side, pStr, sStr] of msg.changes) {
+        const p = parseFloat(pStr);
+        const s = parseFloat(sStr);
+        const book = side === "buy" ? bids : asks;
+        if (s === 0) book.delete(p);
+        else book.set(p, s);
+      }
+      bestBid = 0;
+      for (const p of bids.keys()) if (p > bestBid) bestBid = p;
+      bestAsk = Infinity;
+      for (const p of asks.keys()) if (p < bestAsk) bestAsk = p;
+      if (bestBid > 0 && bestAsk < Infinity) {
+        const exchTimeMs = msg.time ? Date.parse(msg.time) : recvMs;
+        return { bid: bestBid, ask: bestAsk, exchTimeMs };
+      }
+    }
+    return null;
+  };
+}
 
 export const APPROVED_FEEDS: FeedConfig[] = [
   {
@@ -32,18 +70,9 @@ export const APPROVED_FEEDS: FeedConfig[] = [
     subPayload: {
       type: "subscribe",
       product_ids: ["SOL-USD"],
-      channels: ["ticker"],
+      channels: ["level2_batch"],
     },
-    parse: (msg) => {
-      if (msg.type === "ticker" && msg.best_bid && msg.best_ask) {
-        return {
-          bid: parseFloat(msg.best_bid),
-          ask: parseFloat(msg.best_ask),
-          exchTimeMs: msg.time ? Date.parse(msg.time) : undefined,
-        };
-      }
-      return null;
-    },
+    parse: createCoinbaseLevel2BatchParser(),
   },
   {
     id: "kraken",
@@ -52,7 +81,7 @@ export const APPROVED_FEEDS: FeedConfig[] = [
     wsUrl: "wss://ws.kraken.com/v2",
     subPayload: {
       method: "subscribe",
-      params: { channel: "ticker", symbol: ["SOL/USD"] },
+      params: { channel: "ticker", symbol: ["SOL/USD"], event_trigger: "bbo" },
     },
     parse: (msg) => {
       if (msg.channel === "ticker" && msg.data?.[0]) {
@@ -154,19 +183,70 @@ export class MultiVenueAggregator {
   private logWriteStream: fs.WriteStream | null = null;
   private lastLoggedMs: number = 0;
   private isRunning: boolean = false;
+  private heartbeatMaxAgeMs: number;
+  private maxPriceAgeMs: number;
+  private excludedVenues: Set<string>;
+  private monitorOnlyVenues: Set<string>;
 
   // Single cached aggregate in memory
   private cachedAggregate: AggregatePrice | null = null;
+  private lastVenueDecisions: VenueDecision[] = [];
 
-  constructor(logFilePath?: string) {
+  constructor(optionsOrLogPath?: string | AggregatorOptions) {
+    let options: AggregatorOptions = {};
+    if (typeof optionsOrLogPath === "string") {
+      options = { logFilePath: optionsOrLogPath };
+    } else if (optionsOrLogPath) {
+      options = optionsOrLogPath;
+    }
+
     this.logFilePath =
-      logFilePath ||
+      options.logFilePath ||
       path.resolve(__dirname, "../../logs/oracle_aggregator.jsonl");
 
-    // Initialize feeds
-    for (const conf of APPROVED_FEEDS) {
-      this.feeds.set(conf.id, new VenueFeed(conf));
+    this.heartbeatMaxAgeMs = options.heartbeatMaxAgeMs || 10_000; // default 10 seconds for WS health
+    this.maxPriceAgeMs = options.maxPriceAgeMs || 3_000;          // default 3 seconds max price age for median
+
+    // Venue Policy:
+    // 1. Coinbase is EXCLUDED by default due to strict Terms of Service §4 forbidding benchmark/derivatives index creation.
+    // 2. Hyperliquid is MONITOR-ONLY by default (logged, but not in median).
+    const defaultExcluded = ["coinbase"];
+    const defaultMonitorOnly = ["hyperliquid"];
+
+    const envExcluded = process.env.EPOCH_EXCLUDED_VENUES
+      ? process.env.EPOCH_EXCLUDED_VENUES.split(",").map((s) => s.trim().toLowerCase())
+      : (options.excludedVenues ? [] : defaultExcluded);
+    const configExcluded = options.excludedVenues
+      ? options.excludedVenues.map((s) => s.trim().toLowerCase())
+      : [];
+
+    const envMonitorOnly = process.env.EPOCH_MONITOR_ONLY_VENUES
+      ? process.env.EPOCH_MONITOR_ONLY_VENUES.split(",").map((s) => s.trim().toLowerCase())
+      : (options.monitorOnlyVenues ? [] : defaultMonitorOnly);
+    const configMonitorOnly = options.monitorOnlyVenues
+      ? options.monitorOnlyVenues.map((s) => s.trim().toLowerCase())
+      : [];
+
+    // Default venue set for any public deployment is NONE until explicitly approved
+    const isPublic = options.isPublicDeployment ?? (process.env.EPOCH_PUBLIC_DEPLOYMENT === "true");
+    if (isPublic && !options.excludedVenues && !process.env.EPOCH_APPROVED_VENUES) {
+      this.excludedVenues = new Set(APPROVED_FEEDS.map((f) => f.id));
+      this.monitorOnlyVenues = new Set();
+    } else {
+      this.excludedVenues = new Set([...envExcluded, ...configExcluded]);
+      this.monitorOnlyVenues = new Set([...envMonitorOnly, ...configMonitorOnly]);
     }
+
+    // Initialize feeds (including monitor-only, but excluding explicitly excluded feeds)
+    for (const conf of APPROVED_FEEDS) {
+      if (!this.excludedVenues.has(conf.id.toLowerCase())) {
+        this.feeds.set(conf.id, new VenueFeed(conf));
+      }
+    }
+  }
+
+  public getExcludedVenues(): string[] {
+    return Array.from(this.excludedVenues);
   }
 
   public start(): void {
@@ -180,7 +260,7 @@ export class MultiVenueAggregator {
     }
     this.logWriteStream = fs.createWriteStream(this.logFilePath, { flags: "a" });
 
-    // Start all feeds
+    // Start all configured feeds
     for (const feed of this.feeds.values()) {
       feed.start();
     }
@@ -202,37 +282,116 @@ export class MultiVenueAggregator {
   }
 
   /**
-   * Computes the current median aggregate from fresh venues.
-   * Returns null if fewer than 3 venues are fresh or if quorum fails.
+   * Computes the current median aggregate from active venues.
+   * Liveness & Policy Rules:
+   * 1. Coinbase is excluded from the default set.
+   * 2. Hyperliquid is monitor-only (logged, never in median).
+   * 3. Max price age of 3,000 ms (3s) for median inclusion.
+   * 4. Quorum requires >= 3 fresh, non-outlier sources.
+   * 5. Outliers > 30 bps from raw median are dropped.
    */
   public getLatestAggregate(): AggregatePrice | null {
     const now = Date.now();
-    const freshVenues: { id: string; mid: number; bid: number; ask: number; ageMs: number }[] = [];
+    const venueDecisions: VenueDecision[] = [];
+    const activeCandidates: { id: string; name: string; mid: number; bid: number; ask: number; ageMs: number; heartbeatAgeMs: number }[] = [];
 
-    // 1. Collect fresh venue prices (at most 2000 ms old)
-    for (const [id, feed] of this.feeds.entries()) {
-      const price = feed.getLatestPrice();
-      if (price) {
-        const age = now - price.arrivalTimeMs;
-        if (age <= 2000 && price.mid > 0) {
-          freshVenues.push({
-            id,
-            mid: price.mid,
-            bid: price.bid,
-            ask: price.ask,
-            ageMs: age,
-          });
-        }
+    // 1. Evaluate all approved feeds
+    for (const conf of APPROVED_FEEDS) {
+      const feed = this.feeds.get(conf.id);
+      if (!feed || this.excludedVenues.has(conf.id.toLowerCase())) {
+        venueDecisions.push({
+          venueId: conf.id,
+          name: conf.name,
+          state: "EXCLUDED",
+          ageMs: Infinity,
+          heartbeatAgeMs: Infinity,
+          decision: "DROPPED_EXCLUDED",
+          reason: conf.id === "coinbase"
+            ? "Excluded by policy: Coinbase Terms §4 forbids benchmark/derivatives index creation"
+            : "Excluded by operator configuration",
+        });
+        continue;
       }
+
+      const health = feed.getHealth();
+      const heartbeatAge = health.lastMessageMs > 0 ? now - health.lastMessageMs : Infinity;
+      const latestPrice = feed.getLatestPrice();
+      const priceAge = latestPrice ? now - latestPrice.arrivalTimeMs : Infinity;
+
+      if (this.monitorOnlyVenues.has(conf.id.toLowerCase())) {
+        venueDecisions.push({
+          venueId: conf.id,
+          name: conf.name,
+          state: "MONITOR_ONLY",
+          price: latestPrice?.mid,
+          ageMs: priceAge,
+          heartbeatAgeMs: heartbeatAge,
+          decision: "DROPPED_MONITOR_ONLY",
+          reason: "Configured as monitor-only (logged in telemetry, excluded from median)",
+        });
+        continue;
+      }
+
+      if (!feed.isActive(this.heartbeatMaxAgeMs)) {
+        venueDecisions.push({
+          venueId: conf.id,
+          name: conf.name,
+          state: health.state,
+          price: latestPrice?.mid,
+          ageMs: priceAge,
+          heartbeatAgeMs: heartbeatAge,
+          decision: "DROPPED_DISCONNECTED",
+          reason: `WebSocket inactive or heartbeat age (${heartbeatAge}ms) > ${this.heartbeatMaxAgeMs}ms`,
+        });
+        continue;
+      }
+
+      // Check 3s max price age limit for median inclusion
+      if (priceAge > this.maxPriceAgeMs) {
+        venueDecisions.push({
+          venueId: conf.id,
+          name: conf.name,
+          state: "STALE",
+          price: latestPrice?.mid,
+          ageMs: priceAge,
+          heartbeatAgeMs: heartbeatAge,
+          decision: "DROPPED_STALE_PRICE",
+          reason: `Price age (${priceAge}ms) exceeds maximum allowable ${this.maxPriceAgeMs}ms threshold`,
+        });
+        continue;
+      }
+
+      activeCandidates.push({
+        id: conf.id,
+        name: conf.name,
+        mid: latestPrice!.mid,
+        bid: latestPrice!.bid,
+        ask: latestPrice!.ask,
+        ageMs: priceAge,
+        heartbeatAgeMs: heartbeatAge,
+      });
     }
 
-    // 2. Quorum check: requires at least 3 fresh venues
-    if (freshVenues.length < 3) {
+    // 2. Quorum check: requires at least 3 active venues
+    if (activeCandidates.length < 3) {
+      for (const v of activeCandidates) {
+        venueDecisions.push({
+          venueId: v.id,
+          name: v.name,
+          state: "CONNECTED",
+          price: v.mid,
+          ageMs: v.ageMs,
+          heartbeatAgeMs: v.heartbeatAgeMs,
+          decision: "INCLUDED",
+          reason: `Fresh price (age=${v.ageMs}ms), but quorum not met (${activeCandidates.length} < 3 active sources)`,
+        });
+      }
+      this.lastVenueDecisions = venueDecisions;
       return null;
     }
 
     // 3. Compute initial median
-    const sortedMids = [...freshVenues].map((v) => v.mid).sort((a, b) => a - b);
+    const sortedMids = [...activeCandidates].map((v) => v.mid).sort((a, b) => a - b);
     const midIdx = Math.floor(sortedMids.length / 2);
     const rawMedian =
       sortedMids.length % 2 === 0
@@ -240,20 +399,41 @@ export class MultiVenueAggregator {
         : sortedMids[midIdx];
 
     // 4. Outlier rejection: drop any venue > 30 bps from median
-    const validVenues: typeof freshVenues = [];
+    const validVenues: typeof activeCandidates = [];
     const outliersDropped: string[] = [];
 
-    for (const v of freshVenues) {
+    for (const v of activeCandidates) {
       const deviationBps = (Math.abs(v.mid - rawMedian) / rawMedian) * 10000;
       if (deviationBps > 30.0) {
         outliersDropped.push(v.id);
+        venueDecisions.push({
+          venueId: v.id,
+          name: v.name,
+          state: "CONNECTED",
+          price: v.mid,
+          ageMs: v.ageMs,
+          heartbeatAgeMs: v.heartbeatAgeMs,
+          decision: "DROPPED_OUTLIER",
+          reason: `Deviation (${deviationBps.toFixed(1)} bps) exceeds 30 bps outlier threshold`,
+        });
       } else {
         validVenues.push(v);
+        venueDecisions.push({
+          venueId: v.id,
+          name: v.name,
+          state: "CONNECTED",
+          price: v.mid,
+          ageMs: v.ageMs,
+          heartbeatAgeMs: v.heartbeatAgeMs,
+          decision: "INCLUDED",
+          reason: `Included in median (age=${v.ageMs}ms <= 3000ms, dev=${deviationBps.toFixed(1)} bps)`,
+        });
       }
     }
 
     // Require at least 3 venues after outlier drop
     if (validVenues.length < 3) {
+      this.lastVenueDecisions = venueDecisions;
       return null;
     }
 
@@ -286,8 +466,10 @@ export class MultiVenueAggregator {
     const confMicroUsdc = Math.round(confUsd * 1_000_000);
 
     const sourcePrices: Record<string, number> = {};
+    const sourceAgesMs: Record<string, number> = {};
     for (const v of validVenues) {
       sourcePrices[v.id] = v.mid;
+      sourceAgesMs[v.id] = v.ageMs;
     }
 
     const aggregate: AggregatePrice = {
@@ -298,27 +480,58 @@ export class MultiVenueAggregator {
       publishTimeSec: Math.floor(now / 1000),
       timestampMs: now,
       venuesTotal: this.feeds.size,
-      venuesFresh: freshVenues.length,
+      venuesFresh: validVenues.length,
       venuesUsed: validVenues.length,
       outliersDropped,
       isLowConfidence,
       spreadBps: Math.round(spreadBps * 10) / 10,
       sourcePrices,
+      sourceAgesMs,
+      venueDecisions,
     };
 
     this.cachedAggregate = aggregate;
+    this.lastVenueDecisions = venueDecisions;
 
     // Rate-limited log append (at most once every 500ms to conserve disk)
     if (now - this.lastLoggedMs >= 500) {
       this.lastLoggedMs = now;
-      this.logTick(aggregate, freshVenues, rawMedian, outliersDropped);
+      this.logTick(aggregate, validVenues, rawMedian, outliersDropped);
     }
 
     return aggregate;
   }
 
+  public getVenueDecisions(): VenueDecision[] {
+    this.getLatestAggregate();
+    return this.lastVenueDecisions;
+  }
+
   public getVenueHealth(): VenueHealth[] {
-    return Array.from(this.feeds.values()).map((f) => f.getHealth());
+    const list: VenueHealth[] = [];
+    for (const conf of APPROVED_FEEDS) {
+      if (this.excludedVenues.has(conf.id.toLowerCase())) {
+        list.push({
+          venueId: conf.id,
+          name: conf.name,
+          state: "EXCLUDED",
+          lastMessageMs: 0,
+          messageCount: 0,
+          errorCount: 0,
+          reconnectCount: 0,
+        });
+      } else {
+        const feed = this.feeds.get(conf.id);
+        if (feed) {
+          const h = feed.getHealth();
+          if (this.monitorOnlyVenues.has(conf.id.toLowerCase())) {
+            h.state = "MONITOR_ONLY";
+          }
+          list.push(h);
+        }
+      }
+    }
+    return list;
   }
 
   private logTick(

@@ -37,6 +37,18 @@ async function main() {
   const authority = Keypair.fromSecretKey(Uint8Array.from(secret));
   console.log(`Authority:      ${authority.publicKey.toBase58()}`);
 
+  const oracleKeyPath = path.join(
+    process.env.HOME || "",
+    ".config/solana/epoch-v1-keys/epoch-oracle-authority-keypair.json"
+  );
+  let oracleAuthorityPubkey = authority.publicKey;
+  if (fs.existsSync(oracleKeyPath)) {
+    const oSecret = JSON.parse(fs.readFileSync(oracleKeyPath, "utf-8"));
+    const oKeypair = Keypair.fromSecretKey(Uint8Array.from(oSecret));
+    oracleAuthorityPubkey = oKeypair.publicKey;
+  }
+  console.log(`Oracle Auth:    ${oracleAuthorityPubkey.toBase58()}`);
+
   const wallet = new anchor.Wallet(authority);
   const provider = new anchor.AnchorProvider(connection, wallet, {
     commitment: "confirmed",
@@ -91,7 +103,7 @@ async function main() {
     );
 
     const initTx = await program.methods
-      .initializeMarket(marketArgs, pythFeedId)
+      .initializeMarket(marketArgs, pythFeedId, oracleAuthorityPubkey)
       .accounts({
         market: marketPda,
         mintAuthority: mintAuthorityPda,

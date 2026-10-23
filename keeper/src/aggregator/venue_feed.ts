@@ -69,14 +69,36 @@ export class VenueFeed {
     return this.latestPrice;
   }
 
+  /**
+   * Venue is ACTIVE if WebSocket connection is open (CONNECTED),
+   * heartbeat/message was received within maxHeartbeatAgeMs (default 10s),
+   * and a non-zero valid mid price is recorded.
+   */
+  public isActive(maxHeartbeatAgeMs: number = 10_000): boolean {
+    if (this.state !== "CONNECTED") return false;
+    const now = Date.now();
+    const age = now - this.lastMessageMs;
+    return age <= maxHeartbeatAgeMs && this.latestPrice !== null && this.latestPrice.mid > 0;
+  }
+
+  /**
+   * Returns the last valid mid price if the venue connection is healthy and active.
+   */
+  public getEffectivePrice(maxHeartbeatAgeMs: number = 10_000): VenuePrice | null {
+    if (!this.isActive(maxHeartbeatAgeMs)) {
+      return null;
+    }
+    return this.latestPrice;
+  }
+
   public getHealth(): VenueHealth {
     const now = Date.now();
     let computedState = this.state;
     if (this.state === "CONNECTED") {
       const age = now - this.lastMessageMs;
-      if (age > 5000) {
+      if (age > 10_000) {
         computedState = "STALE";
-      } else if (age > 2000) {
+      } else if (age > 4_000) {
         computedState = "DEGRADED";
       }
     }

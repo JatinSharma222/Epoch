@@ -827,6 +827,10 @@
               32
             ]
           }
+        },
+        {
+          "name": "oracle_authority",
+          "type": "pubkey"
         }
       ]
     },
@@ -2367,6 +2371,10 @@
             "type": "pubkey"
           },
           {
+            "name": "oracle_authority",
+            "type": "pubkey"
+          },
+          {
             "name": "quote_mint",
             "docs": [
               "Mock USDC mint address."
@@ -2497,7 +2505,7 @@
             "type": {
               "array": [
                 "u8",
-                56
+                24
               ]
             }
           }

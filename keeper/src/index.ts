@@ -14,6 +14,11 @@ import * as path from "path";
 
 let defaultProgramId = "ER8SSfvp7roW6asG429Uv3mHY1aEd1jxGBdigLu27284";
 try {
+  const keeperIdlPath = path.resolve(__dirname, "./epoch_idl.json");
+  if (fs.existsSync(keeperIdlPath)) {
+    const rawIdl = JSON.parse(fs.readFileSync(keeperIdlPath, "utf-8"));
+    if (rawIdl.address) defaultProgramId = rawIdl.address;
+  }
   const configPath = path.resolve(__dirname, "../../epoch.config.json");
   if (fs.existsSync(configPath)) {
     const raw = JSON.parse(fs.readFileSync(configPath, "utf-8"));

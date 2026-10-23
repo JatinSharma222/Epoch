@@ -55,3 +55,5 @@ Thumbs.db
 keeper/logs/
 *.jsonl
 logs/
+.local_pids.json
+.local_*

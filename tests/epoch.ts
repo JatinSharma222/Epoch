@@ -130,8 +130,9 @@ describe("Epoch Program Integration Tests", () => {
 
   describe("T-05: Market Initialization", () => {
     it("Initializes the Market, mock USDC mint, and collateral vault", async () => {
+      const oracleAuthKeypair = Keypair.generate();
       await program.methods
-        .initializeMarket(defaultMarketArgs, dummyOracleFeedId)
+        .initializeMarket(defaultMarketArgs, dummyOracleFeedId, oracleAuthKeypair.publicKey)
         .accounts({
           market: marketPda,
           mintAuthority: mintAuthorityPda,
@@ -146,6 +147,7 @@ describe("Epoch Program Integration Tests", () => {
 
       const marketAccount = await program.account.market.fetch(marketPda);
       expect(marketAccount.admin.toBase58()).to.equal(admin.publicKey.toBase58());
+      expect(marketAccount.oracleAuthority.toBase58()).to.equal(oracleAuthKeypair.publicKey.toBase58());
       expect(marketAccount.quoteMint.toBase58()).to.equal(quoteMintPda.toBase58());
       expect(marketAccount.collateralVault.toBase58()).to.equal(
         collateralVaultPda.toBase58()

@@ -23,8 +23,9 @@ pub mod epoch {
         ctx: Context<InitializeMarket>,
         args: InitializeMarketArgs,
         oracle_feed_id: [u8; 32],
+        oracle_authority: Pubkey,
     ) -> Result<()> {
-        handle_initialize_market(ctx, args, oracle_feed_id)
+        handle_initialize_market(ctx, args, oracle_feed_id, oracle_authority)
     }
 
     /// Create a new per-user account for trading and collateral accounting.
@@ -135,6 +136,7 @@ pub mod epoch {
     }
 
     /// Authority-only price post instruction for Authority Oracle mode.
+    #[cfg(feature = "authority-oracle")]
     pub fn post_price(
         ctx: Context<PostPrice>,
         price: u64,

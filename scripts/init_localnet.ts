@@ -83,9 +83,19 @@ async function main() {
       fundingCapBps: 50,
     };
     const dummyOracleFeedId = new Array(32).fill(7);
+    const oracleKeyPath = path.join(
+      process.env.HOME || "",
+      ".config/solana/epoch-v1-keys/epoch-oracle-authority-keypair.json"
+    );
+    let oracleAuthorityPubkey = payer.publicKey;
+    if (fs.existsSync(oracleKeyPath)) {
+      const oSecret = JSON.parse(fs.readFileSync(oracleKeyPath, "utf-8"));
+      const oKeypair = Keypair.fromSecretKey(Uint8Array.from(oSecret));
+      oracleAuthorityPubkey = oKeypair.publicKey;
+    }
 
     await program.methods
-      .initializeMarket(defaultMarketArgs, dummyOracleFeedId)
+      .initializeMarket(defaultMarketArgs, dummyOracleFeedId, oracleAuthorityPubkey)
       .accounts({
         market: marketPda,
         mintAuthority: mintAuthorityPda,

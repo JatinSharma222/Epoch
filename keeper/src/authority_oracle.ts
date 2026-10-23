@@ -80,17 +80,32 @@ export class AuthorityOracleService {
       // Check on-chain account to avoid posting twice in the same slot
       const currentSlot = await this.connection.getSlot();
       const oracleAccInfo = await this.connection.getAccountInfo(this.authorityPricePda);
+      let lastPublishSlot = 0;
+      let lastPublishTime = 0;
       if (oracleAccInfo && oracleAccInfo.data.length >= 72) {
-        const onChainPublishSlot = Number(oracleAccInfo.data.readBigUInt64LE(64));
-        if (currentSlot <= onChainPublishSlot) {
+        lastPublishSlot = Number(oracleAccInfo.data.readBigUInt64LE(64));
+        lastPublishTime = Number(oracleAccInfo.data.readBigInt64LE(56));
+        if (currentSlot <= lastPublishSlot) {
           return [];
         }
+      }
+
+      // Synchronize publish_time with on-chain clock (blockTime) to prevent local validator drift
+      let publishTimeSec = Math.floor(agg.timestampMs / 1000) - 1;
+      try {
+        const blockTime = await this.connection.getBlockTime(currentSlot);
+        if (blockTime !== null) {
+          publishTimeSec = blockTime;
+        }
+      } catch {}
+      if (publishTimeSec < lastPublishTime) {
+        publishTimeSec = lastPublishTime;
       }
 
       const priceBn = new anchor.BN(agg.priceMicroUsdc);
       // Guarantee confidence is strictly positive (> 0)
       const confBn = new anchor.BN(Math.max(agg.confMicroUsdc, 1000));
-      const publishTimeBn = new anchor.BN(Math.floor(agg.timestampMs / 1000) - 1);
+      const publishTimeBn = new anchor.BN(publishTimeSec);
 
       const ix = await this.program.methods
         .postPrice(priceBn, confBn, publishTimeBn)

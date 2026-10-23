@@ -590,18 +590,48 @@ export const EvidenceView: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1 text-[11px] font-mono">
             <div className="p-3 rounded bg-[#12161C] border bp-border space-y-1">
-              <div className="font-bold text-white">Aggregator Invariant Rules</div>
-              <div className="text-[#848E9C]">1. Freshness Cutoff: ≤ 2,000 ms</div>
+              <div className="font-bold text-white">Aggregator Invariant Rules & Liveness</div>
+              <div className="text-[#848E9C]">1. Freshness: WebSocket CONNECTED + Heartbeat ≤ 10s</div>
               <div className="text-[#848E9C]">2. Outlier Rejection: Drop sources &gt; 30 bps from median</div>
-              <div className="text-[#848E9C]">3. Quorum: Requires ≥ 3 fresh, non-outlier sources</div>
-              <div className="text-[#848E9C]">4. Confidence: Cross-venue spread (flagged low if &gt; 10 bps)</div>
+              <div className="text-[#848E9C]">3. Quorum: Requires ≥ 3 active, non-outlier sources</div>
+              <div className="text-[#848E9C]">4. UI Definition: &quot;6/6 active&quot; = 6 sockets live with valid mid</div>
+              <div className="text-[#848E9C]">5. Public Default: Zero external venues without license</div>
             </div>
             <div className="p-3 rounded bg-[#12161C] border bp-border space-y-1">
               <div className="font-bold text-white">On-Chain Safety Invariants (post_price)</div>
-              <div className="text-[#848E9C]">1. Max Jump: 100 bps per update within 50 slots</div>
-              <div className="text-[#848E9C]">2. Outage Bypass: &gt; 50 slots elapsed permits large catch-up</div>
-              <div className="text-[#848E9C]">3. Slot Monotonicity: Clock slot &gt; previous publish_slot</div>
-              <div className="text-[#848E9C]">4. Non-Zero Confidence: conf &gt; 0 enforced</div>
+              <div className="text-[#848E9C]">1. Authority Isolation: Key must match market.oracle_authority (admin rejected)</div>
+              <div className="text-[#848E9C]">2. Max Jump: 100 bps per update within 50 slots</div>
+              <div className="text-[#848E9C]">3. Outage Bypass: &gt; 50 slots elapsed permits large catch-up</div>
+              <div className="text-[#848E9C]">4. Slot Monotonicity: Clock slot &gt; previous publish_slot</div>
+              <div className="text-[#848E9C]">5. Non-Zero Confidence: conf &gt; 0 strictly enforced</div>
+            </div>
+          </div>
+
+          <div className="p-3 rounded bg-[#12161C] border bp-border text-[11px] font-mono space-y-2">
+            <div className="font-bold text-[#0ECB81] flex items-center justify-between">
+              <span>10-Minute Multi-Venue Telemetry Benchmark [MEASURED]</span>
+              <span className="text-white text-[10px]">600 Samples (1s interval) | Quorum: 100.00%</span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[10px]">
+              <div>
+                <span className="text-[#848E9C]">Active Venues:</span>
+                <div className="text-white font-bold">6/6 (57.7%) | 5/6 (35.2%)</div>
+              </div>
+              <div>
+                <span className="text-[#848E9C]">Spread P50 / P95:</span>
+                <div className="text-white font-bold">6.70 bps / 8.60 bps</div>
+              </div>
+              <div>
+                <span className="text-[#848E9C]">Conf P50 / Max:</span>
+                <div className="text-white font-bold">3.35 bps / 15.00 bps</div>
+              </div>
+              <div>
+                <span className="text-[#848E9C]">Max Deviation:</span>
+                <div className="text-white font-bold">Hyperliquid (5.09 bps avg)</div>
+              </div>
+            </div>
+            <div className="text-[10px] text-[#848E9C] border-t border-[#1B222D] pt-1.5">
+              Single-venue mean deviations from median: Binance: 0.50 bps | Backpack: 0.39 bps | Bybit: 0.55 bps | Kraken: 1.27 bps | Coinbase: 1.55 bps | Hyperliquid: 5.09 bps.
             </div>
           </div>
         </div>

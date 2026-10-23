@@ -105,6 +105,7 @@ pub fn handle_initialize_market(
     ctx: Context<InitializeMarket>,
     args: InitializeMarketArgs,
     oracle_feed_id: [u8; 32],
+    oracle_authority: Pubkey,
 ) -> Result<()> {
     let params: MarketParams = args.into();
     params.validate()?;
@@ -113,6 +114,7 @@ pub fn handle_initialize_market(
     let clock = Clock::get()?;
 
     market.admin = ctx.accounts.admin.key();
+    market.oracle_authority = oracle_authority;
     market.quote_mint = ctx.accounts.quote_mint.key();
     market.collateral_vault = ctx.accounts.collateral_vault.key();
     market.oracle_feed_id = oracle_feed_id;

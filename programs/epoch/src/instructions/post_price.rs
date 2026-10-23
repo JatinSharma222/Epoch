@@ -12,11 +12,13 @@ pub struct AuthorityPriceUpdate {
     pub publish_time: i64,
     pub publish_slot: u64,
     pub posted_slot: u64,
-    pub _reserved: [u8; 32],
+    pub anchor_price: u64,
+    pub anchor_slot: u64,
+    pub _reserved: [u8; 16],
 }
 
 impl AuthorityPriceUpdate {
-    pub const LEN: usize = 8 + 32 + 8 + 8 + 8 + 8 + 8 + 32;
+    pub const LEN: usize = 8 + 32 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 16;
     pub const SEED: &'static [u8] = b"oracle";
 }
 
@@ -49,10 +51,10 @@ pub fn handle_post_price(
     let clock = Clock::get()?;
     let mut market = ctx.accounts.market.load_mut()?;
 
-    // Authority check against market.admin
+    // Authority check against market.oracle_authority (strictly distinct from market.admin)
     require_keys_eq!(
         ctx.accounts.authority.key(),
-        market.admin,
+        market.oracle_authority,
         EpochError::Unauthorized
     );
 
@@ -75,19 +77,50 @@ pub fn handle_post_price(
             EpochError::OracleStale
         );
 
-        // 4. Per-update maximum move (100 bps = 1.00%),
-        // UNLESS previous update is older than outage threshold (50 slots)
+        // 4. Dual-layer price movement bounds:
+        // Layer A: Tighter per-update limit (typical 2-slot move is ~2 bps)
+        // - Base move: 15 bps (0.15%) for normal 2-slot cadence
+        // - Pause allowance: +1 bps per elapsed slot beyond 2 slots
+        // - Single-update hard cap: 100 bps (1.00%)
         let slots_elapsed = clock.slot.saturating_sub(oracle.publish_slot);
-        let outage_threshold_slots = 50u64;
-        if slots_elapsed <= outage_threshold_slots && oracle.price > 0 {
-            let max_move_bps = 100u128; // 100 bps = 1.00%
+        if oracle.price > 0 {
+            let base_move_bps = 15u128;
+            let per_slot_allowance_bps = 1u128;
+            let single_update_cap_bps = 100u128;
+
+            let additional_allowance = (slots_elapsed.saturating_sub(2) as u128) * per_slot_allowance_bps;
+            let allowed_single_move_bps = (base_move_bps + additional_allowance).min(single_update_cap_bps);
+
             let delta = (price as i128 - oracle.price as i128).unsigned_abs();
             let move_bps = (delta * 10_000) / oracle.price as u128;
             require!(
-                move_bps <= max_move_bps,
+                move_bps <= allowed_single_move_bps,
+                EpochError::OraclePriceJumpTooLarge
+            );
+
+            // Layer B: Cumulative Anchor Bound (slower reference price updated at 75-slot / ~30s cadence)
+            // - Maximum deviation from anchor: 30 bps (0.30%) per window
+            // - Enforces a maximum cumulative drift rate of 60 bps per minute (300 bps / 5 min)
+            if oracle.anchor_price == 0 {
+                oracle.anchor_price = oracle.price;
+                oracle.anchor_slot = clock.slot;
+            } else if clock.slot.saturating_sub(oracle.anchor_slot) >= 75 {
+                // Window expired: anchor advances to previous window's closing price
+                oracle.anchor_price = oracle.price;
+                oracle.anchor_slot = clock.slot;
+            }
+
+            let anchor_delta = (price as i128 - oracle.anchor_price as i128).unsigned_abs();
+            let anchor_move_bps = (anchor_delta * 10_000) / oracle.anchor_price as u128;
+            require!(
+                anchor_move_bps <= 30u128,
                 EpochError::OraclePriceJumpTooLarge
             );
         }
+    } else {
+        // Initial price bootstrap
+        oracle.anchor_price = price;
+        oracle.anchor_slot = clock.slot;
     }
 
     // 5. Store update

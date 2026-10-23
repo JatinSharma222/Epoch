@@ -27,6 +27,7 @@ fn mock_market(oracle_feed_id: [u8; 32]) -> Market {
     Market {
         funding_index: 0,
         admin: Pubkey::new_unique(),
+        oracle_authority: Pubkey::new_unique(),
         quote_mint: Pubkey::new_unique(),
         collateral_vault: Pubkey::new_unique(),
         oracle_feed_id,
@@ -42,7 +43,7 @@ fn mock_market(oracle_feed_id: [u8; 32]) -> Market {
         vault_params: VaultParams::default(),
         bump: 255,
         _pad_bump: [0; 7],
-        _reserved: [0; 56],
+        _reserved: [0; 24],
     }
 }
 

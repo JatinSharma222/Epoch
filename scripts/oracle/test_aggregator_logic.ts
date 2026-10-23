@@ -40,6 +40,8 @@ class TestableAggregator extends MultiVenueAggregator {
     const feed = (this as any).feeds.get(id);
     if (!feed) return;
     const now = Date.now();
+    (feed as any).state = "CONNECTED";
+    (feed as any).lastMessageMs = now - ageMs;
     (feed as any).latestPrice = {
       venueId: id,
       name: feed.config.name,
@@ -59,7 +61,13 @@ class TestableAggregator extends MultiVenueAggregator {
   }
 }
 
-const agg = new TestableAggregator("/dev/null");
+const agg = new TestableAggregator({
+  logFilePath: "/dev/null",
+  heartbeatMaxAgeMs: 2000,
+  excludedVenues: [],      // allow all venues for unit testing mathematical logic
+  monitorOnlyVenues: [],   // allow all venues for unit testing mathematical logic
+  maxPriceAgeMs: 2000,
+});
 
 // Test 1: Quorum requirement (< 3 sources returns null)
 agg.clearAll();

@@ -129,6 +129,7 @@ pub fn parse_and_validate_pyth_price_update(
 }
 
 /// Deserializes and validates an Authority Oracle `AuthorityPriceUpdate` account.
+#[cfg(feature = "authority-oracle")]
 pub fn parse_and_validate_authority_price_update(
     price_update_info: &AccountInfo,
     market_key: &Pubkey,
