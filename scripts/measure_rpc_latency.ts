@@ -9,7 +9,7 @@ import { Connection } from "@solana/web3.js";
 async function main() {
   const rpcUrl =
     process.env.EPOCH_RPC_URL ||
-    "https://devnet.helius-rpc.com/?api-key=***";
+    "https://api.devnet.solana.com";
   const connection = new Connection(rpcUrl, "confirmed");
 
   console.log(`=== RPC Latency Measurement ===`);
