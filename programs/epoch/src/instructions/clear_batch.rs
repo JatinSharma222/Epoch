@@ -106,7 +106,7 @@ pub fn handle_clear_batch(
     let close_slot = start_slot + (batch_id + 1) * n_slots;
 
     require!(
-        current_slot >= close_slot || market.admin == ctx.accounts.cranker.key(),
+        current_slot >= close_slot,
         EpochError::BatchNotOpen
     );
 
@@ -185,7 +185,12 @@ pub fn handle_clear_batch(
 
         emit!(BatchVoided { batch_id, reason });
 
-        market.next_batch_to_clear = batch_id + 1;
+        if batch_id == market.next_batch_to_clear {
+            market.next_batch_to_clear = market
+                .next_batch_to_clear
+                .checked_add(1)
+                .ok_or(EpochError::MathOverflow)?;
+        }
         msg!(
             "Batch {} marked VOID: late={}, wide_conf={}, stale={}",
             batch_id,
@@ -214,13 +219,31 @@ pub fn handle_clear_batch(
         market.params.funding_cap_bps as i32,
     );
     let funding_period_slots = market.params.funding_period_slots as i128;
+    let mut accrual: i128 = 0;
     if funding_period_slots > 0 {
-        let accrual =
+        accrual =
             (rate as i128 * oracle_price as i128 * n_slots as i128 * (F_SCALE / 1000))
                 / (10_000 * funding_period_slots);
         market.funding_index = market.funding_index.saturating_add(accrual);
     }
-    market.next_batch_to_clear = batch_id + 1;
+    if batch_id == market.next_batch_to_clear {
+        market.next_batch_to_clear = market
+            .next_batch_to_clear
+            .checked_add(1)
+            .ok_or(EpochError::MathOverflow)?;
+    }
+
+    emit!(crate::events::FundingAccrued {
+        market: ctx.accounts.market.key(),
+        batch_id,
+        slot: current_slot,
+        clearing_price: cl_price,
+        oracle_price,
+        offset_bps: offset_star as i16,
+        funding_rate_bps: rate as i16,
+        funding_index: market.funding_index,
+        accrual_amount: accrual,
+    });
 
     emit!(BatchCleared {
         batch_id,

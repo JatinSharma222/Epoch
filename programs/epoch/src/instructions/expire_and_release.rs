@@ -62,8 +62,7 @@ pub fn handle_expire_and_release<'info>(
     // 3. Stale / Void check:
     // Batch must either already be VOID, or be OPEN and past close_slot + max_clear_delay_slots
     if batch.status == BatchStatus::OPEN {
-        let is_stale = current_slot > close_slot.saturating_add(max_delay)
-            || market.admin == ctx.accounts.caller.key();
+        let is_stale = current_slot > close_slot.saturating_add(max_delay);
         require!(is_stale, EpochError::BatchNotStale);
 
         // Transition batch to VOID
@@ -77,8 +76,11 @@ pub fn handle_expire_and_release<'info>(
             reason: 1, // Late clearance
         });
 
-        if market.next_batch_to_clear <= batch_id {
-            market.next_batch_to_clear = batch_id + 1;
+        if batch_id == market.next_batch_to_clear {
+            market.next_batch_to_clear = market
+                .next_batch_to_clear
+                .checked_add(1)
+                .ok_or(EpochError::MathOverflow)?;
         }
 
         msg!("Batch {} expired and marked VOID", batch_id);
@@ -91,7 +93,9 @@ pub fn handle_expire_and_release<'info>(
 
     // 4. Release orders for user accounts provided in remaining_accounts
     let funding_index = market.funding_index;
-    let mut total_funding_residual: i128 = 0;
+    let mut page_gross_funding_payments: u64 = 0;
+    let mut page_gross_funding_receipts: u64 = 0;
+    let mut page_funding_rounding_residuals: u64 = 0;
     let mut seen_users = BTreeSet::new();
 
     for acc_info in ctx.remaining_accounts.iter() {
@@ -114,18 +118,34 @@ pub fn handle_expire_and_release<'info>(
         if user.base_position != 0 && funding_index != user.funding_snapshot {
             let delta = funding_index - user.funding_snapshot;
             let prod = user.base_position as i128 * delta;
-            let payment = if prod > 0 {
-                (prod + F_SCALE - 1) / F_SCALE
+            let (payment, user_residual) = if prod > 0 {
+                let floor_pay = prod / F_SCALE;
+                let rem = prod % F_SCALE;
+                let pay = if rem != 0 { floor_pay + 1 } else { floor_pay };
+                let res: u64 = if rem != 0 { 1 } else { 0 };
+                (pay, res)
             } else {
-                prod / F_SCALE
+                (prod / F_SCALE, 0u64)
             };
             user.quote_position = user
                 .quote_position
                 .checked_sub(payment)
                 .ok_or(EpochError::MathOverflow)?;
-            total_funding_residual = total_funding_residual
-                .checked_add(payment)
-                .ok_or(EpochError::MathOverflow)?;
+
+            if payment > 0 {
+                page_gross_funding_payments = page_gross_funding_payments
+                    .checked_add(payment as u64)
+                    .ok_or(EpochError::MathOverflow)?;
+                page_funding_rounding_residuals = page_funding_rounding_residuals
+                    .checked_add(user_residual)
+                    .ok_or(EpochError::MathOverflow)?;
+            } else if payment < 0 {
+                let receipt = u64::try_from(payment.checked_abs().ok_or(EpochError::MathOverflow)?)
+                    .map_err(|_| EpochError::MathOverflow)?;
+                page_gross_funding_receipts = page_gross_funding_receipts
+                    .checked_add(receipt)
+                    .ok_or(EpochError::MathOverflow)?;
+            }
         }
         user.funding_snapshot = funding_index;
 
@@ -144,18 +164,32 @@ pub fn handle_expire_and_release<'info>(
             let side = order.side;
             let lots = order.lots;
 
-            // Release user pending lots & active order count
+            // Defensive guard: Voided batches must never have filled or partially filled orders
+            require!(
+                order.status != OrderStatus::FILLED && order.status != OrderStatus::PARTIAL,
+                EpochError::BatchAlreadySettled
+            );
+
+            // Release user pending lots & active order count using checked arithmetic
             if side == OrderSide::BUY {
-                user.pending_buy_lots = user.pending_buy_lots.saturating_sub(lots);
+                user.pending_buy_lots = user.pending_buy_lots
+                    .checked_sub(lots)
+                    .ok_or(EpochError::MathOverflow)?;
             } else {
-                user.pending_sell_lots = user.pending_sell_lots.saturating_sub(lots);
+                user.pending_sell_lots = user.pending_sell_lots
+                    .checked_sub(lots)
+                    .ok_or(EpochError::MathOverflow)?;
             }
-            user.active_orders = user.active_orders.saturating_sub(1);
+            user.active_orders = user.active_orders
+                .checked_sub(1)
+                .ok_or(EpochError::MathOverflow)?;
 
             // In an expired/void batch, no fills occur:
             order.filled_lots = 0;
             order.status = OrderStatus::SETTLED;
-            batch.settled_orders = batch.settled_orders.saturating_add(1);
+            batch.settled_orders = batch.settled_orders
+                .checked_add(1)
+                .ok_or(EpochError::MathOverflow)?;
             user_released_orders += 1;
         }
 
@@ -176,17 +210,17 @@ pub fn handle_expire_and_release<'info>(
         );
     }
 
-    // Funding residual goes to fee_pool
-    if total_funding_residual > 0 {
+    // Spec §8: Only genuine non-negative rounding residuals (payers' round-ups)
+    // are credited to fee_pool. Never debit fee_pool for negative page-level net funding
+    // in partial settlement pages.
+    let _net_page_funding = (page_gross_funding_payments as i128)
+        .checked_sub(page_gross_funding_receipts as i128)
+        .ok_or(EpochError::MathOverflow)?;
+
+    if page_funding_rounding_residuals > 0 {
         market.fee_pool = market
             .fee_pool
-            .checked_add(total_funding_residual as u64)
-            .ok_or(EpochError::MathOverflow)?;
-    } else if total_funding_residual < 0 {
-        let neg = (-total_funding_residual) as u64;
-        market.fee_pool = market
-            .fee_pool
-            .checked_sub(neg)
+            .checked_add(page_funding_rounding_residuals)
             .ok_or(EpochError::MathOverflow)?;
     }
 
