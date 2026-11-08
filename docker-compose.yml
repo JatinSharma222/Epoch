@@ -76,7 +76,7 @@ services:
       EPOCH_KEEPER_KEYPAIR_PATH: /run/secrets/keeper.json
       EPOCH_DATABASE_URL: postgres://${EPOCH_PG_USER:-epoch}:${EPOCH_PG_PASSWORD}@epoch-postgres:5432/${EPOCH_PG_DB:-epoch}
     volumes:
-      - ${EPOCH_KEEPER_KEYPAIR:-./target/deploy/epoch-keypair.json}:/run/secrets/keeper.json:ro
+      - ${EPOCH_KEEPER_KEYPAIR:?set EPOCH_KEEPER_KEYPAIR in .env}:/run/secrets/keeper.json:ro
     networks: [epoch-net]
 
 networks:

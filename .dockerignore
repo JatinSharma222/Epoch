@@ -1,0 +1,31 @@
+# Git and version control
+.git
+.gitignore
+
+# Environment files and credentials
+.env
+.env.*
+*.keypair.json
+*keypair*.json
+*wallet*.json
+id.json
+keys/
+*.pem
+
+# Build artifacts and dependencies
+target/
+.anchor/
+test-ledger/
+node_modules/
+.next/
+dist/
+
+# Runtime and local storage
+logs/
+*.log
+*.jsonl
+.local_*
+scratch/
+research/
+context/
+design/
