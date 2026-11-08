@@ -1,0 +1,241 @@
+# Formal Specification: Bad-Debt Accounting & Liquidation Solvency (H-4)
+
+**Document Version:** 1.0.0  
+**Target Program:** `programs/epoch`  
+**Classification:** Restricted Architectural Specification (Tier 3 Gate)  
+**Author:** Lead Architect & Engineering Manager  
+**Status:** PROPOSED FOR IMPLEMENTATION (Gated Pending Review)  
+
+---
+
+## 1. Executive Summary & Problem Definition
+
+In perpetual futures protocols, price volatility or network congestion can cause a leveraged trader's margin ratio to drop below the Maintenance Margin Requirement ($\text{MMR}$) or even fall below zero equity ($\text{Equity} < 0$, bankruptcy). 
+
+In Epoch Protocol:
+1. **Current Vulnerability (H-4):** When a user account reaches negative equity ($\text{Equity} < 0$), attempting to liquidate or settle the position without formal bad-debt accounting creates an unbacked collateral hole in the collateral vault PDA. If the insurance fund has insufficient balance to absorb the deficit, the collateral vault becomes insolvent, violating the Global Collateral Conservation Invariant ($I-1$) and preventing solvent users from withdrawing their funds.
+2. **Current Deficit Behavior:** The protocol lacks a dedicated `bad_debt` accumulator on `Market`, leaving insolvency untracked and risking `Underflow` / `MathOverflow` panics during close-out calculations.
+3. **Capacity Constraints:** The Backstop Vault has finite lot absorption capacity (`max_inventory_lots`). Dumping an entire bankrupt position onto the vault in a single transaction can exceed vault risk limits or exhaust vault collateral.
+
+This specification defines a rigorous, mathematically verified bad-debt accounting model supporting **partial liquidation**, **vault capacity limits**, **insurance fund absorption**, **explicit bad-debt tracking**, and **strict invariant conservation**.
+
+---
+
+## 2. Mathematical Model & State Definitions
+
+### 2.1 State Variables (`Market` and `UserAccount`)
+
+```rust
+// On Market state (programs/epoch/src/state/market.rs)
+pub struct Market {
+    // ... existing fields ...
+    pub fee_pool: u64,          // Protocol trading fee pool (micro-USDC)
+    pub insurance_fund: u64,    // Liquidation penalty & backstop reserve (micro-USDC)
+    pub bad_debt: u64,          // Cumulative unbacked insolvency deficit (micro-USDC)
+    // ...
+}
+
+// On UserAccount state (programs/epoch/src/state/user.rs)
+pub struct UserAccount {
+    pub collateral: u64,        // Deposited USDC collateral (micro-USDC)
+    pub base_position: i64,     // Net open position in lots (+ for long, - for short)
+    pub entry_notional: i64,    // Cost basis in micro-USDC
+    pub last_funding_index: i128, // Funding snapshot
+    pub active_orders: u8,      // Count of open orders in batch rings
+    // ...
+}
+```
+
+### 2.2 Financial Invariants
+
+#### Invariant I-1: Global Collateral Conservation
+The total token balance held in the SPL Collateral Vault (`vault_balance`) must exactly match the sum of all liabilities, reserves, and debt:
+
+$$\text{vault\_balance} = \sum_{i=1}^{N} \text{collateral}_i + \text{fee\_pool} + \text{insurance\_fund} - \text{bad\_debt}$$
+
+Where:
+- $\sum \text{collateral}_i$: Total margin deposited by all user accounts.
+- $\text{fee\_pool}$: Accumulated protocol fees not yet withdrawn by governance.
+- $\text{insurance\_fund}$: Dedicated buffer funded by liquidation penalties and capitalization.
+- $\text{bad\_debt}$: Cumulative unhedged shortfall from bankrupt accounts where deficit exceeded available insurance reserves.
+
+#### Invariant I-11: Solvency Conservation Under Liquidation
+For any liquidation event closing $\Delta q$ lots of a position:
+$$\Delta \text{vault\_balance} = 0$$
+$$\Delta \left( \sum \text{collateral}_i + \text{fee\_pool} + \text{insurance\_fund} - \text{bad\_debt} \right) = 0$$
+
+---
+
+## 3. Account Health & Equity Evaluation
+
+### 3.1 Valuation Formulae
+Given:
+- Oracle price $P$ (micro-USDC per lot, scaled by $10^6$)
+- Cumulative market funding index $F_{\text{current}}$
+- User position $q = \text{base\_position}$ (lots)
+- User entry notional $N = \text{entry\_notional}$
+- User funding snapshot $F_{\text{entry}} = \text{last\_funding\_index}$
+- Deposited collateral $C = \text{collateral}$
+
+#### Unrealized PnL ($\text{uPnL}$):
+$$\text{uPnL} = \begin{cases} 
+q \cdot P - N & \text{if } q > 0 \text{ (Long)} \\
+|q| \cdot P_{\text{entry}} - |q| \cdot P = N - |q| \cdot P & \text{if } q < 0 \text{ (Short)} \\
+0 & \text{if } q = 0 
+\end{cases}$$
+
+#### Accrued Funding ($\text{Funding}$):
+$$\text{Funding} = \frac{q \cdot (F_{\text{current}} - F_{\text{entry}})}{\text{SCALE}}$$
+*(Positive means funding owed to user; negative means funding owed by user).*
+
+#### Total User Equity ($E$):
+$$E = C + \text{uPnL} + \text{Funding}$$
+
+#### Maintenance Margin Requirement ($\text{MMR}$):
+$$\text{MMR} = \frac{|q| \cdot P \cdot \text{mmr\_bps}}{10\,000}$$
+
+### 3.2 Liquidation Eligibility Conditions
+An account is eligible for liquidation if and only if:
+1. The user holds an open position: $|q| > 0$.
+2. User equity is below maintenance margin: $E < \text{MMR}$.
+3. Oracle price $P$ is fresh and valid (`posted_slot <= current_slot`, age $\le \text{max\_oracle\_age\_secs}$, confidence $\le \text{max\_conf\_bps}$).
+
+---
+
+## 4. Liquidation Mechanics: Two-Tier Processing
+
+Liquidation bifurcates into two distinct mathematical regimes based on whether the account is **distressed but solvent** ($0 \le E < \text{MMR}$) or **bankrupt** ($E < 0$).
+
+```mermaid
+flowchart TD
+    A["Liquidate Called on User (E < MMR)"] --> B{"Is Equity >= 0?"}
+    
+    subgraph Solvent_Liquidation["1. Solvent Liquidation (0 <= E < MMR)"]
+        B -- "Yes (E >= 0)" --> C["Calculate Penalty: P_pen = min(E, |q| * P * liq_penalty_bps)"]
+        C --> D["Split Penalty: 50% Liquidator Reward, 50% Insurance Fund"]
+        D --> E["Close User Position into Vault / Cranker"]
+        E --> F["Refund Remaining Equity: User Collateral = E - P_pen"]
+    end
+    
+    subgraph Bankrupt_Liquidation["2. Bankrupt Liquidation (E < 0)"]
+        B -- "No (E < 0)" --> G["Calculate Deficit: D = |E|"]
+        G --> H["Zero Out User: User Collateral = 0, Position = 0"]
+        H --> I{"Insurance Fund >= D?"}
+        I -- "Yes" --> J["Deduct D from Insurance Fund: IF = IF - D"]
+        I -- "No" --> K["Exhaust Insurance Fund: D_rem = D - IF, IF = 0"]
+        K --> L["Accumulate Bad Debt: bad_debt = bad_debt + D_rem"]
+        J --> M["Pay Liquidator Bounty from Fixed Market Reserve / Fee Pool"]
+        L --> M
+    end
+```
+
+### 4.1 Regime 1: Distressed but Solvent ($0 \le E < \text{MMR}$)
+The user has sufficient collateral to absorb their trading loss plus a liquidation penalty.
+
+1. **Liquidation Penalty ($\text{Penalty}$):**
+   $$\text{MaxPenalty} = \frac{|q| \cdot P \cdot \text{liq\_penalty\_bps}}{10\,000}$$
+   $$\text{Penalty} = \min(E, \text{MaxPenalty})$$
+
+2. **Penalty Allocation:**
+   - **Liquidator Incentive ($50\%$):** $\text{Reward} = \lfloor \text{Penalty} / 2 \rfloor$ transferred to `liquidator.collateral`.
+   - **Insurance Fund Contribution ($50\%$):** $\text{Reserve} = \text{Penalty} - \text{Reward}$ credited to `market.insurance_fund`.
+
+3. **Position Liquidation:**
+   - User's position $q$ is fully transferred to the Backstop Vault or closing counterparty.
+   - User's `base_position` is set to $0$.
+   - User's `entry_notional` is set to $0$.
+
+4. **Residual Collateral:**
+   - User's remaining collateral becomes $C_{\text{final}} = E - \text{Penalty} \ge 0$.
+   - User remains solvent and may withdraw $C_{\text{final}}$.
+
+### 4.2 Regime 2: Bankrupt Account ($E < 0$)
+The user's trading losses exceed their deposited collateral. A deficit $D = |E| = -E > 0$ exists.
+
+1. **User Zeroing:**
+   - User's collateral is wiped: $C_{\text{final}} = 0$.
+   - User's position is closed: $q_{\text{final}} = 0, N_{\text{final}} = 0$.
+
+2. **Deficit Absorption Cascade:**
+   - **Step 1 (Insurance Fund Drawdown):**
+     If $\text{insurance\_fund} \ge D$:
+     $$\Delta \text{insurance\_fund} = -D$$
+     $$\Delta \text{bad\_debt} = 0$$
+   - **Step 2 (Insolvency Spillover to Bad Debt):**
+     If $\text{insurance\_fund} < D$:
+     $$\text{Shortfall} = D - \text{insurance\_fund}$$
+     $$\text{insurance\_fund} = 0$$
+     $$\text{bad\_debt} = \text{bad\_debt} + \text{Shortfall}$$
+
+3. **Liquidator Cranker Bounty:**
+   - To prevent crankers from avoiding bankrupt liquidations, a flat protocol bounty (e.g., $5\text{ USDC} = 5\,000\,000\text{ micro-USDC}$) is paid to the liquidator from `market.fee_pool`. If `market.fee_pool` is insufficient, the bounty is credited as bad debt.
+
+4. **Verification of Invariant I-1:**
+   Prior to liquidation:
+   $$\text{Liabilities} = (C - D) + \dots + \text{IF} - \text{BD} = C + \dots + \text{IF} - (\text{BD} + D)$$
+   After liquidation:
+   - User collateral is reduced from $C$ to $0$ ($\Delta C = -C$).
+   - Net loss to system is $D$.
+   - Insurance fund decreases by $\min(\text{IF}, D)$.
+   - Bad debt increases by $\max(0, D - \text{IF})$.
+   $$\Delta \text{Liabilities} = -C + (C - D) = 0$$
+   The invariant holds exactly to the nearest micro-USDC without leakage.
+
+---
+
+## 5. Partial Liquidation & Vault Capacity Constraints
+
+### 5.1 Motivation
+Closing an extremely large position (e.g. 50,000 lots) in a single transaction can:
+1. Exceed the Backstop Vault's lot limit: $\text{current\_inventory} + \Delta q > \text{max\_inventory\_lots}$.
+2. Exceed compute unit budgets if multiple settlement iterations are required.
+
+### 5.2 Partial Liquidation Step Size
+Define the maximum liquidation fraction $\alpha = 50\%$ (5,000 bps) of the open position per liquidation step, unless the position is below a minimum lot threshold ($\le 100\text{ lots}$), in which case $100\%$ is closed.
+
+$$\Delta q = \begin{cases}
+|q| & \text{if } |q| \le 100 \\
+\max\left(100, \left\lfloor \frac{|q|}{2} \right\rfloor \right) & \text{if } |q| > 100
+\end{cases}$$
+
+### 5.3 Proportional Accounting for Partial Liquidation
+When closing $\Delta q < |q|$ lots:
+1. **Realized Notional Fraction:**
+   $$N_{\text{closed}} = \left\lfloor \frac{N \cdot \Delta q}{|q|} \right\rfloor$$
+   $$N_{\text{remaining}} = N - N_{\text{closed}}$$
+2. **Proportional Equity & Penalty:**
+   PnL and funding for $\Delta q$ are realized and settled into user collateral.
+   User retains $q_{\text{new}} = q - \text{sign}(q)\Delta q$ and $N_{\text{new}} = N_{\text{remaining}}$.
+
+---
+
+## 6. Pre-Liquidation Order Cancellation
+
+Before liquidating an account:
+1. Any open orders belonging to the user across all 8 batch rings **must be cancelled**.
+2. Active order counts (`user.active_orders`) and reserved lots (`pending_buy_lots`, `pending_sell_lots`) are decremented via checked arithmetic (`checked_sub`).
+3. This eliminates latent obligations that could execute in future batch clearances.
+
+---
+
+## 7. Bad-Debt Repayment & Recovery Mechanisms
+
+When `market.bad_debt > 0`:
+1. **Fee Pool Diversion:** 100% of protocol fees (`market.fee_pool`) generated by subsequent batch clearings are diverted to repay `market.bad_debt`:
+   $$\text{Repay} = \min(\text{fee\_pool}, \text{bad\_debt})$$
+   $$\text{fee\_pool} = \text{fee\_pool} - \text{Repay}$$
+   $$\text{bad\_debt} = \text{bad\_debt} - \text{Repay}$$
+2. **Insurance Capitalization:** External governance deposits into `collateral_vault` credit `market.insurance_fund` if `bad_debt == 0`, or reduce `market.bad_debt` first until $0$.
+
+---
+
+## 8. Implementation Verification Checklist
+
+- [ ] Add `pub bad_debt: u64` to `Market` struct with backward-compatible zero-fill migration.
+- [ ] Implement `handle_liquidate` supporting both solvent ($E \ge 0$) and bankrupt ($E < 0$) cascades.
+- [ ] Ensure `checked_add` and `checked_sub` guard all insurance fund and bad debt adjustments.
+- [ ] Implement unit regression tests proving $I-1$ holds across:
+  - Solvent liquidation with 50/50 penalty split.
+  - Bankrupt liquidation fully absorbed by insurance fund.
+  - Bankrupt liquidation exceeding insurance fund, creating `bad_debt`.
+  - Subsequent fee accrual paying down `bad_debt`.
