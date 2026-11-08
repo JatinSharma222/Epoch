@@ -183,7 +183,7 @@ pub fn handle_vault_quote(ctx: Context<VaultQuote>, params: VaultQuoteParams) ->
 
     // Cancel any existing orders on the disallowed side (if updating an open batch)
     for i in 0..(batch.num_orders as usize) {
-        let (is_match, side, tick, lots) = {
+        let (is_open_vault_order, side, tick, lots) = {
             let o = &batch.orders[i];
             if o.user_pda == vault_user_pda && o.status == OrderStatus::OPEN {
                 (true, o.side, o.tick as usize, o.lots)
@@ -192,7 +192,8 @@ pub fn handle_vault_quote(ctx: Context<VaultQuote>, params: VaultQuoteParams) ->
             }
         };
 
-        if is_match {
+        // Explicit status guard: Only OPEN orders belonging to the vault are cancelled
+        if is_open_vault_order {
             if side == OrderSide::BUY && !allow_bids {
                 batch.bid_qty[tick] = batch.bid_qty[tick]
                     .checked_sub(lots)

@@ -114,6 +114,11 @@ pub fn handle_clear_batch(
     let mut batch = ctx.accounts.batch.load_mut()?;
     require_eq!(batch.batch_id, batch_id, EpochError::OrderNotFound);
     require!(batch.status == BatchStatus::OPEN, EpochError::BatchNotOpen);
+    require_eq!(
+        batch_id,
+        market.next_batch_to_clear,
+        EpochError::BatchNotNextInSequence
+    );
 
     // Cryptographic on-chain oracle verification (Pyth or Authority mode)
     let oracle_data = parse_and_validate_oracle_price_account(
