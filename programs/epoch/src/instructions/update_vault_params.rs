@@ -48,7 +48,17 @@ pub fn handle_update_vault_params(
     params.validate()?;
 
     let mut market = ctx.accounts.market.load_mut()?;
+    let old_params = market.vault_params;
     market.vault_params = params;
+
+    emit!(crate::events::VaultParamsUpdated {
+        market: ctx.accounts.market.key(),
+        admin: ctx.accounts.admin.key(),
+        slot: Clock::get()?.slot,
+        old_params,
+        new_params: params,
+    });
+
     msg!(
         "Backstop Vault parameters updated by admin: {}",
         ctx.accounts.admin.key()

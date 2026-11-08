@@ -100,6 +100,10 @@ pub enum EpochError {
     #[msg("Batch ID mismatch")]
     BatchIdMismatch,
 
+    /// Batch is not the next batch in sequence to clear.
+    #[msg("Batch is not the next batch in sequence to clear")]
+    BatchNotNextInSequence,
+
     /// Duplicate user account provided in settlement page.
     #[msg("Duplicate user account in settlement")]
     DuplicateUserAccount,

@@ -57,7 +57,9 @@ impl MarketParams {
         require!(self.mmr_bps > 0, EpochError::InvalidMarketParameter);
         require!(self.imr_bps > self.mmr_bps, EpochError::InvalidMarketParameter);
         require!(self.imr_bps <= 10_000, EpochError::InvalidMarketParameter);
-        require!(self.fee_bps <= 1000, EpochError::InvalidMarketParameter);
+        require!(self.fee_bps <= 50, EpochError::InvalidMarketParameter);
+        require!(self.liq_penalty_bps <= 500, EpochError::InvalidMarketParameter);
+        require!(self.funding_cap_bps <= 500, EpochError::InvalidMarketParameter);
         require!(
             self.k_ticks > 0 && self.k_ticks % 2 == 1 && (self.k_ticks as usize) <= K_TICKS,
             EpochError::InvalidTick
@@ -221,3 +223,43 @@ const _: () = {
     assert!(std::mem::size_of::<Market>() == 384);
     assert!(std::mem::size_of::<Market>() % 16 == 0);
 };
+
+impl anchor_lang::AnchorSerialize for MarketParams {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        writer.write_all(bytemuck::bytes_of(self))
+    }
+}
+
+impl anchor_lang::AnchorDeserialize for MarketParams {
+    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
+        let mut val = Self::default();
+        std::io::Read::read_exact(buf, bytemuck::bytes_of_mut(&mut val))?;
+        Ok(val)
+    }
+
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let mut val = Self::default();
+        reader.read_exact(bytemuck::bytes_of_mut(&mut val))?;
+        Ok(val)
+    }
+}
+
+impl anchor_lang::AnchorSerialize for VaultParams {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        writer.write_all(bytemuck::bytes_of(self))
+    }
+}
+
+impl anchor_lang::AnchorDeserialize for VaultParams {
+    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
+        let mut val = Self::default();
+        std::io::Read::read_exact(buf, bytemuck::bytes_of_mut(&mut val))?;
+        Ok(val)
+    }
+
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let mut val = Self::default();
+        reader.read_exact(bytemuck::bytes_of_mut(&mut val))?;
+        Ok(val)
+    }
+}
