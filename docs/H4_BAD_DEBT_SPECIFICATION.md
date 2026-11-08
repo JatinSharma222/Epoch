@@ -207,6 +207,61 @@ When closing $\Delta q < |q|$ lots:
    PnL and funding for $\Delta q$ are realized and settled into user collateral.
    User retains $q_{\text{new}} = q - \text{sign}(q)\Delta q$ and $N_{\text{new}} = N_{\text{remaining}}$.
 
+### 5.4 Backstop Inventory Saturation vs Financial Solvency: Handling Remaining Positions
+
+A critical architectural distinction exists between **Market Maker Vault Inventory Limits** and **Account Equity Solvency**:
+- **Vault Capacity** ($I_{\text{vault}} \le I_{\text{max}}$) is a structural inventory and risk constraint for the backstop vault.
+- **Financial Solvency** is purely a property of user equity ($E = C + \text{uPnL} + \text{Funding}$).
+- **Fundamental Rule:** A saturated vault ($I_{\text{vault}} + \Delta q > I_{\text{max}}$) does **NOT** indicate a financial deficit and must **NEVER** generate bad debt.
+
+#### Detailed Position Handling Across Saturation Regimes:
+
+```mermaid
+flowchart TD
+    A["Liquidate User (E < MMR)"] --> B{"Is User Equity < 0?<br/>(Deficit vs Solvent)"}
+    
+    subgraph Saturated_Solvent["Regime A: Solvent User (0 <= E < MMR)"]
+        B -- "No (E >= 0)" --> C{"Vault Has Capacity?<br/>(I_vault + Δq <= I_max)"}
+        C -- "Yes" --> D["Vault Absorbs Δq lots<br/>User receives remaining equity E - Penalty"]
+        C -- "No / Partial" --> E["Absorb only available headroom Δq_avail = max(0, I_max - I_vault)"]
+        E --> F["Remaining lots remain with User (Zero Bad Debt)<br/>Forced aggressive closing order placed in FBA orderbook"]
+    end
+    
+    subgraph Saturated_Bankrupt["Regime B: Bankrupt User (E < 0)"]
+        B -- "Yes (E < 0)" --> G["Genuine Deficit D = |E| > 0"]
+        G --> H["Absorb via Insurance Fund: D_ins = min(D, IF)"]
+        H --> I["Excess Uncovered Deficit enters Bad Debt: bad_debt += (D - D_ins)"]
+        I --> J{"Vault Has Capacity?"}
+        J -- "Yes" --> K["Vault absorbs bankrupt lots at bankruptcy price"]
+        J -- "No" --> L["Auto-Deleveraging (ADL): Bankrupt lots closed against top-profit opposing traders pro-rata"]
+    end
+```
+
+1. **Regime A: Saturated Backstop with Solvent User ($0 \le E < \text{MMR}$)**
+   - The user has positive equity ($E \ge 0$). Their position is simply under-collateralized relative to the maintenance margin threshold.
+   - If the vault is saturated ($I_{\text{vault}} \ge I_{\text{max}}$):
+     - The vault absorbs only up to available headroom: $\Delta q_{\text{avail}} = \max(0, I_{\text{max}} - I_{\text{vault}})$.
+     - **Remaining Lots:** If $\Delta q_{\text{avail}} < \Delta q$, the unabsorbed lots remain in the user's account with proportional collateral.
+     - **Zero Bad Debt Invariant:** Because $E \ge 0$, no deficit exists. **Protocol `bad_debt` is unchanged ($\Delta \text{bad\_debt} = 0$).**
+     - **Secondary Liquidation Route:** The unabsorbed lots are eligible for liquidation by alternative liquidators or routed directly to the next Frequent Batch Auction (FBA) clearing cycle as a market-on-close order to match against organic opposing liquidity.
+     - **Collateral Conservation ($I-1$):** Exactly preserved. All collateral remains in user and vault accounts.
+
+2. **Regime B: Saturated Backstop with Bankrupt User ($E < 0$)**
+   - The user has negative equity ($E < 0$). A **genuine uncovered deficit** $D = -E > 0$ exists.
+   - **Financial Deficit Accounting:**
+     - The deficit $D$ is debited from `market.insurance_fund`: $D_{\text{ins}} = \min(D, \text{insurance\_fund})$.
+     - If $\text{insurance\_fund} < D$, the remaining deficit $D - D_{\text{ins}}$ is recorded in `market.bad_debt`.
+     - User collateral is set to $0$.
+   - **Inventory Handling Under Saturation:**
+     - The vault takes lots up to $\Delta q_{\text{avail}}$.
+     - For any lots that cannot enter the vault, the protocol invokes **Auto-Deleveraging (ADL)**:
+       - Top-profit positions on the opposing side are identified from the user position registry.
+       - The unabsorbed bankrupt lots are matched and closed against these top-profit positions at the user's bankruptcy price $P_{\text{bk}} = P \pm \frac{C}{|q|}$.
+       - If no opposing positions exist or ADL is deferred, the lots are cancelled from open interest, and the entire loss is backstopped by the insurance fund and bad debt accumulator.
+   - **Conservation Equation:**
+     $$\Delta \text{VaultBalance} = \text{PnL}_{\text{winning\_counterparties}} = -C - D_{\text{ins}} - D_{\text{bad}} = \Delta \text{Liabilities}$$
+     Every micro-USDC is rigorously accounted for. Genuine bad debt is strictly confined to $E < 0$.
+
 ---
 
 ## 6. Pre-Liquidation Order Cancellation

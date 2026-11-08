@@ -52,10 +52,29 @@ $$\text{EMA}_t = \alpha \cdot P_{\text{new}} + (1 - \alpha) \cdot \text{EMA}_{t 
 
 Where:
 - $\Delta s = t - t_{\text{last\_update}}$ is the elapsed slots.
-- $\alpha \in (0, 1)$ is the smoothing factor calibrated to an effective half-life of 75 slots (~$30\text{s}$):
-  $$\alpha = 1 - e^{-\frac{\Delta s}{\tau}} \approx \frac{\Delta s}{75} \quad (\text{for small } \Delta s)$$
-  In fixed-point integer arithmetic:
-  $$\alpha_{\text{scaled}} = \min\left(10\,000, \frac{\Delta s \cdot 10\,000}{75}\right)$$
+- $\alpha \in [0, 1]$ is the smoothing factor calibrated to an effective window of 75 slots (~$30\text{s}$):
+  $$\alpha = \min\left(10\,000, \left\lfloor \frac{\Delta s \cdot 10\,000}{75} \right\rfloor \right)$$
+
+#### Fixed-Point Rounding & Update Rule:
+To prevent directional rounding drift (upward or downward micro-bias):
+- **Scale:** 10,000 (basis points scale in integer math).
+- **Floor Rounding toward Anchor Price:**
+  If $P_{\text{new}} \ge \text{EMA}_{t - \Delta s}$:
+  $$\Delta = P_{\text{new}} - \text{EMA}_{t - \Delta s}$$
+  $$\text{EMA}_t = \text{EMA}_{t - \Delta s} + \left\lfloor \frac{\alpha \cdot \Delta}{10\,000} \right\rfloor$$
+  If $P_{\text{new}} < \text{EMA}_{t - \Delta s}$:
+  $$\Delta = \text{EMA}_{t - \Delta s} - P_{\text{new}}$$
+  $$\text{EMA}_t = \text{EMA}_{t - \Delta s} - \left\lfloor \frac{\alpha \cdot \Delta}{10\,000} \right\rfloor$$
+
+#### Same-Slot Update Handling:
+If an update is received with $\Delta s = 0$ ($t == t_{\text{last\_update}}$):
+- `clock.slot <= last_posted_slot` is strictly rejected with `EpochError::OracleStale`.
+- Under no circumstance can multiple price updates execute in the same slot to bypass the time-weighted EMA governor.
+
+#### Stale & Out-of-Order Update Rejection:
+1. **Monotonic Slot:** `require!(clock.slot > last_posted_slot, EpochError::OracleStale)`.
+2. **Monotonic Timestamp:** `require!(publish_time >= last_publish_time, EpochError::OracleStale)`.
+3. **Maximum Age:** `require!(clock.unix_timestamp - publish_time <= max_oracle_age_secs, EpochError::OracleStale)`.
 
 #### Verification Rule (Layer B):
 Before updating the EMA, the program enforces:
@@ -65,6 +84,15 @@ $$\frac{|P_{\text{new}} - \text{EMA}_{t - \Delta s}| \cdot 10\,000}{\text{EMA}_{
 Because $\text{EMA}$ evolves continuously, the maximum possible 1-slot price deviation is strictly bounded by:
 $$\Delta P_{\text{1-slot}} \le 15\text{ bps}$$
 Boundary stacking is mathematically eliminated because there are no discrete reset epochs.
+
+#### Legitimate Market Trend Convergence:
+For legitimate sustained market trends (e.g. SOL moving $+10\%$ over 10 minutes):
+- For a step change $\Delta P_{\text{market}}$, the anchor price follows:
+  $$P_{\text{anchor}}(t) = P_0 + \Delta P_{\text{market}} \cdot \left(1 - e^{-\frac{t}{\tau}}\right), \quad \tau = 75\text{ slots} \approx 30\text{s}$$
+- After 30 seconds ($t = 75\text{ slots}$), $63.2\%$ of the price movement is absorbed.
+- After 90 seconds ($t = 225\text{ slots}$), $95.0\%$ of the price movement is absorbed.
+- After 180 seconds ($t = 450\text{ slots}$), $99.8\%$ of the price movement is absorbed.
+- **Result:** Legitimate macro price trends are smoothly, faithfully, and completely tracked without permanent divergence or stalling, while flash-crashes (a $20\%$ drop in 1 slot) are dampened to protect solvent traders from unfair liquidations.
 
 ---
 
