@@ -65,6 +65,12 @@ pub fn handle_expire_and_release<'info>(
         let is_stale = current_slot > close_slot.saturating_add(max_delay);
         require!(is_stale, EpochError::BatchNotStale);
 
+        require_eq!(
+            batch_id,
+            market.next_batch_to_clear,
+            EpochError::BatchNotNextInSequence
+        );
+
         // Transition batch to VOID
         batch.status = BatchStatus::VOID;
         batch.clearing_tick = CENTER_TICK as u16;
@@ -76,12 +82,10 @@ pub fn handle_expire_and_release<'info>(
             reason: 1, // Late clearance
         });
 
-        if batch_id == market.next_batch_to_clear {
-            market.next_batch_to_clear = market
-                .next_batch_to_clear
-                .checked_add(1)
-                .ok_or(EpochError::MathOverflow)?;
-        }
+        market.next_batch_to_clear = market
+            .next_batch_to_clear
+            .checked_add(1)
+            .ok_or(EpochError::MathOverflow)?;
 
         msg!("Batch {} expired and marked VOID", batch_id);
     } else {
