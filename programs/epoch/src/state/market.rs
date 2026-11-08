@@ -5,7 +5,7 @@ use crate::state::constants::{K_TICKS, MAX_ORDERS, RING_SIZE};
 /// Market parameters stored inline in the Market account.
 /// All defaults are from `02-MECHANISM_SPEC.md` §1, §9 and `01-ARCHITECTURE.md` §5.1.
 #[zero_copy]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Debug, PartialEq, Eq)]
 #[repr(C)]
 pub struct MarketParams {
     /// Base lot size in lamports (default 1000 = 0.001 SOL).
@@ -57,7 +57,9 @@ impl MarketParams {
         require!(self.mmr_bps > 0, EpochError::InvalidMarketParameter);
         require!(self.imr_bps > self.mmr_bps, EpochError::InvalidMarketParameter);
         require!(self.imr_bps <= 10_000, EpochError::InvalidMarketParameter);
-        require!(self.fee_bps <= 1000, EpochError::InvalidMarketParameter);
+        require!(self.fee_bps <= 50, EpochError::InvalidMarketParameter);
+        require!(self.liq_penalty_bps <= 500, EpochError::InvalidMarketParameter);
+        require!(self.funding_cap_bps <= 500, EpochError::InvalidMarketParameter);
         require!(
             self.k_ticks > 0 && self.k_ticks % 2 == 1 && (self.k_ticks as usize) <= K_TICKS,
             EpochError::InvalidTick
@@ -106,7 +108,7 @@ impl Default for MarketParams {
 
 /// On-chain parameters for the Backstop Vault demo liquidity engine (architecture §9).
 #[zero_copy]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Debug, PartialEq, Eq)]
 #[repr(C)]
 pub struct VaultParams {
     /// Rung offsets in basis points relative to oracle (default [3, 6, 10]).

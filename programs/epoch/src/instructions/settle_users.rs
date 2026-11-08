@@ -52,7 +52,10 @@ pub fn handle_settle_users<'info>(
     let fee_bps = market.params.fee_bps as u128;
     let funding_index = market.funding_index;
 
-    let mut total_funding_residual: i128 = 0;
+    // Track page-level gross funding transfers, net page funding, and genuine rounding residuals
+    let mut page_gross_funding_payments: u64 = 0;
+    let mut page_gross_funding_receipts: u64 = 0;
+    let mut page_funding_rounding_residuals: u64 = 0;
 
     // 3. Duplicate check across remaining_accounts
     let mut seen_users = BTreeSet::new();
@@ -79,20 +82,36 @@ pub fn handle_settle_users<'info>(
         if user.base_position != 0 && funding_index != user.funding_snapshot {
             let delta = funding_index - user.funding_snapshot;
             let prod = user.base_position as i128 * delta;
-            let payment = if prod > 0 {
+            let (payment, user_residual) = if prod > 0 {
                 // Round up for amount owed by user
-                (prod + F_SCALE - 1) / F_SCALE
+                let floor_pay = prod / F_SCALE;
+                let rem = prod % F_SCALE;
+                let pay = if rem != 0 { floor_pay + 1 } else { floor_pay };
+                let res: u64 = if rem != 0 { 1 } else { 0 };
+                (pay, res)
             } else {
                 // Round down (towards zero) for amount owed to user
-                prod / F_SCALE
+                (prod / F_SCALE, 0u64)
             };
             user.quote_position = user
                 .quote_position
                 .checked_sub(payment)
                 .ok_or(EpochError::MathOverflow)?;
-            total_funding_residual = total_funding_residual
-                .checked_add(payment)
-                .ok_or(EpochError::MathOverflow)?;
+
+            if payment > 0 {
+                page_gross_funding_payments = page_gross_funding_payments
+                    .checked_add(payment as u64)
+                    .ok_or(EpochError::MathOverflow)?;
+                page_funding_rounding_residuals = page_funding_rounding_residuals
+                    .checked_add(user_residual)
+                    .ok_or(EpochError::MathOverflow)?;
+            } else if payment < 0 {
+                let receipt = u64::try_from(payment.checked_abs().ok_or(EpochError::MathOverflow)?)
+                    .map_err(|_| EpochError::MathOverflow)?;
+                page_gross_funding_receipts = page_gross_funding_receipts
+                    .checked_add(receipt)
+                    .ok_or(EpochError::MathOverflow)?;
+            }
         }
         user.funding_snapshot = funding_index;
 
@@ -113,13 +132,19 @@ pub fn handle_settle_users<'info>(
             let lots = order.lots;
             let filled_lots = order.filled_lots;
 
-            // Release user pending lots & active order count
+            // Release user pending lots & active order count using checked arithmetic
             if side == OrderSide::BUY {
-                user.pending_buy_lots = user.pending_buy_lots.saturating_sub(lots);
+                user.pending_buy_lots = user.pending_buy_lots
+                    .checked_sub(lots)
+                    .ok_or(EpochError::MathOverflow)?;
             } else {
-                user.pending_sell_lots = user.pending_sell_lots.saturating_sub(lots);
+                user.pending_sell_lots = user.pending_sell_lots
+                    .checked_sub(lots)
+                    .ok_or(EpochError::MathOverflow)?;
             }
-            user.active_orders = user.active_orders.saturating_sub(1);
+            user.active_orders = user.active_orders
+                .checked_sub(1)
+                .ok_or(EpochError::MathOverflow)?;
 
             // Apply fill if any
             if filled_lots > 0 {
@@ -167,9 +192,11 @@ pub fn handle_settle_users<'info>(
                     .ok_or(EpochError::MathOverflow)?;
             }
 
-            // Mark order settled and increment settled count
+            // Mark order settled and increment settled count using checked arithmetic
             order.status = OrderStatus::SETTLED;
-            batch.settled_orders = batch.settled_orders.saturating_add(1);
+            batch.settled_orders = batch.settled_orders
+                .checked_add(1)
+                .ok_or(EpochError::MathOverflow)?;
         }
 
         if user_fees > 0 {
@@ -208,19 +235,17 @@ pub fn handle_settle_users<'info>(
         });
     }
 
-    // Spec §8: Funding residual (payers' round-ups minus receivers' round-downs) goes to fee_pool
-    if total_funding_residual > 0 {
-        let residual_u64 = u64::try_from(total_funding_residual).map_err(|_| EpochError::MathOverflow)?;
+    // Spec §8: Only genuine non-negative rounding residuals (payers' round-ups)
+    // are credited to fee_pool. Never debit fee_pool for negative page-level net funding
+    // in partial settlement pages.
+    let _net_page_funding = (page_gross_funding_payments as i128)
+        .checked_sub(page_gross_funding_receipts as i128)
+        .ok_or(EpochError::MathOverflow)?;
+
+    if page_funding_rounding_residuals > 0 {
         market.fee_pool = market
             .fee_pool
-            .checked_add(residual_u64)
-            .ok_or(EpochError::MathOverflow)?;
-    } else if total_funding_residual < 0 {
-        let neg = u64::try_from(total_funding_residual.checked_abs().ok_or(EpochError::MathOverflow)?)
-            .map_err(|_| EpochError::MathOverflow)?;
-        market.fee_pool = market
-            .fee_pool
-            .checked_sub(neg)
+            .checked_add(page_funding_rounding_residuals)
             .ok_or(EpochError::MathOverflow)?;
     }
 

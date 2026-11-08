@@ -194,13 +194,33 @@ pub fn handle_vault_quote(ctx: Context<VaultQuote>, params: VaultQuoteParams) ->
 
         if is_match {
             if side == OrderSide::BUY && !allow_bids {
-                batch.bid_qty[tick] = batch.bid_qty[tick].saturating_sub(lots);
-                vault_user.pending_buy_lots = vault_user.pending_buy_lots.saturating_sub(lots);
+                batch.bid_qty[tick] = batch.bid_qty[tick]
+                    .checked_sub(lots)
+                    .ok_or(EpochError::MathOverflow)?;
+                vault_user.pending_buy_lots = vault_user.pending_buy_lots
+                    .checked_sub(lots)
+                    .ok_or(EpochError::MathOverflow)?;
                 batch.orders[i].status = OrderStatus::CANCELLED;
+                batch.settled_orders = batch.settled_orders
+                    .checked_add(1)
+                    .ok_or(EpochError::MathOverflow)?;
+                vault_user.active_orders = vault_user.active_orders
+                    .checked_sub(1)
+                    .ok_or(EpochError::MathOverflow)?;
             } else if side == OrderSide::SELL && !allow_asks {
-                batch.ask_qty[tick] = batch.ask_qty[tick].saturating_sub(lots);
-                vault_user.pending_sell_lots = vault_user.pending_sell_lots.saturating_sub(lots);
+                batch.ask_qty[tick] = batch.ask_qty[tick]
+                    .checked_sub(lots)
+                    .ok_or(EpochError::MathOverflow)?;
+                vault_user.pending_sell_lots = vault_user.pending_sell_lots
+                    .checked_sub(lots)
+                    .ok_or(EpochError::MathOverflow)?;
                 batch.orders[i].status = OrderStatus::CANCELLED;
+                batch.settled_orders = batch.settled_orders
+                    .checked_add(1)
+                    .ok_or(EpochError::MathOverflow)?;
+                vault_user.active_orders = vault_user.active_orders
+                    .checked_sub(1)
+                    .ok_or(EpochError::MathOverflow)?;
             }
         }
     }
@@ -228,12 +248,19 @@ pub fn handle_vault_quote(ctx: Context<VaultQuote>, params: VaultQuoteParams) ->
                 let old_tick = batch.orders[idx].tick as usize;
                 let old_lots = batch.orders[idx].lots;
                 if old_side == OrderSide::BUY {
-                    batch.bid_qty[old_tick] = batch.bid_qty[old_tick].saturating_sub(old_lots);
-                    vault_user.pending_buy_lots = vault_user.pending_buy_lots.saturating_sub(old_lots);
+                    batch.bid_qty[old_tick] = batch.bid_qty[old_tick]
+                        .checked_sub(old_lots)
+                        .ok_or(EpochError::MathOverflow)?;
+                    vault_user.pending_buy_lots = vault_user.pending_buy_lots
+                        .checked_sub(old_lots)
+                        .ok_or(EpochError::MathOverflow)?;
                 } else {
-                    batch.ask_qty[old_tick] = batch.ask_qty[old_tick].saturating_sub(old_lots);
-                    vault_user.pending_sell_lots =
-                        vault_user.pending_sell_lots.saturating_sub(old_lots);
+                    batch.ask_qty[old_tick] = batch.ask_qty[old_tick]
+                        .checked_sub(old_lots)
+                        .ok_or(EpochError::MathOverflow)?;
+                    vault_user.pending_sell_lots = vault_user.pending_sell_lots
+                        .checked_sub(old_lots)
+                        .ok_or(EpochError::MathOverflow)?;
                 }
             }
             idx
@@ -248,8 +275,10 @@ pub fn handle_vault_quote(ctx: Context<VaultQuote>, params: VaultQuoteParams) ->
                 break;
             }
             let idx = batch.num_orders as usize;
-            batch.num_orders += 1;
-            vault_user.active_orders = vault_user.active_orders.saturating_add(1);
+            batch.num_orders = batch.num_orders.checked_add(1).ok_or(EpochError::MathOverflow)?;
+            vault_user.active_orders = vault_user.active_orders
+                .checked_add(1)
+                .ok_or(EpochError::MathOverflow)?;
             idx
         };
 
@@ -266,11 +295,19 @@ pub fn handle_vault_quote(ctx: Context<VaultQuote>, params: VaultQuoteParams) ->
 
         // Add to aggregates
         if side == OrderSide::BUY {
-            batch.bid_qty[tick as usize] = batch.bid_qty[tick as usize].saturating_add(lots);
-            vault_user.pending_buy_lots = vault_user.pending_buy_lots.saturating_add(lots);
+            batch.bid_qty[tick as usize] = batch.bid_qty[tick as usize]
+                .checked_add(lots)
+                .ok_or(EpochError::MathOverflow)?;
+            vault_user.pending_buy_lots = vault_user.pending_buy_lots
+                .checked_add(lots)
+                .ok_or(EpochError::MathOverflow)?;
         } else {
-            batch.ask_qty[tick as usize] = batch.ask_qty[tick as usize].saturating_add(lots);
-            vault_user.pending_sell_lots = vault_user.pending_sell_lots.saturating_add(lots);
+            batch.ask_qty[tick as usize] = batch.ask_qty[tick as usize]
+                .checked_add(lots)
+                .ok_or(EpochError::MathOverflow)?;
+            vault_user.pending_sell_lots = vault_user.pending_sell_lots
+                .checked_add(lots)
+                .ok_or(EpochError::MathOverflow)?;
         }
 
         orders_placed += 1;
