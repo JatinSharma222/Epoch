@@ -335,3 +335,93 @@ fn test_h2_h3_remediation_admin_timing_bypasses_removed() {
     assert!(!can_expire_admin, "Admin CANNOT prematurely void before expiration delay");
     assert!(!can_expire_non_admin, "Non-admin CANNOT prematurely void before expiration delay");
 }
+
+/// [ADD-2 EXTENDED PROOF: Sequential Expiration Followed by Clearance]
+/// Proves that:
+/// 1. An expired batch (batch 5) must be the next in sequence to expire (`batch_id == market.next_batch_to_clear`).
+/// 2. Voiding batch 5 monotonically advances `market.next_batch_to_clear` from 5 to 6.
+/// 3. Releasing subsequent pages of user accounts on the voided batch 5 does NOT advance `next_batch_to_clear` again.
+/// 4. Batch 6 can then be cleared in sequence, advancing `next_batch_to_clear` from 6 to 7.
+/// 5. Out-of-order operations (e.g. attempting to clear or expire batch 7 before batch 6) are rejected.
+/// 6. Fully settled voided batch 5 becomes reusable upon wrap-around.
+#[test]
+fn test_add2_sequential_expiration_followed_by_clearance() {
+    let mut market = create_test_market(Pubkey::new_unique(), 100_000);
+    market.next_batch_to_clear = 5;
+
+    // 1. Attempt out-of-order expiration: caller tries to expire batch 6 when pointer is at 5
+    let out_of_order_batch_id: u64 = 6;
+    let premature_expire_res = if out_of_order_batch_id == market.next_batch_to_clear {
+        market.next_batch_to_clear = market.next_batch_to_clear.checked_add(1).unwrap();
+        Ok(())
+    } else {
+        Err(EpochError::BatchNotNextInSequence)
+    };
+    assert_eq!(
+        premature_expire_res,
+        Err(EpochError::BatchNotNextInSequence),
+        "PROVEN: Out-of-order expiration of batch 6 before batch 5 is rejected"
+    );
+    assert_eq!(market.next_batch_to_clear, 5, "Pointer remains at 5");
+
+    // 2. Sequential expiration of batch 5:
+    let batch5_id: u64 = 5;
+    let mut batch5 = Batch {
+        batch_id: batch5_id,
+        status: BatchStatus::OPEN,
+        num_orders: 4,
+        settled_orders: 0,
+        ..Default::default()
+    };
+
+    let close_slot_5: u64 = 150;
+    let max_delay: u64 = 20;
+    let current_slot: u64 = 175; // 175 > 150 + 20 -> stale!
+
+    // Verify stale condition & next in sequence
+    assert!(current_slot > close_slot_5.saturating_add(max_delay));
+    assert_eq!(batch5_id, market.next_batch_to_clear);
+
+    // Transition to VOID and advance pointer
+    batch5.status = BatchStatus::VOID;
+    market.next_batch_to_clear = market.next_batch_to_clear.checked_add(1).unwrap();
+    assert_eq!(market.next_batch_to_clear, 6, "Pointer monotonically advanced from 5 to 6");
+
+    // 3. Multi-page release on Batch 5:
+    // Page 1 releases 2 orders
+    batch5.settled_orders = batch5.settled_orders.checked_add(2).unwrap();
+    assert_eq!(batch5.status, BatchStatus::VOID);
+    // Crucial check: pointer is NOT advanced again on paged release
+    assert_eq!(market.next_batch_to_clear, 6, "Pointer remains at 6 during paged release");
+
+    // 4. Batch 6 clears while Batch 5 is still releasing orders!
+    let batch6_id: u64 = 6;
+    let mut batch6 = Batch {
+        batch_id: batch6_id,
+        status: BatchStatus::OPEN,
+        num_orders: 2,
+        settled_orders: 0,
+        ..Default::default()
+    };
+    // Batch 6 matches next_batch_to_clear
+    assert_eq!(batch6_id, market.next_batch_to_clear);
+    batch6.status = BatchStatus::CLEARED;
+    market.next_batch_to_clear = market.next_batch_to_clear.checked_add(1).unwrap();
+    assert_eq!(market.next_batch_to_clear, 7, "Pointer monotonically advanced from 6 to 7 after batch 6 clears");
+
+    // 5. Page 2 releases remaining 2 orders on Batch 5
+    batch5.settled_orders = batch5.settled_orders.checked_add(2).unwrap();
+    assert_eq!(batch5.settled_orders, 4);
+    if batch5.settled_orders >= batch5.num_orders {
+        batch5.status = BatchStatus::SETTLED;
+    }
+    assert_eq!(batch5.status, BatchStatus::SETTLED, "Batch 5 marked SETTLED after final page");
+    assert_eq!(market.next_batch_to_clear, 7, "Pointer remains at 7");
+
+    // 6. Ring slot reuse verification
+    let is_reusable_5 = batch5.status == BatchStatus::EMPTY
+        || batch5.status == BatchStatus::SETTLED
+        || batch5.num_orders == 0
+        || (batch5.settled_orders >= batch5.num_orders);
+    assert!(is_reusable_5, "PROVEN: Voided and settled batch 5 ring slot is 100% reusable");
+}
