@@ -65,7 +65,7 @@ async function main() {
   const rpcUrl =
     process.env.EPOCH_RPC_URL ||
     process.env.NEXT_PUBLIC_RPC_URL ||
-    "https://devnet.helius-rpc.com/?api-key=***";
+    "https://api.devnet.solana.com";
   const connection = new Connection(rpcUrl, "confirmed");
 
   let liveSlot = await connection.getSlot("processed");
