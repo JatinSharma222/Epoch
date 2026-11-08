@@ -12,13 +12,13 @@
 
 | Role | Worktree Path | Active Branch | Latest Commit Hash | Commit Summary | Current Workstream Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Lead Architect & Engineering Manager** | `.` (Root) | `feat/epoch-multi-agent` | `3e0f34c` | `docs: finalize phase one security plan` | **Active** (Tier 3 Specifications Authored; Coordination Complete) |
-| **Security Auditor** | `../Epoch-security` | `agent/security-audit` | `cf6bcbb` | `docs(audit): commit security audit report, dispute resolution, and regression repro` | **Completed** (Dispute Resolution & Repro Tests Delivered) |
-| **Solana Engineer** | `../Epoch-solana` | `agent/solana-engineer` | `8138060` | `fix(market): implement manual AnchorSerialize without conflicting IdlBuild` | **Completed** (Tier 1 Core Fixes: ADD-1, H-1, H-2, H-3, ADD-2, C-2, Events) |
-| **Keeper Engineer** | `../Epoch-keeper` | `agent/keeper-engineer` | `b0cb3de` | `fix(security): expunge hardcoded devnet RPC credentials from scripts (ADD-6)` | **Completed** (ADD-6 Credential Expungement Verified) |
-| **Frontend Engineer** | `../Epoch-frontend` | `agent/frontend-engineer` | `4699903` | `fix(frontend): correct short position PnL percentage and batch countdown label` | **Completed** (Tier 2 UI PnL & Countdown Parity Delivered) |
-| **Infrastructure Engineer** | `../Epoch-infra` | `agent/infrastructure-engineer` | `7c689f8` | `fix(infra): add .dockerignore and eliminate deploy key fallback (ADD-7)` | **Completed** (ADD-7 Docker Hardening Delivered; DB Gated) |
-| **QA Engineer** | `../Epoch-qa` | `agent/qa-engineer` | `85ab9c8` | `test(qa): resolve Keypair import, align Anchor harness with Phase 1 parameters and add error diagnostics` | **Completed** (Anchor Harness Diagnostics & Audit Regressions Integrated) |
+| **Lead Architect & Engineering Manager** | `.` (Root) | `feat/epoch-multi-agent` | `bc1095dd368b4b3e8532e4517e0b18ca632a8ff4` | `docs: finalize phase 1 implementation status and tier 3 specifications` | **Active** (Tier 3 Specifications Authored; Coordination Complete) |
+| **Security Auditor** | `../Epoch-security` | `agent/security-audit` | `cf6bcbba533145f8e2f7ebc0bbf18d3218798635` | `docs(audit): commit security audit report, dispute resolution, and regression repro` | **Completed** (Dispute Resolution & Repro Tests Delivered) |
+| **Solana Engineer** | `../Epoch-solana` | `agent/solana-engineer` | `f2f0cccf38ea6d0f90dc2d53b5fbe1efd56f8bcb` | `fix(protocol): enforce strictly sequential clearance ordering (ADD-2) and explicit OPEN status guard for vault quote cancellation (ADD-1)` | **Completed** (ADD-1 Idempotency, ADD-2 Sequential Clearance, H-1, H-2, H-3, C-2, Events) |
+| **Keeper Engineer** | `../Epoch-keeper` | `agent/keeper-engineer` | `b0cb3de63f73f46e434e9b9883d69a90db07bc92` | `fix(security): expunge hardcoded devnet RPC credentials from scripts (ADD-6)` | **Completed** (ADD-6 Credential Expungement Verified) |
+| **Frontend Engineer** | `../Epoch-frontend` | `agent/frontend-engineer` | `4699903079dab4a96ea0d644672b7a0f064326ce` | `fix(frontend): correct short position PnL percentage and batch countdown label` | **Completed** (Tier 2 UI PnL & Countdown Parity Delivered) |
+| **Infrastructure Engineer** | `../Epoch-infra` | `agent/infrastructure-engineer` | `7c689f87d09f9715c18799eb332b0dfa8110ba86` | `fix(infra): add .dockerignore and eliminate deploy key fallback (ADD-7)` | **Completed** (ADD-7 Docker Hardening Delivered; DB Gated) |
+| **QA Engineer** | `../Epoch-qa` | `agent/qa-engineer` | `b78152cbde3d9d21138a28cab7f9d95171f9b8b0` | `Merge branch 'agent/solana-engineer' into agent/qa-engineer` | **Completed** (Merged Solana f2f0ccc; 116/116 Native Rust Tests Passing) |
 
 ---
 
@@ -30,7 +30,7 @@ All agents strictly execute standardized test commands. Below are the verified t
 | :--- | :--- | :--- | :---: | :---: | :--- |
 | **Rust Smart Contracts (Default)** | `cargo test --workspace` | Native Rust Cargo 1.89+ | **105 / 105 passed** | **PASSED** | 23 unit (`epoch`), 14 unit (`epoch-ref`), 68 integration across 18 harnesses |
 | **Authority Oracle Feature** | `cargo test --workspace --features authority-oracle` | Native Rust Cargo | **107 / 107 passed** | **PASSED** | 105 base minus 5 Pyth-specific plus 7 Authority Oracle integration tests |
-| **QA Extended Regression Suite** | `cargo test --workspace` (in `../Epoch-qa`) | Native Rust Cargo | **112 / 112 passed** | **PASSED** | 105 default + 7 security audit reproduction tests |
+| **QA Extended Regression Suite** | `cargo test --workspace` (in `../Epoch-qa`) | Native Rust Cargo | **116 / 116 passed** | **PASSED** | 105 default + 7 audit reproduction tests + 4 remediation proof tests |
 | **Frontend Web Terminal** | `cd app && bun test` | Bun Test Runner (Native) | **2 / 2 passed** | **PASSED** | Unit tests for `BottomLedger` PnL formatting and calculation parity |
 | **Keeper Cranker Daemon** | `cd keeper && bun test` | Bun Test Runner (Native) | **4 / 4 passed** | **PASSED** | Unit tests for keeper orderbook indexing and RPC retry failover |
 | **Anchor Integration Suite** | `anchor test --skip-build` | `solana-test-validator` + ts-mocha | **30 tests (Harness unblocked; 25 blocked by oracle slot)** | **DIAGNOSED / GATED** | Fixed Keypair import & C-2 immutability in `85ab9c8`. Clearing blocked by Pyth Devnet clone slot mismatch ($519\text{M} \gg 154$) |
