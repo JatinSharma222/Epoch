@@ -155,7 +155,7 @@ export const Header: React.FC<HeaderProps> = ({
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
-            <span className="text-[#00F0FF] font-semibold">{slotsRemaining}s</span>
+            <span className="text-[#00F0FF] font-semibold">{slotsRemaining} slot{slotsRemaining === 1 ? "" : "s"}</span>
           </div>
         </div>
       </div>

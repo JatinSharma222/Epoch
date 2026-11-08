@@ -271,8 +271,8 @@ export const BottomLedger: React.FC<BottomLedgerProps> = ({
                             position.unrealizedPnl >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"
                           }`}
                         >
-                          {position.unrealizedPnl >= 0 ? "+" : ""}${position.unrealizedPnl.toFixed(2)} (+
-                          {((position.unrealizedPnl / (position.entryPrice * position.sizeLots * 0.001 * 0.1)) * 100).toFixed(2)}%)
+                          {position.unrealizedPnl >= 0 ? "+" : ""}${position.unrealizedPnl.toFixed(2)} ({position.unrealizedPnl >= 0 ? "+" : ""}
+                          {((position.unrealizedPnl / (position.entryPrice * Math.abs(position.sizeLots) * 0.001 * 0.1)) * 100).toFixed(2)}%)
                         </td>
                         <td className="py-2 text-right">
                           <button
