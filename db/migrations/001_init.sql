@@ -127,3 +127,30 @@ WHERE success AND cu_consumed IS NOT NULL
 GROUP BY network, kind;
 
 INSERT INTO schema_migrations (version) VALUES ('001_init') ON CONFLICT DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS market_params_history (
+  id               bigserial PRIMARY KEY,
+  market           text      NOT NULL,
+  admin            text      NOT NULL,
+  fee_bps          integer   NOT NULL,
+  liq_penalty_bps  integer   NOT NULL,
+  funding_cap_bps  integer   NOT NULL,
+  lookahead        smallint  NOT NULL,
+  slot             bigint    NOT NULL,
+  signature        text      NOT NULL,
+  timestamp        timestamptz NOT NULL
+);
+CREATE INDEX IF NOT EXISTS market_params_market_idx ON market_params_history (market, slot DESC);
+
+CREATE TABLE IF NOT EXISTS vault_params_history (
+  id                 bigserial PRIMARY KEY,
+  market             text      NOT NULL,
+  admin              text      NOT NULL,
+  is_active          smallint  NOT NULL,
+  skew_bps           integer   NOT NULL,
+  max_inventory_lots bigint    NOT NULL,
+  slot               bigint    NOT NULL,
+  signature          text      NOT NULL,
+  timestamp          timestamptz NOT NULL
+);
+CREATE INDEX IF NOT EXISTS vault_params_market_idx ON vault_params_history (market, slot DESC);
