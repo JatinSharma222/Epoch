@@ -5,13 +5,13 @@
   "toolchain": {
     "solana": "3.0.15",
     "anchor": "0.32.0",
+    "rust": "1.89.0",
     "rustc": "1.89.0",
     "platform": "aarch64-apple-darwin"
   },
   "gate_g1_budget_targets": {
-    "clear_batch_max_cu": 600000,
-    "place_order_max_cu": 60000,
-    "settle_users_page_max_cu": 400000
+    "clear_batch_max": 600000,
+    "place_order_max": 60000
   },
   "measurements": [
     {

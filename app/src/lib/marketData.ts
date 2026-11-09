@@ -31,6 +31,7 @@ export interface MarketStats {
   indexPrice: number;
   fundingRate: number;
   fundingCountdown: string;
+  venueCount?: number;
 }
 
 export interface BookRow {
