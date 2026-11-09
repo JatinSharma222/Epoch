@@ -562,7 +562,10 @@ pub fn process_liquidate_with_accounts<'a, 'info>(
     oracle_price: u64,
     current_slot: u64,
     remaining_accounts: &'a [AccountInfo<'info>],
-) -> Result<LiquidationExecutionResult> {
+) -> Result<LiquidationExecutionResult>
+where
+    'a: 'info,
+{
     // 1. Prevent self-liquidation of vault against itself
     require_keys_neq!(
         user_loader.key(),
