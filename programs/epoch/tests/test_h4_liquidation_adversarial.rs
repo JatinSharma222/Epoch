@@ -79,7 +79,7 @@ fn calculate_adl_score(
     if equity <= 0 || entry_notional <= 0 {
         return 0;
     }
-    let notional = (base_position_lots.abs() as u128 * oracle_price as u128) / 1000;
+    let notional = (base_position_lots.unsigned_abs() as u128 * oracle_price as u128) / 1000;
     let pos_value = (base_position_lots as i128 * oracle_price as i128) / 1000;
     let upnl = pos_value - entry_notional as i128;
     if upnl <= 0 {
@@ -239,7 +239,7 @@ fn test_h4_partial_liquidation_step_and_margin_recalculation() {
 
     let equity_before = calculate_equity(collateral_before, entry_notional, lots_before, 0, current_price);
     assert_eq!(equity_before, 5_000_000);
-    let mmr_before = (lots_before.abs() as u64 * current_price * mmr_bps) / 1000 / 10_000;
+    let mmr_before = (lots_before.unsigned_abs() * current_price * mmr_bps) / 1000 / 10_000;
     assert_eq!(mmr_before, 7_250_000);
     assert!(equity_before < mmr_before as i64 && equity_before > 0);
 
@@ -257,11 +257,11 @@ fn test_h4_partial_liquidation_step_and_margin_recalculation() {
     let realized_pnl = -2_500_000i64;
     let collateral_after = collateral_before + realized_pnl - penalty as i64;
     let lots_after = lots_before - delta_lots; // 500 lots remaining
-    let entry_notional_after = entry_notional - (delta_lots as i64 * 150_000_000 / 1000);
+    let entry_notional_after = entry_notional - (delta_lots * 150_000_000 / 1000);
 
     // Recalculate equity and MMR post-liquidation:
     let equity_after = calculate_equity(collateral_after, entry_notional_after, lots_after, 0, current_price);
-    let mmr_after = (lots_after.abs() as u64 * current_price * mmr_bps) / 1000 / 10_000; // 500 * $145 * 5% = $3.625
+    let mmr_after = (lots_after.unsigned_abs() * current_price * mmr_bps) / 1000 / 10_000; // 500 * $145 * 5% = $3.625
 
     // Post-liquidation collateral = $10.00 - $2.50 - $0.725 = $6.775
     // Post-liquidation equity = collateral ($6.775) + remaining uPnL (-$2.50) = $4.275

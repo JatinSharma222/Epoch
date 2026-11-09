@@ -35,8 +35,10 @@ fn test_zero_volume_batch_funding_accrual_at_oracle_parity() {
 
 #[test]
 fn test_zero_volume_batch_expires_unmatched_resting_orders() {
-    let mut batch = Batch::default();
-    batch.num_orders = 2;
+    let mut batch = Batch {
+        num_orders: 2,
+        ..Default::default()
+    };
     // Bid at tick 40 (below center tick 50)
     batch.orders[0].user_pda = anchor_lang::solana_program::pubkey::Pubkey::new_unique();
     batch.orders[0].tick = 40;

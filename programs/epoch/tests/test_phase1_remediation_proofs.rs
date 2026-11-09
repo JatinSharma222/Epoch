@@ -122,7 +122,7 @@ fn test_add1_remediation_idempotent_cancellation_and_ring_reuse() {
             flags: 0,
             _padding: [0; 10],
         };
-        batch.bid_qty[(48 + i) as usize] = 20;
+        batch.bid_qty[48 + i] = 20;
     }
 
     // 3 SELL orders
@@ -138,7 +138,7 @@ fn test_add1_remediation_idempotent_cancellation_and_ring_reuse() {
             flags: 0,
             _padding: [0; 10],
         };
-        batch.ask_qty[(52 + (i - 3)) as usize] = 20;
+        batch.ask_qty[52 + (i - 3)] = 20;
     }
 
     let allow_bids = false; // Disallow bids -> cancel all 3 BUY orders
@@ -192,14 +192,12 @@ fn test_add1_remediation_idempotent_cancellation_and_ring_reuse() {
             }
         };
 
-        if is_open_vault_order {
-            if side == OrderSide::BUY && !allow_bids {
-                batch.bid_qty[tick] = batch.bid_qty[tick].checked_sub(lots).unwrap();
-                vault_user.pending_buy_lots = vault_user.pending_buy_lots.checked_sub(lots).unwrap();
-                batch.orders[i].status = OrderStatus::CANCELLED;
-                batch.settled_orders = batch.settled_orders.checked_add(1).unwrap();
-                vault_user.active_orders = vault_user.active_orders.checked_sub(1).unwrap();
-            }
+        if is_open_vault_order && side == OrderSide::BUY && !allow_bids {
+            batch.bid_qty[tick] = batch.bid_qty[tick].checked_sub(lots).unwrap();
+            vault_user.pending_buy_lots = vault_user.pending_buy_lots.checked_sub(lots).unwrap();
+            batch.orders[i].status = OrderStatus::CANCELLED;
+            batch.settled_orders = batch.settled_orders.checked_add(1).unwrap();
+            vault_user.active_orders = vault_user.active_orders.checked_sub(1).unwrap();
         }
     }
 

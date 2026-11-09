@@ -185,7 +185,7 @@ fn test_h4_partial_liquidation_and_deposit_curing_flow() {
     )
     .expect("Partial liquidation should succeed");
 
-    assert_eq!(res.is_solvent, true);
+    assert!(res.is_solvent);
     assert_eq!(res.delta_lots, 500);
     assert_eq!(user.base_position, 500);
     assert_eq!(vault_user.base_position, 500);
@@ -244,7 +244,7 @@ fn test_h4_full_bankruptcy_liquidation_and_bad_debt_recording() {
     )
     .expect("Full liquidation succeeds");
 
-    assert_eq!(res.is_solvent, false);
+    assert!(!res.is_solvent);
     assert_eq!(res.delta_lots, 1_000);
     assert_eq!(user.base_position, 0);
     assert_eq!(user.collateral, 0, "Liquidatee wiped to zero");
@@ -412,7 +412,7 @@ fn test_h4_pure_adl_and_zero_notional_bad_debt() {
     )
     .expect("Production execute_liquidation should succeed");
 
-    assert_eq!(res.is_solvent, false);
+    assert!(!res.is_solvent);
     assert_eq!(liquidatee.base_position, 0, "Liquidatee fully flattened");
     assert_eq!(liquidatee.collateral, 0, "Liquidatee wiped to zero");
 
@@ -470,7 +470,7 @@ fn test_h4_hybrid_vault_and_adl_bankruptcy_reconciliation_long() {
     )
     .expect("Hybrid liquidation succeeds");
 
-    assert_eq!(res.is_solvent, false);
+    assert!(!res.is_solvent);
     assert_eq!(liquidatee.base_position, 0);
     assert_eq!(vault_user.base_position, 500, "Vault absorbed 500 lots headroom");
     assert_eq!(cp.base_position, -500, "ADL absorbed 500 lots");
@@ -546,7 +546,7 @@ fn test_h4_hybrid_vault_and_adl_bankruptcy_reconciliation_short() {
     )
     .expect("Hybrid short liquidation succeeds");
 
-    assert_eq!(res.is_solvent, false);
+    assert!(!res.is_solvent);
     assert_eq!(liquidatee.base_position, 0);
     assert_eq!(vault_user.base_position, -500, "Vault absorbed -500 lots headroom");
     assert_eq!(cp.base_position, 500, "ADL absorbed 500 lots");
@@ -662,7 +662,7 @@ fn test_h4_partial_vault_absorption_residual_retained_in_quarantine() {
     )
     .expect("Partial liquidation succeeds");
 
-    assert_eq!(res.is_solvent, false);
+    assert!(!res.is_solvent);
     assert_eq!(res.delta_lots, 400, "Vault absorbs exact 400 lot headroom");
     assert_eq!(res.remaining_bankrupt_lots, 600, "600 lots remaining bankrupt");
 
@@ -712,7 +712,7 @@ fn test_h4_partial_adl_absorption_residual_retained_in_quarantine() {
     )
     .expect("Partial ADL liquidation succeeds");
 
-    assert_eq!(res.is_solvent, false);
+    assert!(!res.is_solvent);
     assert_eq!(res.adl_executed_lots, 300, "ADL absorbed 300 lots available");
     assert_eq!(res.remaining_bankrupt_lots, 700, "700 residual lots remain");
 
@@ -758,7 +758,7 @@ fn test_h4_complete_exhaustion_residual_retained_in_quarantine() {
     )
     .expect("Liquidation succeeds with both mechanisms exhausted");
 
-    assert_eq!(res.is_solvent, false);
+    assert!(!res.is_solvent);
     assert_eq!(res.delta_lots, 700, "Total 700 lots absorbed (400 vault + 300 ADL)");
     assert_eq!(res.remaining_bankrupt_lots, 300, "300 lots unabsorbed");
 
@@ -819,7 +819,7 @@ fn test_h4_pure_vault_short_reconciliation() {
     )
     .expect("Pure vault short liquidation succeeds");
 
-    assert_eq!(res.is_solvent, false);
+    assert!(!res.is_solvent);
     assert_eq!(liquidatee.base_position, 0, "Short fully closed");
     assert_eq!(vault_user.base_position, -1_000, "Vault absorbed -1,000 lots short");
 
@@ -880,7 +880,7 @@ fn test_h4_pure_adl_short_reconciliation() {
     )
     .expect("Pure ADL short liquidation succeeds");
 
-    assert_eq!(res.is_solvent, false);
+    assert!(!res.is_solvent);
     assert_eq!(liquidatee.base_position, 0);
     assert_eq!(cp_long.base_position, 0, "Counterparty flattened via ADL");
 
@@ -1035,18 +1035,17 @@ fn test_h4_multi_transaction_partial_vault_then_adl_then_deposit_then_full_settl
 fn test_h4_extreme_values_and_i64_min_negation_safe() {
     // 1. Verify calculate_bankruptcy_price does not panic on i64::MIN or i128::MIN
     let p_bk_min = calculate_bankruptcy_price(i64::MIN, 0, i64::MIN, 0);
-    // Should safely return a non-panicking value
-    assert!(p_bk_min == 0 || p_bk_min > 0);
+    assert_eq!(p_bk_min, 0);
 
     let p_bk_min_funding = calculate_bankruptcy_price(10_000_000, 0, 1000, i128::MIN);
-    assert!(p_bk_min_funding == 0 || p_bk_min_funding > 0);
+    assert_eq!(p_bk_min_funding, 0);
 
     // 2. Verify calculate_adl_score does not panic on i64::MIN or huge values
     let score_min = calculate_adl_score(i64::MIN, 100_000_000, 100, 150_000_000);
     assert_eq!(score_min, 0, "Negative equity returns 0 score safely");
 
     let score_huge = calculate_adl_score(100_000_000, i64::MAX, 1000, 150_000_000);
-    assert!(score_huge == 0 || score_huge > 0);
+    assert_eq!(score_huge, 0, "Massive entry notional with uPnL < 0 returns 0 score");
 }
 
 
@@ -1101,7 +1100,7 @@ fn test_h4_multi_transaction_repeated_liquidation_lifecycle() {
     )
     .expect("Tx 1: Partial liquidation succeeds");
 
-    assert_eq!(res1.is_solvent, true, "Regime A solvent partial liquidation");
+    assert!(res1.is_solvent, "Regime A solvent partial liquidation");
     assert_eq!(res1.delta_lots, 400, "Vault absorbed 400 lots");
     assert_eq!(liquidatee.base_position, 600, "Liquidatee retains 600 lots");
     assert_eq!(vault_user.base_position, 400, "Vault holds 400 lots");
@@ -1163,7 +1162,7 @@ fn test_h4_multi_transaction_repeated_liquidation_lifecycle() {
     )
     .expect("Tx 3: Bankruptcy ADL liquidation succeeds");
 
-    assert_eq!(res3.is_solvent, false, "Regime B bankruptcy");
+    assert!(!res3.is_solvent, "Regime B bankruptcy");
     assert_eq!(res3.adl_executed_lots, 400, "400 lots absorbed by CP 1 via ADL");
     assert_eq!(res3.remaining_bankrupt_lots, 200, "200 lots remain unhedged");
 
@@ -1197,7 +1196,7 @@ fn test_h4_multi_transaction_repeated_liquidation_lifecycle() {
     )
     .expect("Tx 4: Final ADL liquidation succeeds");
 
-    assert_eq!(res4.is_solvent, false);
+    assert!(!res4.is_solvent);
     assert_eq!(res4.adl_executed_lots, 200, "Final 200 lots absorbed by CP 2");
     assert_eq!(res4.remaining_bankrupt_lots, 0, "0 lots remaining bankrupt");
 

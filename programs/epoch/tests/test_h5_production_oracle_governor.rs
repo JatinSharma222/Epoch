@@ -426,7 +426,7 @@ fn test_h5_continuous_ema_anchor_tamper_resistance() {
     let ema_up = compute_continuous_ema(100_300_000, 100_000_000, 2);
     let ema_down = compute_continuous_ema(99_700_000, ema_up, 2);
     // Symmetric 30 bps excursion returns cleanly to near $100.00
-    assert!(ema_down >= 99_990_000 && ema_down <= 100_010_000);
+    assert!((99_990_000..=100_010_000).contains(&ema_down));
 }
 
 

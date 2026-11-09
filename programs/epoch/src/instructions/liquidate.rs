@@ -883,7 +883,7 @@ mod tests {
         let res = execute_liquidation(&mut market, &mut user, &mut vault_user, &mut [], 130_000_000, 100)
             .expect("Liquidation should succeed");
 
-        assert_eq!(res.is_solvent, true);
+        assert!(res.is_solvent);
         assert_eq!(res.delta_lots, 5_000, "Partial liquidation closes 50% = 5,000 lots");
         assert_eq!(user.base_position, 5_000);
         assert_eq!(vault_user.base_position, 5_000);
@@ -901,7 +901,7 @@ mod tests {
         let res = execute_liquidation(&mut market, &mut user, &mut vault_user, &mut [], 120_000_000, 100)
             .expect("Bankrupt liquidation should succeed");
 
-        assert_eq!(res.is_solvent, false);
+        assert!(!res.is_solvent);
         assert_eq!(user.base_position, 0);
         assert_eq!(user.collateral, 0, "User collateral completely wiped");
         assert_eq!(res.bad_debt, 0, "Deficit covered by insurance fund");
@@ -917,7 +917,7 @@ mod tests {
         let res = execute_liquidation(&mut market, &mut user, &mut vault_user, &mut [], 110_000_000, 100)
             .expect("Bankrupt liquidation exceeding IF should succeed");
 
-        assert_eq!(res.is_solvent, false);
+        assert!(!res.is_solvent);
         assert_eq!(market.insurance_fund, 0, "Insurance fund exhausted");
         assert_eq!(res.bad_debt, 40_000_000, "Remaining deficit recorded as bad debt");
         assert_eq!(user.collateral, 0, "Bankrupt user collateral wiped to 0");
@@ -932,7 +932,7 @@ mod tests {
         let res = execute_liquidation(&mut market, &mut user, &mut vault_user, &mut [], 168_000_000, 100)
             .expect("Short liquidation should succeed");
 
-        assert_eq!(res.is_solvent, true);
+        assert!(res.is_solvent);
         assert_eq!(res.delta_lots, 5_000);
         assert_eq!(user.base_position, -5_000);
         assert_eq!(vault_user.base_position, -5_000);

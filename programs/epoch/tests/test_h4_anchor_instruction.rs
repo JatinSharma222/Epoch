@@ -194,7 +194,7 @@ fn test_anchor_instruction_regime_a_partial_liquidation_and_quarantine() {
     )
     .expect("Partial liquidation instruction should execute cleanly");
 
-    assert_eq!(res.is_solvent, true);
+    assert!(res.is_solvent);
     assert_eq!(res.delta_lots, 500, "50% partial liquidation step");
 
     let user_post = user_loader.load().unwrap();
@@ -336,7 +336,7 @@ fn test_anchor_instruction_regime_b_with_remaining_accounts_adl() {
     )
     .expect("ADL liquidation instruction should execute cleanly");
 
-    assert_eq!(res.is_solvent, false);
+    assert!(!res.is_solvent);
     assert_eq!(res.adl_executed_lots, 1_000);
     assert_eq!(res.insurance_covered, 0, "Pure ADL uses zero insurance fund");
     assert_eq!(res.bad_debt, 0, "Zero bad debt generated");
