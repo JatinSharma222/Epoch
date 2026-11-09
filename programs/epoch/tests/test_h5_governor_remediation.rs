@@ -465,3 +465,147 @@ fn test_h5_long_sequence_repeated_outages_and_resets_gradual_drift_bound() {
         total_drift_bps
     );
 }
+
+#[test]
+fn test_h5_high_leverage_equity_sensitivity_analysis() {
+    // Mathematical analysis of equity sensitivity to price movement under leverage:
+    // Notional N = |q| * P / 1000
+    // Margin ratio m = Equity / Notional
+    // Delta Equity = q * Delta P = N * (Delta P / P)
+    // Therefore: Delta m = Delta Equity / N = (Delta P / P)
+    // A delta price move of 30 bps changes the user's margin ratio by exactly 30 bps!
+
+    let base_price = 150_000_000u64; // $150.00
+    let mmr_bps = 500u64; // 5.0% MMR
+    let lots = 1_000i64; // 1,000 lots
+    let notional = (lots.unsigned_abs() as u128 * base_price as u128) / 1000; // $150.00 = 150,000,000 micro-USDC
+    let _mmr_req = (notional * mmr_bps as u128) / 10_000; // $7.50 = 7,500,000 micro-USDC
+
+    // ── CASE 1: High Leverage (20x) hovering near MMR (Margin Ratio = 515 bps) ──
+    // Collateral = $7.725 (515 bps of notional, only 15 bps buffer above MMR).
+    // An adverse oracle move of 25 bps (< 30 bps bound) will drop margin to 490 bps < MMR!
+    let c1_collateral = 7_725_000i64;
+    let adverse_move_25bps = (base_price * 25) / 10_000; // 25 bps move = $0.375
+    let new_price_down25 = base_price - adverse_move_25bps;
+
+    // Evaluate equity at new price
+    let c1_pos_val = (lots as i128 * new_price_down25 as i128) / 1000;
+    let c1_entry_quote = -(notional as i128); // -$150.00
+    let c1_equity = (c1_collateral as i128) + c1_entry_quote + c1_pos_val; // $7.725 - $150 + $149.625 = $7.350
+    let c1_new_notional = (lots.unsigned_abs() as u128 * new_price_down25 as u128) / 1000;
+    let c1_new_mmr = (c1_new_notional * mmr_bps as u128) / 10_000; // $7.481
+
+    // VERIFICATION: Highly leveraged account IS LIQUIDATABLE after only 25 bps move!
+    assert!(
+        c1_equity < c1_new_mmr as i128,
+        "Account hovering 15 bps above MMR must become liquidatable on 25 bps adverse move (equity {}, mmr {})",
+        c1_equity, c1_new_mmr
+    );
+
+    // ── CASE 2: Well-Collateralized Position (10x Leverage, Margin Ratio = 1000 bps) ──
+    // Collateral = $15.00 (1000 bps = 10.0%, 500 bps buffer above MMR).
+    // Even after a maximum Tier 2 adverse move of 30 bps, equity drops only to 970 bps >> MMR!
+    let c2_collateral = 15_000_000i64;
+    let adverse_move_30bps = (base_price * 30) / 10_000;
+    let new_price_down30 = base_price - adverse_move_30bps;
+
+    let c2_pos_val = (lots as i128 * new_price_down30 as i128) / 1000;
+    let c2_equity = (c2_collateral as i128) + c1_entry_quote + c2_pos_val;
+    let c2_new_notional = (lots.unsigned_abs() as u128 * new_price_down30 as u128) / 1000;
+    let c2_new_mmr = (c2_new_notional * mmr_bps as u128) / 10_000;
+
+    assert!(
+        c2_equity >= c2_new_mmr as i128,
+        "Account with 500 bps buffer remains fully solvent after 30 bps move"
+    );
+    let c2_margin_ratio_bps = ((c2_equity as u128) * 10_000) / c2_new_notional;
+    assert!(
+        c2_margin_ratio_bps >= 970 && c2_margin_ratio_bps <= 973,
+        "Margin ratio drops from 1000 bps to ~972 bps (got {} bps)",
+        c2_margin_ratio_bps
+    );
+
+    // ── CASE 3: Exact Sensitivity Boundary (Margin Buffer = 30 bps) ──
+    // User with exactly 530 bps margin (buffer = 30 bps).
+    // Exactly at the 30 bps move, equity lands on the razor edge of MMR:
+    let c3_collateral = (notional * 530) / 10_000; // $7.95
+    let c3_pos_val = (lots as i128 * new_price_down30 as i128) / 1000;
+    let c3_equity = (c3_collateral as i128) + c1_entry_quote + c3_pos_val;
+    let c3_margin_ratio_bps = ((c3_equity as u128) * 10_000) / c2_new_notional;
+    assert!(
+        c3_margin_ratio_bps >= 499 && c3_margin_ratio_bps <= 501,
+        "30 bps buffer position lands precisely at MMR (got {} bps)",
+        c3_margin_ratio_bps
+    );
+}
+
+#[test]
+fn test_h5_repeated_outages_velocity_rate_bound_formal_proof() {
+    // Formal proof and verification of what is bounded vs what is not across repeated outage cycles:
+    //
+    // 1. WHAT IS BOUNDED:
+    //    The maximum AVERAGE VELOCITY across N outage cycles:
+    //    For any N cycles of duration delta_t >= 60s and delta_s >= 150 slots:
+    //    Max velocity = (N * 30 bps) / (N * 60 s) = 30 bps / minute.
+    //
+    // 2. WHAT IS NOT BOUNDED:
+    //    The cumulative absolute displacement |P_N - P_0| as N -> infinity.
+    //    Over long time horizons (e.g. days/months), the price must track real market price
+    //    and is therefore UNBOUNDED in cumulative displacement.
+    //    It is a RATE BOUND, not a static global ceiling!
+
+    let initial_price = 150_000_000u64;
+    let mut oracle = create_initial_oracle(initial_price, 100, 1000);
+
+    let mut current_slot = 100u64;
+    let mut current_time = 1000i64;
+
+    // Simulate 50 consecutive outage cycles (T = 50 minutes, 7,500 slots)
+    let n_cycles = 50u64;
+    for _cycle in 1..=n_cycles {
+        current_slot += 150;
+        current_time += 60;
+
+        let pump_target = oracle.price * 2;
+        let accepted = process_price_update(
+            &mut oracle,
+            pump_target,
+            50_000,
+            current_time,
+            current_slot,
+        )
+        .expect("Update succeeds with rate clamping");
+
+        // Per-cycle instantaneous step is bounded by Tier 2 anchor deviation <= 30 bps
+        let step_bps = (accepted.abs_diff(oracle.anchor_price) as u128 * 10_000) / (oracle.anchor_price as u128);
+        assert!(step_bps <= 30, "Per-cycle step <= 30 bps");
+    }
+
+    let elapsed_minutes = (current_time - 1000) / 60;
+    assert_eq!(elapsed_minutes, 50);
+
+    let cumulative_drift_bps = ((oracle.price - initial_price) as u128 * 10_000) / (initial_price as u128);
+
+    // Verify:
+    // Average velocity is strictly <= 30 bps/minute
+    let avg_velocity_bps_per_min = cumulative_drift_bps / elapsed_minutes as u128;
+    assert!(
+        avg_velocity_bps_per_min <= 30,
+        "Average velocity {} bps/min exceeds 30 bps/min mathematical rate bound",
+        avg_velocity_bps_per_min
+    );
+
+    // Verify that cumulative drift grows linearly with N (not a constant ceiling):
+    // For N = 50 cycles, drift is > 1000 bps (actual ~1300 bps), proving that over time
+    // cumulative drift is NOT capped at a constant number, but tracks the rate bound.
+    assert!(
+        cumulative_drift_bps > 1000,
+        "Cumulative drift {} bps correctly scales with N cycles, proving it is a rate bound",
+        cumulative_drift_bps
+    );
+    assert!(
+        cumulative_drift_bps <= (n_cycles as u128 * 30),
+        "Cumulative drift {} bps must not exceed theoretical rate ceiling N * 30 bps = 1500 bps",
+        cumulative_drift_bps
+    );
+}
