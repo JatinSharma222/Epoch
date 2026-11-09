@@ -195,5 +195,9 @@ pub enum EpochError {
     /// ADL counterparty must have an opposing profitable position.
     #[msg("ADL counterparty position must be in the opposing direction and profitable")]
     InvalidAdlCounterparty,
+
+    /// Account is uninitialized or discriminator is invalid.
+    #[msg("Account is uninitialized or invalid discriminator")]
+    AccountNotInitialized,
 }
 

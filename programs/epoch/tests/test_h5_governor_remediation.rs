@@ -260,3 +260,97 @@ fn test_h5_ema_anchor_cannot_be_manipulated_by_outage_resets() {
         anchor_delta_bps
     );
 }
+
+#[test]
+fn test_h5_oscillation_adversarial_security_analysis() {
+    let initial_price = 150_000_000u64;
+    let mut oracle = create_initial_oracle(initial_price, 100, 1000);
+
+    // Attacker submits 40 rapid alternating price moves:
+    // Update 1: +15 bps shock
+    // Update 2: -15 bps shock
+    // Update 3: +15 bps shock
+    // ...
+    // Total path length of attempted movements = 40 * 15 = 600 bps!
+    let mut current_slot = 100u64;
+    let mut current_time = 1000i64;
+
+    for i in 1..=40 {
+        current_slot += 2; // Normal 2-slot batch cadence
+        current_time += 1; // 1 second per 2 slots
+
+        let target = if i % 2 == 1 {
+            initial_price + (initial_price * 15) / 10_000 // +15 bps
+        } else {
+            initial_price - (initial_price * 15) / 10_000 // -15 bps
+        };
+
+        let res = process_price_update(
+            &mut oracle,
+            target,
+            50_000,
+            current_time,
+            current_slot,
+        );
+        assert!(res.is_ok(), "Alternating update #{} must succeed without locking", i);
+
+        let final_price = res.unwrap();
+
+        // 1. Excursion from continuous EMA anchor is ALWAYS <= 30 bps
+        let anchor_dev_bps = (final_price.abs_diff(oracle.anchor_price) as u128 * 10_000)
+            / (oracle.anchor_price as u128);
+        assert!(
+            anchor_dev_bps <= 30,
+            "Anchor deviation {} bps must not exceed Tier 2 limit (30 bps)",
+            anchor_dev_bps
+        );
+
+        // 2. Net directional displacement from window start is ALWAYS <= 60 bps
+        let net_disp_bps = (final_price.abs_diff(initial_price) as u128 * 10_000)
+            / (initial_price as u128);
+        assert!(
+            net_disp_bps <= 60,
+            "Net displacement {} bps must not exceed Tier 3 limit (60 bps)",
+            net_disp_bps
+        );
+    }
+
+    // After 40 alternating updates, verify oracle is healthy, anchor is at parity,
+    // and oracle NEVER halted!
+    assert!(oracle.velocity_accumulator_bps <= 60);
+}
+
+#[test]
+fn test_h5_repeated_resets_and_prolonged_outages_unbypassable_proof() {
+    let initial_price = 150_000_000u64;
+    let mut oracle = create_initial_oracle(initial_price, 100, 1000);
+
+    // Adversary Attempt 1: Advancing time by 10 minutes WITHOUT advancing slots (stalled Solana network)
+    // Rolling window MUST NOT reset!
+    let target = initial_price + (initial_price * 50) / 10_000; // +50 bps
+    let res1 = process_price_update(
+        &mut oracle,
+        target,
+        50_000,
+        1600, // +600 seconds
+        105,  // only +5 slots!
+    )
+    .unwrap();
+    // Slots elapsed is only 5; single-move allowance is only (15 + 3) = 18 bps!
+    let move_bps1 = ((res1 - initial_price) as u128 * 10_000) / initial_price as u128;
+    assert!(move_bps1 <= 18, "Advancing only time without slots must NOT reset window (move was {} bps)", move_bps1);
+
+    // Adversary Attempt 2: Advancing 500 slots WITHOUT advancing time (fast local replay)
+    // Rolling window MUST NOT reset!
+    let res2 = process_price_update(
+        &mut oracle,
+        initial_price + (initial_price * 50) / 10_000,
+        50_000,
+        1601, // only +1 second
+        605,  // +500 slots!
+    )
+    .unwrap();
+    // Anchor deviation constraint (<= 30 bps) still strictly applies!
+    let move_bps2 = (res2.abs_diff(oracle.anchor_price) as u128 * 10_000) / oracle.anchor_price as u128;
+    assert!(move_bps2 <= 30, "Advancing only slots without time must NOT bypass anchor constraint (dev was {} bps)", move_bps2);
+}

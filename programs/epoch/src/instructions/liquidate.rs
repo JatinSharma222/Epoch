@@ -480,50 +480,54 @@ pub fn execute_liquidation(
         }
 
         // If vault capacity was saturated (0 headroom) and no lots were closed via ADL,
-        // quarantine account under LIQUIDATION_LOCKED
+        // quarantine account under LIQUIDATING and abort
         if delta_lots == 0 {
-            user.flags |= UserFlags::LIQUIDATION_LOCKED;
+            user.flags |= UserFlags::LIQUIDATING;
             return Err(EpochError::VaultCapacityExhausted.into());
         }
 
-        // Zero-Notional Bad Debt Invariant:
-        // Any remaining unhedged contracts are cancelled from global open interest at P_bk.
-        // Under NO circumstances is remaining position notional converted into bad debt!
-        if user.base_position != 0 {
-            user.base_position = 0;
-        }
-
-        // Fold bankrupt user quote position into collateral to settle actual uncovered obligation
-        let quote_pnl = i64::try_from(user.quote_position).map_err(|_| EpochError::MathOverflow)?;
-        user.collateral = user
-            .collateral
-            .checked_add(quote_pnl)
-            .ok_or(EpochError::MathOverflow)?;
-        user.quote_position = 0;
-
-        if user.collateral < 0 {
-            let actual_deficit = (-user.collateral) as u64;
-            let covered = actual_deficit.min(market.insurance_fund);
-            if covered > 0 {
-                market.insurance_fund = market
-                    .insurance_fund
-                    .checked_sub(covered)
-                    .ok_or(EpochError::MathOverflow)?;
-                insurance_covered = covered;
-            }
-            let rem_deficit = actual_deficit.saturating_sub(covered);
-            if rem_deficit > 0 {
-                market.bad_debt = market
-                    .bad_debt
-                    .checked_add(rem_deficit)
-                    .ok_or(EpochError::MathOverflow)?;
-                bad_debt = rem_deficit;
-            }
-            user.collateral = 0;
+        // Unhedged residual position handling (H-4 Finding 1):
+        // If remaining_bankrupt > 0, the position could NOT be fully closed due to capacity or ADL limits.
+        // We MUST NEVER silently erase residual exposure (user.base_position = 0)!
+        // The user retains their unhedged residual lots, preserving global base-position conservation.
+        // The account remains quarantined under UserFlags::LIQUIDATING until cured by deposit or liquidated.
+        if remaining_bankrupt > 0 {
+            user.flags |= UserFlags::LIQUIDATING;
+            msg!(
+                "Partial bankruptcy liquidation: {} lots closed, {} residual lots retained under quarantine",
+                delta_lots,
+                remaining_bankrupt
+            );
         } else {
-            user.collateral = 0;
+            // Position is fully closed (user.base_position == 0).
+            // Reconcile actual cash obligation:
+            let net_cash = (user.collateral as i128) + user.quote_position;
+            if net_cash < 0 {
+                let actual_deficit = (-net_cash) as u64;
+                let covered = actual_deficit.min(market.insurance_fund);
+                if covered > 0 {
+                    market.insurance_fund = market
+                        .insurance_fund
+                        .checked_sub(covered)
+                        .ok_or(EpochError::MathOverflow)?;
+                    insurance_covered = covered;
+                }
+                let rem_deficit = actual_deficit.saturating_sub(covered);
+                if rem_deficit > 0 {
+                    market.bad_debt = market
+                        .bad_debt
+                        .checked_add(rem_deficit)
+                        .ok_or(EpochError::MathOverflow)?;
+                    bad_debt = rem_deficit;
+                }
+                user.collateral = 0;
+                user.quote_position = 0;
+            } else {
+                user.collateral = net_cash as i64;
+                user.quote_position = 0;
+            }
+            user.flags = UserFlags::NONE;
         }
-        user.flags = UserFlags::NONE;
     }
 
     // Update Market Open Interest based on long position changes
@@ -611,9 +615,21 @@ where
         require_keys_eq!(*acc_info.owner, crate::ID, EpochError::Unauthorized);
         require!(acc_info.is_writable, EpochError::Unauthorized);
 
-        // 4. Account type validation
+        // 4. Account initialization and discriminator validation
+        require!(
+            acc_info.data_len() >= 8 + std::mem::size_of::<UserAccount>(),
+            EpochError::AccountNotInitialized
+        );
+        {
+            let data = acc_info.try_borrow_data()?;
+            require!(
+                &data[..8] == UserAccount::DISCRIMINATOR,
+                EpochError::AccountNotInitialized
+            );
+        }
         let cp_loader = AccountLoader::<UserAccount>::try_from(acc_info)?;
         let cp = cp_loader.load()?;
+        require!(cp.owner != Pubkey::default(), EpochError::AccountNotInitialized);
 
         // 5. Market / PDA derivation verification
         let expected_pda = Pubkey::find_program_address(&[b"user", cp.owner.as_ref()], &crate::ID).0;

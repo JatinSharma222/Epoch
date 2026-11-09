@@ -653,3 +653,199 @@ fn test_anchor_deposit_curing_restores_quarantined_user() {
     apply_deposit_curing(&mut user, &market);
     assert_eq!(user.flags & UserFlags::LIQUIDATING, 0, "Quarantine cleared once equity >= MMR");
 }
+
+#[test]
+fn test_anchor_instruction_rejects_uninitialized_remaining_account() {
+    let program_id = epoch::ID;
+    let market_key = Pubkey::new_unique();
+    let mut market_lamports = 1_000_000_000u64;
+    let mut market = create_default_market(255);
+    market.vault_params.max_inventory_lots = 0;
+    let mut market_buf = AlignedAccountBuffer::new(Market::DISCRIMINATOR, market);
+    let market_slice = market_buf.as_account_slice_mut();
+    let market_info = AccountInfo::new(&market_key, false, true, &mut market_lamports, market_slice, &program_id, false, 0);
+    let market_loader = AccountLoader::<Market>::try_from(&market_info).unwrap();
+
+    let vault_owner = Pubkey::new_unique();
+    let (vault_user_key, _) = Pubkey::find_program_address(&[b"user", vault_owner.as_ref()], &program_id);
+    let mut vault_lamports = 1_000_000_000u64;
+    let mut vault_buf = AlignedAccountBuffer::new(UserAccount::DISCRIMINATOR, UserAccount {
+        quote_position: 0, funding_snapshot: 0, owner: vault_owner, collateral: 1_000_000_000, base_position: 0,
+        pending_buy_lots: 0, pending_sell_lots: 0, active_orders: 0, flags: 0, _pad: [0; 6], _reserved: [0; 64], _pad2: [0; 8],
+    });
+    let vault_slice = vault_buf.as_account_slice_mut();
+    let vault_user_info = AccountInfo::new(&vault_user_key, false, true, &mut vault_lamports, vault_slice, &program_id, false, 0);
+    let vault_user_loader = AccountLoader::<UserAccount>::try_from(&vault_user_info).unwrap();
+
+    let liquidatee_owner = Pubkey::new_unique();
+    let (liquidatee_key, _) = Pubkey::find_program_address(&[b"user", liquidatee_owner.as_ref()], &program_id);
+    let mut user_lamports = 1_000_000_000u64;
+    let mut user_buf = AlignedAccountBuffer::new(UserAccount::DISCRIMINATOR, UserAccount {
+        quote_position: -150_000_000, funding_snapshot: 0, owner: liquidatee_owner, collateral: 10_000_000, base_position: 1_000,
+        pending_buy_lots: 0, pending_sell_lots: 0, active_orders: 0, flags: 0, _pad: [0; 6], _reserved: [0; 64], _pad2: [0; 8],
+    });
+    let user_slice = user_buf.as_account_slice_mut();
+    let user_info = AccountInfo::new(&liquidatee_key, false, true, &mut user_lamports, user_slice, &program_id, false, 0);
+    let user_loader = AccountLoader::<UserAccount>::try_from(&user_info).unwrap();
+
+    // Adversarial counterparty account with zeroed discriminator (uninitialized)
+    let cp_owner = Pubkey::new_unique();
+    let (cp_key, _) = Pubkey::find_program_address(&[b"user", cp_owner.as_ref()], &program_id);
+    let mut cp_lamports = 1_000_000_000u64;
+    let mut cp_buf = AlignedAccountBuffer::new(&[0u8; 8], UserAccount {
+        quote_position: 150_000_000, funding_snapshot: 0, owner: cp_owner, collateral: 100_000_000, base_position: -1_000,
+        pending_buy_lots: 0, pending_sell_lots: 0, active_orders: 0, flags: 0, _pad: [0; 6], _reserved: [0; 64], _pad2: [0; 8],
+    });
+    let cp_slice = cp_buf.as_account_slice_mut();
+    let cp_info = AccountInfo::new(&cp_key, false, true, &mut cp_lamports, cp_slice, &program_id, false, 0);
+
+    let remaining_accounts = [cp_info];
+
+    let err = process_liquidate_with_accounts(
+        &market_loader,
+        &vault_user_loader,
+        &user_loader,
+        &liquidatee_owner,
+        110_000_000,
+        100,
+        &remaining_accounts,
+    )
+    .unwrap_err();
+
+    assert_eq!(err, EpochError::AccountNotInitialized.into());
+}
+
+#[test]
+fn test_anchor_instruction_rejects_forged_pda_remaining_account() {
+    let program_id = epoch::ID;
+    let market_key = Pubkey::new_unique();
+    let mut market_lamports = 1_000_000_000u64;
+    let mut market = create_default_market(255);
+    market.vault_params.max_inventory_lots = 0;
+    let mut market_buf = AlignedAccountBuffer::new(Market::DISCRIMINATOR, market);
+    let market_slice = market_buf.as_account_slice_mut();
+    let market_info = AccountInfo::new(&market_key, false, true, &mut market_lamports, market_slice, &program_id, false, 0);
+    let market_loader = AccountLoader::<Market>::try_from(&market_info).unwrap();
+
+    let vault_owner = Pubkey::new_unique();
+    let (vault_user_key, _) = Pubkey::find_program_address(&[b"user", vault_owner.as_ref()], &program_id);
+    let mut vault_lamports = 1_000_000_000u64;
+    let mut vault_buf = AlignedAccountBuffer::new(UserAccount::DISCRIMINATOR, UserAccount {
+        quote_position: 0, funding_snapshot: 0, owner: vault_owner, collateral: 1_000_000_000, base_position: 0,
+        pending_buy_lots: 0, pending_sell_lots: 0, active_orders: 0, flags: 0, _pad: [0; 6], _reserved: [0; 64], _pad2: [0; 8],
+    });
+    let vault_slice = vault_buf.as_account_slice_mut();
+    let vault_user_info = AccountInfo::new(&vault_user_key, false, true, &mut vault_lamports, vault_slice, &program_id, false, 0);
+    let vault_user_loader = AccountLoader::<UserAccount>::try_from(&vault_user_info).unwrap();
+
+    let liquidatee_owner = Pubkey::new_unique();
+    let (liquidatee_key, _) = Pubkey::find_program_address(&[b"user", liquidatee_owner.as_ref()], &program_id);
+    let mut user_lamports = 1_000_000_000u64;
+    let mut user_buf = AlignedAccountBuffer::new(UserAccount::DISCRIMINATOR, UserAccount {
+        quote_position: -150_000_000, funding_snapshot: 0, owner: liquidatee_owner, collateral: 10_000_000, base_position: 1_000,
+        pending_buy_lots: 0, pending_sell_lots: 0, active_orders: 0, flags: 0, _pad: [0; 6], _reserved: [0; 64], _pad2: [0; 8],
+    });
+    let user_slice = user_buf.as_account_slice_mut();
+    let user_info = AccountInfo::new(&liquidatee_key, false, true, &mut user_lamports, user_slice, &program_id, false, 0);
+    let user_loader = AccountLoader::<UserAccount>::try_from(&user_info).unwrap();
+
+    // Adversarial counterparty account with forged key that is NOT derived from seeds [b"user", owner]
+    let cp_owner = Pubkey::new_unique();
+    let forged_key = Pubkey::new_unique(); // Arbitrary key!
+    let mut cp_lamports = 1_000_000_000u64;
+    let mut cp_buf = AlignedAccountBuffer::new(UserAccount::DISCRIMINATOR, UserAccount {
+        quote_position: 150_000_000, funding_snapshot: 0, owner: cp_owner, collateral: 100_000_000, base_position: -1_000,
+        pending_buy_lots: 0, pending_sell_lots: 0, active_orders: 0, flags: 0, _pad: [0; 6], _reserved: [0; 64], _pad2: [0; 8],
+    });
+    let cp_slice = cp_buf.as_account_slice_mut();
+    let cp_info = AccountInfo::new(&forged_key, false, true, &mut cp_lamports, cp_slice, &program_id, false, 0);
+
+    let remaining_accounts = [cp_info];
+
+    let err = process_liquidate_with_accounts(
+        &market_loader,
+        &vault_user_loader,
+        &user_loader,
+        &liquidatee_owner,
+        110_000_000,
+        100,
+        &remaining_accounts,
+    )
+    .unwrap_err();
+
+    assert_eq!(err, EpochError::Unauthorized.into());
+}
+
+#[test]
+fn test_anchor_instruction_residual_position_retained_in_quarantine() {
+    let program_id = epoch::ID;
+    let market_key = Pubkey::new_unique();
+    let mut market_lamports = 1_000_000_000u64;
+    let mut market = create_default_market(255);
+    market.vault_params.max_inventory_lots = 0; // Vault 0 headroom
+    let mut market_buf = AlignedAccountBuffer::new(Market::DISCRIMINATOR, market);
+    let market_slice = market_buf.as_account_slice_mut();
+    let market_info = AccountInfo::new(&market_key, false, true, &mut market_lamports, market_slice, &program_id, false, 0);
+    let market_loader = AccountLoader::<Market>::try_from(&market_info).unwrap();
+
+    let vault_owner = Pubkey::new_unique();
+    let (vault_user_key, _) = Pubkey::find_program_address(&[b"user", vault_owner.as_ref()], &program_id);
+    let mut vault_lamports = 1_000_000_000u64;
+    let mut vault_buf = AlignedAccountBuffer::new(UserAccount::DISCRIMINATOR, UserAccount {
+        quote_position: 0, funding_snapshot: 0, owner: vault_owner, collateral: 1_000_000_000, base_position: 0,
+        pending_buy_lots: 0, pending_sell_lots: 0, active_orders: 0, flags: 0, _pad: [0; 6], _reserved: [0; 64], _pad2: [0; 8],
+    });
+    let vault_slice = vault_buf.as_account_slice_mut();
+    let vault_user_info = AccountInfo::new(&vault_user_key, false, true, &mut vault_lamports, vault_slice, &program_id, false, 0);
+    let vault_user_loader = AccountLoader::<UserAccount>::try_from(&vault_user_info).unwrap();
+
+    // Bankrupt Long: 1,000 lots
+    let liquidatee_owner = Pubkey::new_unique();
+    let (liquidatee_key, _) = Pubkey::find_program_address(&[b"user", liquidatee_owner.as_ref()], &program_id);
+    let mut user_lamports = 1_000_000_000u64;
+    let mut user_buf = AlignedAccountBuffer::new(UserAccount::DISCRIMINATOR, UserAccount {
+        quote_position: -150_000_000, funding_snapshot: 0, owner: liquidatee_owner, collateral: 10_000_000, base_position: 1_000,
+        pending_buy_lots: 0, pending_sell_lots: 0, active_orders: 0, flags: 0, _pad: [0; 6], _reserved: [0; 64], _pad2: [0; 8],
+    });
+    let user_slice = user_buf.as_account_slice_mut();
+    let user_info = AccountInfo::new(&liquidatee_key, false, true, &mut user_lamports, user_slice, &program_id, false, 0);
+    let user_loader = AccountLoader::<UserAccount>::try_from(&user_info).unwrap();
+
+    // Counterparty has ONLY 400 lots
+    let cp_owner = Pubkey::new_unique();
+    let (cp_key, _) = Pubkey::find_program_address(&[b"user", cp_owner.as_ref()], &program_id);
+    let mut cp_lamports = 1_000_000_000u64;
+    let mut cp_buf = AlignedAccountBuffer::new(UserAccount::DISCRIMINATOR, UserAccount {
+        quote_position: 60_000_000, funding_snapshot: 0, owner: cp_owner, collateral: 100_000_000, base_position: -400,
+        pending_buy_lots: 0, pending_sell_lots: 0, active_orders: 0, flags: 0, _pad: [0; 6], _reserved: [0; 64], _pad2: [0; 8],
+    });
+    let cp_slice = cp_buf.as_account_slice_mut();
+    let cp_info = AccountInfo::new(&cp_key, false, true, &mut cp_lamports, cp_slice, &program_id, false, 0);
+
+    let remaining_accounts = [cp_info];
+
+    let res = process_liquidate_with_accounts(
+        &market_loader,
+        &vault_user_loader,
+        &user_loader,
+        &liquidatee_owner,
+        110_000_000,
+        100,
+        &remaining_accounts,
+    )
+    .expect("Partial ADL liquidation instruction succeeds");
+
+    assert_eq!(res.adl_executed_lots, 400);
+    assert_eq!(res.remaining_bankrupt_lots, 600);
+
+    // Liquidatee RETAINS residual 600 lots in account
+    let user_post = user_loader.load().unwrap();
+    assert_eq!(user_post.base_position, 600, "User must retain residual 600 lots");
+    // Liquidatee REMAINS in quarantine
+    assert_ne!(user_post.flags & UserFlags::LIQUIDATING, 0, "User must remain quarantined in LIQUIDATING state");
+
+    // Counterparty flattened
+    let cp_loader = AccountLoader::<UserAccount>::try_from(&remaining_accounts[0]).unwrap();
+    let cp_post = cp_loader.load().unwrap();
+    assert_eq!(cp_post.base_position, 0);
+}
