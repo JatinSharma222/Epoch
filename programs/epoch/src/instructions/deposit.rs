@@ -64,13 +64,14 @@ pub fn handle_deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
         .ok_or(EpochError::MathOverflow)?;
 
     let market = ctx.accounts.market.load()?;
+    let clock = Clock::get()?;
     if user.base_position == 0 {
         user.funding_snapshot = market.funding_index;
     }
 
-    // Deposit curing (H-4 §5.6): If account was quarantined in LIQUIDATING state,
-    // verify whether this deposit cures equity back above maintenance margin.
-    apply_deposit_curing(&mut user, &market);
+    // Deposit curing (H-4 §5.6, H4-3): If account was quarantined in LIQUIDATING state,
+    // verify whether this deposit cures equity back above maintenance margin using a verified fresh oracle.
+    apply_deposit_curing(&mut user, &market, clock.slot);
 
     msg!(
         "Deposit: user={}, amount={}, total_collateral={}",
@@ -82,20 +83,25 @@ pub fn handle_deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
     Ok(())
 }
 
-/// Applies deposit curing (spec H-4 §5.6):
+/// Applies deposit curing (spec H-4 §5.6, H4-3):
 /// If an account was quarantined under liquidation lock (LIQUIDATING / LIQUIDATION_LOCKED),
-/// check if the new collateral balance restores equity >= MMR at current oracle price.
-/// If so, clear the quarantine flags.
+/// check if the new collateral balance restores equity >= MMR at current fresh oracle price.
+/// If oracle is stale or unverified, curing is strictly rejected.
 pub fn apply_deposit_curing(
     user: &mut UserAccount,
     market: &Market,
+    current_slot: u64,
 ) {
     if (user.flags & crate::state::UserFlags::LIQUIDATING) != 0 {
         if user.base_position == 0 {
             user.flags &= !crate::state::UserFlags::LIQUIDATING;
         } else {
+            let max_stale_slots = ((market.params.max_oracle_age_secs as u64) * 3).max(25);
+            let is_oracle_fresh = market.last_oracle_slot > 0
+                && current_slot.saturating_sub(market.last_oracle_slot) <= max_stale_slots;
+
             let oracle_price = market.last_oracle_price;
-            if oracle_price > 0 {
+            if is_oracle_fresh && oracle_price > 0 {
                 let delta = market.funding_index.saturating_sub(user.funding_snapshot);
                 let pending_funding = (user.base_position as i128 * delta) / crate::state::constants::F_SCALE;
                 let pos_val = (user.base_position as i128 * oracle_price as i128) / 1000;
@@ -106,6 +112,8 @@ pub fn apply_deposit_curing(
                     user.flags &= !crate::state::UserFlags::LIQUIDATING;
                     msg!("Deposit cured account: LIQUIDATING quarantine cleared for user {}", user.owner);
                 }
+            } else if !is_oracle_fresh {
+                msg!("Deposit curing skipped: oracle is stale (current_slot {}, last_oracle_slot {})", current_slot, market.last_oracle_slot);
             }
         }
     }

@@ -62,6 +62,9 @@ pub fn handle_withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
     // Withdraw rule 2 (T-05 flat position rule): Position must be flat (base_position == 0)
     require!(user.base_position == 0, EpochError::PositionNotFlat);
 
+    // If user position is flat, ensure quarantine flags are cleared (H4-2)
+    user.flags &= !(crate::state::UserFlags::LIQUIDATING | crate::state::UserFlags::LIQUIDATION_LOCKED);
+
     // Withdraw rule 3: Cannot withdraw while quarantined in LIQUIDATING state
     require!(
         (user.flags & crate::state::UserFlags::LIQUIDATING) == 0,

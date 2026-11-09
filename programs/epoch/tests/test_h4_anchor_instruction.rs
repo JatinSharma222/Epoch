@@ -645,12 +645,12 @@ fn test_anchor_deposit_curing_restores_quarantined_user() {
 
     // Deposit curing test 1: Insufficient deposit does NOT clear quarantine
     user.collateral += 1_000_000; // Adds $1.00 (Total equity $2.00 < $3.55 MMR)
-    apply_deposit_curing(&mut user, &market);
+    apply_deposit_curing(&mut user, &market, market.last_oracle_slot);
     assert_ne!(user.flags & UserFlags::LIQUIDATING, 0, "Quarantine remains active if equity < MMR");
 
     // Deposit curing test 2: Sufficient deposit cures and clears quarantine
     user.collateral += 10_000_000; // Adds $10.00 (Total equity $12.00 >= $3.55 MMR)
-    apply_deposit_curing(&mut user, &market);
+    apply_deposit_curing(&mut user, &market, market.last_oracle_slot);
     assert_eq!(user.flags & UserFlags::LIQUIDATING, 0, "Quarantine cleared once equity >= MMR");
 }
 

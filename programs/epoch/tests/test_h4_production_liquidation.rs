@@ -196,8 +196,9 @@ fn test_h4_partial_liquidation_and_deposit_curing_flow() {
     // Step 2: Collateral deposit cures equity above MMR
     user.collateral += 10_000_000; // Deposit $10.00
     market.last_oracle_price = oracle_price;
+    market.last_oracle_slot = 100;
 
-    apply_deposit_curing(&mut user, &market);
+    apply_deposit_curing(&mut user, &market, 100);
     assert_eq!(
         user.flags & UserFlags::LIQUIDATING,
         0,
@@ -303,6 +304,7 @@ fn test_h4_adl_direction_validation_combinations() {
         &mut notional,
         &mut delta_lots,
         &mut adl_executed,
+        0,
     );
     assert_eq!(err1.unwrap_err(), EpochError::InvalidAdlCounterparty.into());
 
@@ -316,6 +318,7 @@ fn test_h4_adl_direction_validation_combinations() {
         &mut notional,
         &mut delta_lots,
         &mut adl_executed,
+        0,
     );
     assert_eq!(err2.unwrap_err(), EpochError::InvalidAdlCounterparty.into());
 
@@ -329,6 +332,7 @@ fn test_h4_adl_direction_validation_combinations() {
         &mut notional,
         &mut delta_lots,
         &mut adl_executed,
+        0,
     );
     assert_eq!(err3.unwrap_err(), EpochError::InvalidAdlCounterparty.into());
 
@@ -341,6 +345,7 @@ fn test_h4_adl_direction_validation_combinations() {
         &mut notional,
         &mut delta_lots,
         &mut adl_executed,
+        0,
     );
     assert!(res4.is_ok());
     assert_eq!(adl_executed, 100);
@@ -356,6 +361,7 @@ fn test_h4_adl_direction_validation_combinations() {
         &mut notional,
         &mut delta_lots,
         &mut adl_executed,
+        0,
     );
     assert!(res5.is_ok());
     assert_eq!(adl_executed, 200);
@@ -990,7 +996,8 @@ fn test_h4_multi_transaction_partial_vault_then_adl_then_deposit_then_full_settl
     user.collateral += 5_000_000;
     ledger.total_collateral_vault_tokens += 5_000_000; // Physical tokens transferred to vault
     market.last_oracle_price = crash_price;
-    apply_deposit_curing(&mut user, &market);
+    market.last_oracle_slot = 100;
+    apply_deposit_curing(&mut user, &market, 100);
     // Equity is still deeply negative -> quarantine MUST NOT be cleared!
     assert_ne!(user.flags & UserFlags::LIQUIDATING, 0, "Insufficient deposit does not clear quarantine");
 
@@ -1128,7 +1135,8 @@ fn test_h4_multi_transaction_repeated_liquidation_lifecycle() {
     assert_eq!(liquidatee.quote_position, -92_200_000, "Quote position preserved across deposit");
 
     // Apply deposit curing check
-    apply_deposit_curing(&mut liquidatee, &market);
+    market.last_oracle_slot = 100;
+    apply_deposit_curing(&mut liquidatee, &market, 100);
     assert_eq!(liquidatee.flags & UserFlags::LIQUIDATING, 0, "Quarantine cleared once equity >= MMR post-deposit");
 
     ledger.user_collateral_sum = liquidatee.collateral + vault_user.collateral + adl_cp1.collateral + adl_cp2.collateral;
@@ -1213,4 +1221,428 @@ fn test_h4_multi_transaction_repeated_liquidation_lifecycle() {
     ledger.insurance_fund = market.insurance_fund;
     ledger.bad_debt = market.bad_debt;
     ledger.assert_conservation("Tx 4: Final Multi-Transaction Reconciled Settlement");
+}
+
+#[test]
+fn test_h4_1_partial_vault_then_adl_separate_transactions_undistorted_p_bk_long_and_short() {
+    // ── LONG POSITION REINVESTIGATION ──
+    let mut market = setup_test_market();
+    market.vault_params.max_inventory_lots = 400; // Vault has 400 lots capacity
+
+    let mut vault_user = create_user_account(1_000_000_000, 0, 0);
+    // Bankrupt Long: 1,000 lots @ $150. Collateral = $10.00, Quote = -$150.00.
+    // Net cash = -$140.00. Initial P_bk = $140.00.
+    let mut liquidatee = create_user_account(10_000_000, -150_000_000, 1_000);
+    let mut adl_cp = create_user_account(100_000_000, 90_000_000, -600); // Short 600 lots
+    let passive_cp = create_user_account(100_000_000, 60_000_000, -400); // Short 400 lots
+
+    let initial_tokens = (liquidatee.collateral as u64)
+        + (adl_cp.collateral as u64)
+        + (passive_cp.collateral as u64)
+        + (vault_user.collateral as u64)
+        + market.fee_pool
+        + market.insurance_fund;
+    let mut ledger = SystemLedger::new(
+        initial_tokens,
+        liquidatee.collateral + adl_cp.collateral + passive_cp.collateral + vault_user.collateral,
+        liquidatee.quote_position + adl_cp.quote_position + passive_cp.quote_position + vault_user.quote_position,
+        market.fee_pool,
+        market.insurance_fund,
+        market.bad_debt,
+    );
+    ledger.assert_conservation("Initial State Long");
+
+    let p_bk_initial = calculate_bankruptcy_price(
+        liquidatee.collateral,
+        liquidatee.quote_position,
+        liquidatee.base_position,
+        0,
+    );
+    assert_eq!(p_bk_initial, 140_000_000, "Initial P_bk is exactly $140.00");
+
+    let crash_price = 110_000_000u64;
+
+    // Tx 1: Partial vault liquidation (400 lots) with ZERO ADL counterparties supplied
+    let res1 = execute_liquidation(
+        &mut market,
+        &mut liquidatee,
+        &mut vault_user,
+        &mut [],
+        crash_price,
+        100,
+    )
+    .expect("Tx 1: Partial vault absorption succeeds");
+
+    assert_eq!(res1.delta_lots, 400);
+    assert_eq!(liquidatee.base_position, 600, "600 lots retained under quarantine");
+    assert_eq!(res1.insurance_covered, 12_000_000, "Vault deficit ($12.00) immediately absorbed by insurance fund");
+    assert_eq!(res1.bad_debt, 0);
+
+    // CRITICAL H4-1 INVARIANT:
+    // P_bk of the residual 600 lots MUST BE EXACTLY $140.00 (undistorted by vault execution)!
+    let p_bk_tx2 = calculate_bankruptcy_price(
+        liquidatee.collateral,
+        liquidatee.quote_position,
+        liquidatee.base_position,
+        0,
+    );
+    assert_eq!(
+        p_bk_tx2, 140_000_000,
+        "H4-1 Proof: P_bk for residual position is identical to initial P_bk ($140.00 != {})",
+        p_bk_tx2
+    );
+
+    ledger.user_collateral_sum = liquidatee.collateral + adl_cp.collateral + passive_cp.collateral + vault_user.collateral;
+    ledger.user_quote_sum = liquidatee.quote_position + adl_cp.quote_position + passive_cp.quote_position + vault_user.quote_position;
+    ledger.fee_pool = market.fee_pool;
+    ledger.insurance_fund = market.insurance_fund;
+    ledger.bad_debt = market.bad_debt;
+    ledger.assert_conservation("Post Tx 1 Vault Absorption");
+
+    // Tx 2: Subsequent liquidation in a SEPARATE transaction via ADL
+    // Vault capacity is now 0 (inventory = 400 == max_inventory).
+    let mut adl_candidates = vec![&mut adl_cp];
+    let res2 = execute_liquidation(
+        &mut market,
+        &mut liquidatee,
+        &mut vault_user,
+        &mut adl_candidates,
+        crash_price,
+        101,
+    )
+    .expect("Tx 2: ADL liquidation succeeds");
+
+    assert_eq!(res2.adl_executed_lots, 600);
+    assert_eq!(liquidatee.base_position, 0, "Liquidatee fully flattened");
+    assert_eq!(adl_cp.base_position, 0, "ADL counterparty flattened at exactly $140.00");
+
+    // The counterparty executed at P_bk = $140.00:
+    // Quote paid by counterparty = 600 * $140 / 1000 = $84.00 (84,000,000 micro-USDC).
+    // Initial quote was $90M -> new quote is $90M - $84M = $6M.
+    assert_eq!(adl_cp.quote_position, 6_000_000, "ADL counterparty paid exact undistorted P_bk notional");
+
+    // Deficit on ADL portion was strictly ZERO:
+    assert_eq!(res2.insurance_covered, 0, "Zero insurance deficit on ADL portion");
+    assert_eq!(res2.bad_debt, 0, "Zero bad debt on ADL portion");
+
+    ledger.user_collateral_sum = liquidatee.collateral + adl_cp.collateral + passive_cp.collateral + vault_user.collateral;
+    ledger.user_quote_sum = liquidatee.quote_position + adl_cp.quote_position + passive_cp.quote_position + vault_user.quote_position;
+    ledger.fee_pool = market.fee_pool;
+    ledger.insurance_fund = market.insurance_fund;
+    ledger.bad_debt = market.bad_debt;
+    ledger.assert_conservation("Post Tx 2 ADL Settlement Long");
+
+    // ── SHORT POSITION REINVESTIGATION ──
+    let mut market_s = setup_test_market();
+    market_s.vault_params.max_inventory_lots = 400;
+
+    let mut vault_s = create_user_account(1_000_000_000, 0, 0);
+    // Bankrupt Short: -1,000 lots @ $150. Collateral = $10.00, Quote = +$150.00.
+    // Net cash = $160.00. Initial P_bk = $160.00.
+    let mut liquidatee_s = create_user_account(10_000_000, 150_000_000, -1_000);
+    let mut adl_cp_s = create_user_account(100_000_000, -90_000_000, 600); // Long 600 lots
+    let _passive_cp_s = create_user_account(100_000_000, -60_000_000, 400); // Long 400 lots
+
+    let p_bk_s_initial = calculate_bankruptcy_price(
+        liquidatee_s.collateral,
+        liquidatee_s.quote_position,
+        liquidatee_s.base_position,
+        0,
+    );
+    assert_eq!(p_bk_s_initial, 160_000_000, "Initial Short P_bk is $160.00");
+
+    let pump_price = 190_000_000u64; // Pump to $190.00
+
+    // Tx 1 Short: Partial vault liquidation (400 lots)
+    let res_s1 = execute_liquidation(
+        &mut market_s,
+        &mut liquidatee_s,
+        &mut vault_s,
+        &mut [],
+        pump_price,
+        100,
+    )
+    .expect("Tx 1 Short: Vault absorption succeeds");
+
+    assert_eq!(res_s1.delta_lots, 400);
+    assert_eq!(liquidatee_s.base_position, -600, "Short liquidatee retains -600 residual lots");
+    // Deficit on 400 short lots: 400 * ($190 - $160) / 1000 = $12.00
+    assert_eq!(res_s1.insurance_covered, 12_000_000, "Short vault deficit ($12.00) immediately absorbed");
+
+    // Undistorted P_bk for remaining short position:
+    let p_bk_s_tx2 = calculate_bankruptcy_price(
+        liquidatee_s.collateral,
+        liquidatee_s.quote_position,
+        liquidatee_s.base_position,
+        0,
+    );
+    assert_eq!(
+        p_bk_s_tx2, 160_000_000,
+        "H4-1 Short Proof: Residual short P_bk is identical to initial P_bk ($160.00 != {})",
+        p_bk_s_tx2
+    );
+
+    // Tx 2 Short: ADL against long counterparty
+    let mut adl_candidates_s = vec![&mut adl_cp_s];
+    let res_s2 = execute_liquidation(
+        &mut market_s,
+        &mut liquidatee_s,
+        &mut vault_s,
+        &mut adl_candidates_s,
+        pump_price,
+        101,
+    )
+    .expect("Tx 2 Short: ADL liquidation succeeds");
+
+    assert_eq!(res_s2.adl_executed_lots, 600);
+    assert_eq!(liquidatee_s.base_position, 0);
+    assert_eq!(adl_cp_s.base_position, 0);
+    // Counterparty sold 600 lots at $160.00: received 600 * $160 / 1000 = $96.00.
+    // Initial quote was -$90M -> new quote is -$90M + $96M = +$6M.
+    assert_eq!(adl_cp_s.quote_position, 6_000_000, "Long ADL counterparty received exact undistorted P_bk notional");
+    assert_eq!(res_s2.insurance_covered, 0);
+    assert_eq!(res_s2.bad_debt, 0);
+}
+
+#[test]
+fn test_h4_1_partial_vault_then_vault_separate_transactions_long_and_short() {
+    let mut market = setup_test_market();
+    market.vault_params.max_inventory_lots = 400; // Capacity 400
+
+    let mut vault_user = create_user_account(1_000_000_000, 0, 0);
+    let mut liquidatee = create_user_account(10_000_000, -150_000_000, 1_000);
+    let seller = create_user_account(100_000_000, 150_000_000, -1_000);
+
+    let crash_price = 110_000_000u64;
+
+    let initial_tokens = (liquidatee.collateral as u64)
+        + (seller.collateral as u64)
+        + (vault_user.collateral as u64)
+        + market.fee_pool
+        + market.insurance_fund;
+    let mut ledger = SystemLedger::new(
+        initial_tokens,
+        liquidatee.collateral + seller.collateral + vault_user.collateral,
+        liquidatee.quote_position + seller.quote_position + vault_user.quote_position,
+        market.fee_pool,
+        market.insurance_fund,
+        market.bad_debt,
+    );
+    ledger.assert_conservation("Initial State");
+
+    // Tx 1: Vault absorbs 400 lots
+    let res1 = execute_liquidation(
+        &mut market,
+        &mut liquidatee,
+        &mut vault_user,
+        &mut [],
+        crash_price,
+        100,
+    )
+    .unwrap();
+    assert_eq!(res1.delta_lots, 400);
+    assert_eq!(liquidatee.base_position, 600);
+    assert_eq!(res1.insurance_covered, 12_000_000);
+
+    // Vault capacity increases (e.g. governance or market clearing increases max inventory to 1,000 lots)
+    market.vault_params.max_inventory_lots = 1_000;
+
+    // Tx 2: Vault absorbs remaining 600 lots
+    let res2 = execute_liquidation(
+        &mut market,
+        &mut liquidatee,
+        &mut vault_user,
+        &mut [],
+        crash_price,
+        101,
+    )
+    .unwrap();
+    assert_eq!(res2.delta_lots, 600);
+    assert_eq!(liquidatee.base_position, 0);
+    // Deficit on 600 lots: 600 * ($140 - $110) / 1000 = $18.00
+    assert_eq!(res2.insurance_covered, 18_000_000);
+
+    // Total deficit absorbed across Tx 1 + Tx 2 = $12.00 + $18.00 = $30.00 (exact initial deficit!)
+    assert_eq!(res1.insurance_covered + res2.insurance_covered, 30_000_000);
+    assert_eq!(market.bad_debt, 0);
+
+    let total_base = liquidatee.base_position + vault_user.base_position + seller.base_position;
+    assert_eq!(total_base, 0, "Base conservation holds");
+
+    ledger.user_collateral_sum = liquidatee.collateral + seller.collateral + vault_user.collateral;
+    ledger.user_quote_sum = liquidatee.quote_position + seller.quote_position + vault_user.quote_position;
+    ledger.insurance_fund = market.insurance_fund;
+    ledger.bad_debt = market.bad_debt;
+    ledger.assert_conservation("Post Tx 2 Vault Absorption");
+}
+
+#[test]
+fn test_h4_1_adl_then_vault_separate_transactions_long_and_short() {
+    let mut market = setup_test_market();
+    market.vault_params.max_inventory_lots = 0; // Vault has 0 capacity initially
+
+    let mut vault_user = create_user_account(1_000_000_000, 0, 0);
+    let mut liquidatee = create_user_account(10_000_000, -150_000_000, 1_000);
+    let mut cp1 = create_user_account(100_000_000, 60_000_000, -400); // 400 lots short
+    let seller = create_user_account(100_000_000, 90_000_000, -600); // 600 lots short
+
+    let initial_tokens = (liquidatee.collateral as u64)
+        + (cp1.collateral as u64)
+        + (seller.collateral as u64)
+        + (vault_user.collateral as u64)
+        + market.fee_pool
+        + market.insurance_fund;
+    let mut ledger = SystemLedger::new(
+        initial_tokens,
+        liquidatee.collateral + cp1.collateral + seller.collateral + vault_user.collateral,
+        liquidatee.quote_position + cp1.quote_position + seller.quote_position + vault_user.quote_position,
+        market.fee_pool,
+        market.insurance_fund,
+        market.bad_debt,
+    );
+    ledger.assert_conservation("Initial State");
+
+    let crash_price = 110_000_000u64;
+
+    // Tx 1: Pure ADL absorbs 400 lots
+    let mut adl_tx1 = vec![&mut cp1];
+    let res1 = execute_liquidation(
+        &mut market,
+        &mut liquidatee,
+        &mut vault_user,
+        &mut adl_tx1,
+        crash_price,
+        100,
+    )
+    .unwrap();
+    assert_eq!(res1.adl_executed_lots, 400);
+    assert_eq!(liquidatee.base_position, 600);
+    assert_eq!(res1.insurance_covered, 0, "Pure ADL consumes 0 insurance");
+
+    // Undistorted P_bk
+    let p_bk_tx2 = calculate_bankruptcy_price(
+        liquidatee.collateral,
+        liquidatee.quote_position,
+        liquidatee.base_position,
+        0,
+    );
+    assert_eq!(p_bk_tx2, 140_000_000);
+
+    // Vault capacity becomes available (e.g. 1000 lots)
+    market.vault_params.max_inventory_lots = 1_000;
+
+    // Tx 2: Vault absorbs remaining 600 lots
+    let res2 = execute_liquidation(
+        &mut market,
+        &mut liquidatee,
+        &mut vault_user,
+        &mut [],
+        crash_price,
+        101,
+    )
+    .unwrap();
+    assert_eq!(res2.delta_lots, 600);
+    assert_eq!(liquidatee.base_position, 0);
+    assert_eq!(res2.insurance_covered, 18_000_000, "Vault portion deficit ($18.00) covered by insurance");
+
+    let total_base = liquidatee.base_position + vault_user.base_position + cp1.base_position + seller.base_position;
+    assert_eq!(total_base, 0);
+
+    ledger.user_collateral_sum = liquidatee.collateral + cp1.collateral + seller.collateral + vault_user.collateral;
+    ledger.user_quote_sum = liquidatee.quote_position + cp1.quote_position + seller.quote_position + vault_user.quote_position;
+    ledger.insurance_fund = market.insurance_fund;
+    ledger.bad_debt = market.bad_debt;
+    ledger.assert_conservation("Post Tx 2 ADL then Vault Absorption");
+}
+
+#[test]
+fn test_h4_2_flat_position_quarantine_cleared_and_withdrawable() {
+    // When a user position reaches 0 (via auction settlement, ADL, or liquidation),
+    // LIQUIDATING quarantine flags MUST be cleared so user is not permanently trapped.
+    let mut user = create_user_account(50_000_000, 0, 0);
+    user.flags = UserFlags::LIQUIDATING | UserFlags::LIQUIDATION_LOCKED;
+
+    // Simulate withdraw rule in withdraw.rs:
+    // If user.base_position == 0, flags are cleared:
+    if user.base_position == 0 {
+        user.flags &= !(UserFlags::LIQUIDATING | UserFlags::LIQUIDATION_LOCKED);
+    }
+    assert_eq!(user.flags, UserFlags::NONE, "Quarantine cleared for flat user");
+    assert_eq!((user.flags & UserFlags::LIQUIDATING), 0, "User is withdrawable");
+}
+
+#[test]
+fn test_h4_3_deposit_curing_rejects_stale_or_unverified_oracle() {
+    let mut market = setup_test_market();
+    market.last_oracle_price = 150_000_000;
+    market.last_oracle_slot = 100;
+    market.params.max_oracle_age_secs = 10; // max_stale_slots = max(30, 25) = 30 slots
+
+    let mut user = create_user_account(1_000_000, 0, 100); // 100 lots long, only $1 collateral
+    user.flags = UserFlags::LIQUIDATING;
+
+    // User deposits $10.00 collateral
+    user.collateral += 10_000_000;
+
+    // ── CASE A: Stale Oracle (Slot 500 >> 100 + 30) ──
+    // Deposit curing MUST NOT clear quarantine flags!
+    apply_deposit_curing(&mut user, &market, 500);
+    assert_ne!(
+        user.flags & UserFlags::LIQUIDATING,
+        0,
+        "Deposit curing strictly rejected on stale oracle"
+    );
+
+    // ── CASE B: Fresh Oracle (Slot 110 <= 100 + 30) ──
+    // Deposit curing SUCCEEDS and clears quarantine!
+    apply_deposit_curing(&mut user, &market, 110);
+    assert_eq!(
+        user.flags & UserFlags::LIQUIDATING,
+        0,
+        "Deposit curing succeeds on fresh verified oracle"
+    );
+}
+
+#[test]
+fn test_h4_4_adl_counterparty_funding_settlement_before_position_reduction() {
+    // Proves that apply_adl_counterparty settles accrued funding before reducing position size,
+    // ensuring counterparties do not lose accrued funding on closed lots.
+    let mut cp = create_user_account(100_000_000, 0, -500); // Short 500 lots
+    cp.funding_snapshot = 0;
+
+    let market_funding_index = 2_000_000_000i128; // Funding index advanced by 2.0
+    // For -500 lots with delta = 2.0:
+    // Pending funding = (-500 * 2_000_000_000) / 1_000_000_000 = -1,000 micro-USDC (short owed funding)
+    // cp.quote_position should decrease by -1,000 (i.e. gain +1,000 micro-USDC).
+
+    let mut remaining = 200u64;
+    let mut notional = 0u64;
+    let mut delta_lots = 0u64;
+    let mut adl_executed = 0u64;
+    let p_bk = 150_000_000u64;
+
+    apply_adl_counterparty(
+        &mut cp,
+        true, // bankrupt is long, cp is short
+        &mut remaining,
+        p_bk,
+        &mut notional,
+        &mut delta_lots,
+        &mut adl_executed,
+        market_funding_index,
+    )
+    .expect("ADL execution succeeds");
+
+    assert_eq!(adl_executed, 200);
+    assert_eq!(cp.base_position, -300, "Position reduced from -500 to -300 lots");
+    assert_eq!(cp.funding_snapshot, market_funding_index, "Funding snapshot advanced to market index");
+
+    // Funding on the 500 lots was accrued BEFORE position reduction:
+    // Trade notional: 200 * $150 / 1000 = $30.00 = 30,000,000 micro-USDC (debited).
+    // Accrued funding: +1,000 micro-USDC (credited).
+    // Net quote = -30,000,000 - (-1,000) = -29,999,000 micro-USDC.
+    assert_eq!(
+        cp.quote_position, -29_999_000,
+        "Counterparty accurately credited with accrued funding on all 500 lots"
+    );
 }

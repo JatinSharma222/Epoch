@@ -144,6 +144,7 @@ pub fn calculate_adl_score(
 /// - Rejects same-direction positions (bankrupt long vs cp long, bankrupt short vs cp short)
 /// - Rejects flat positions (cp.base_position == 0)
 /// - Rejects invalid bankruptcy price (p_bk == 0)
+#[allow(clippy::too_many_arguments)]
 pub fn apply_adl_counterparty(
     cp: &mut UserAccount,
     bankrupt_is_long: bool,
@@ -152,6 +153,7 @@ pub fn apply_adl_counterparty(
     notional: &mut u64,
     delta_lots: &mut u64,
     adl_executed_lots: &mut u64,
+    funding_index: i128,
 ) -> Result<()> {
     if *remaining_bankrupt == 0 {
         return Ok(());
@@ -163,6 +165,17 @@ pub fn apply_adl_counterparty(
         require!(cp.base_position < 0, EpochError::InvalidAdlCounterparty);
     } else {
         require!(cp.base_position > 0, EpochError::InvalidAdlCounterparty);
+    }
+
+    // Settle accrued funding for counterparty BEFORE modifying position (H4-4)
+    let delta = funding_index.saturating_sub(cp.funding_snapshot);
+    if delta > 0 && cp.base_position != 0 {
+        let cp_pending_funding = (cp.base_position as i128 * delta) / F_SCALE;
+        cp.quote_position = cp
+            .quote_position
+            .checked_sub(cp_pending_funding)
+            .ok_or(EpochError::MathOverflow)?;
+        cp.funding_snapshot = funding_index;
     }
 
     let cp_lots = cp.base_position.unsigned_abs();
@@ -396,12 +409,48 @@ pub fn execute_liquidation(
 
         if vault_absorbed > 0 {
             let vault_notional = (((vault_absorbed as u128) * oracle_price as u128) / 1000) as u64;
+            let bk_notional = (((vault_absorbed as u128) * p_bk as u128) / 1000) as u64;
             notional = notional.saturating_add(vault_notional);
 
+            // Immediately recognize and absorb vault execution deficit (H4-1):
+            // Prevents vault execution deficit from distorting P_bk or shifting onto ADL counterparties!
+            let vault_deficit = if old_user_base > 0 {
+                bk_notional.saturating_sub(vault_notional)
+            } else {
+                vault_notional.saturating_sub(bk_notional)
+            };
+
+            if vault_deficit > 0 {
+                let covered = vault_deficit.min(market.insurance_fund);
+                if covered > 0 {
+                    market.insurance_fund = market
+                        .insurance_fund
+                        .checked_sub(covered)
+                        .ok_or(EpochError::MathOverflow)?;
+                    insurance_covered = insurance_covered.saturating_add(covered);
+                }
+                let rem_deficit = vault_deficit.saturating_sub(covered);
+                if rem_deficit > 0 {
+                    market.bad_debt = market
+                        .bad_debt
+                        .checked_add(rem_deficit)
+                        .ok_or(EpochError::MathOverflow)?;
+                    bad_debt = bad_debt.saturating_add(rem_deficit);
+                }
+
+                // Credit liquidatee collateral with the covered deficit to preserve Invariant I-1 and undistorted P_bk
+                let deficit_i64 = i64::try_from(vault_deficit).map_err(|_| EpochError::MathOverflow)?;
+                user.collateral = user
+                    .collateral
+                    .checked_add(deficit_i64)
+                    .ok_or(EpochError::MathOverflow)?;
+            }
+
+            let vault_step_i64 = i64::try_from(vault_absorbed).map_err(|_| EpochError::MathOverflow)?;
             if old_user_base > 0 {
                 user.base_position = user
                     .base_position
-                    .checked_sub(vault_absorbed as i64)
+                    .checked_sub(vault_step_i64)
                     .ok_or(EpochError::MathOverflow)?;
                 user.quote_position = user
                     .quote_position
@@ -410,7 +459,7 @@ pub fn execute_liquidation(
 
                 vault_user.base_position = vault_user
                     .base_position
-                    .checked_add(vault_absorbed as i64)
+                    .checked_add(vault_step_i64)
                     .ok_or(EpochError::MathOverflow)?;
                 vault_user.quote_position = vault_user
                     .quote_position
@@ -419,7 +468,7 @@ pub fn execute_liquidation(
             } else {
                 user.base_position = user
                     .base_position
-                    .checked_add(vault_absorbed as i64)
+                    .checked_add(vault_step_i64)
                     .ok_or(EpochError::MathOverflow)?;
                 user.quote_position = user
                     .quote_position
@@ -428,7 +477,7 @@ pub fn execute_liquidation(
 
                 vault_user.base_position = vault_user
                     .base_position
-                    .checked_sub(vault_absorbed as i64)
+                    .checked_sub(vault_step_i64)
                     .ok_or(EpochError::MathOverflow)?;
                 vault_user.quote_position = vault_user
                     .quote_position
@@ -461,6 +510,7 @@ pub fn execute_liquidation(
                     &mut notional,
                     &mut delta_lots,
                     &mut adl_executed_lots,
+                    market.funding_index,
                 )?;
 
                 // Update bankrupt user symmetrically at p_bk
@@ -517,7 +567,7 @@ pub fn execute_liquidation(
                         .insurance_fund
                         .checked_sub(covered)
                         .ok_or(EpochError::MathOverflow)?;
-                    insurance_covered = covered;
+                    insurance_covered = insurance_covered.saturating_add(covered);
                 }
                 let rem_deficit = actual_deficit.saturating_sub(covered);
                 if rem_deficit > 0 {
@@ -525,7 +575,7 @@ pub fn execute_liquidation(
                         .bad_debt
                         .checked_add(rem_deficit)
                         .ok_or(EpochError::MathOverflow)?;
-                    bad_debt = rem_deficit;
+                    bad_debt = bad_debt.saturating_add(rem_deficit);
                 }
                 user.collateral = 0;
                 user.quote_position = 0;
