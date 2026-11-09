@@ -206,6 +206,20 @@ pub fn handle_settle_users<'info>(
                 .ok_or(EpochError::MathOverflow)?;
         }
 
+        // If user position became flat through auction settlement, clear liquidation quarantine flags (H4-2)
+        // and fold realized PnL into collateral
+        if user.base_position == 0 {
+            user.flags &= !(crate::state::UserFlags::LIQUIDATING | crate::state::UserFlags::LIQUIDATION_LOCKED);
+            if user.quote_position != 0 {
+                let quote_pnl = i64::try_from(user.quote_position).map_err(|_| EpochError::MathOverflow)?;
+                user.collateral = user
+                    .collateral
+                    .checked_add(quote_pnl)
+                    .ok_or(EpochError::MathOverflow)?;
+                user.quote_position = 0;
+            }
+        }
+
         // Update open interest based on net long position change
         let old_long = if old_base_position > 0 {
             old_base_position as u64

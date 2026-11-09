@@ -74,7 +74,7 @@ pub fn check_margin_requirement(
     // 4. Worst-case position exposure in lots (spec §9 line 192)
     let long_exposure = base_position as i128 + pending_buy_lots as i128 + this_buy as i128;
     let short_exposure = base_position as i128 - (pending_sell_lots as i128 + this_sell as i128);
-    let worst_abs = long_exposure.abs().max(short_exposure.abs()) as u128;
+    let worst_abs = long_exposure.unsigned_abs().max(short_exposure.unsigned_abs());
 
     // 5. Margin requirement and slippage reserve (spec §9 line 194-196)
     let m_hi = (oracle_price as u128 * (10_000 + band_bps as u128)) / 10_000;
@@ -173,6 +173,14 @@ pub fn handle_place_order(ctx: Context<PlaceOrder>, args: PlaceOrderArgs) -> Res
     let mut user = ctx.accounts.user.load_mut()?;
     let user_pda = ctx.accounts.user.key();
 
+    // Quarantine enforcement (H-4 §5.6): Accounts quarantined under liquidation lock cannot place risk-increasing orders
+    if (user.flags & crate::state::UserFlags::LIQUIDATING) != 0 {
+        require!(
+            (flags & OrderFlags::REDUCE_ONLY) != 0,
+            EpochError::PositionLiquidating
+        );
+    }
+
     // Reduce-only placement-time validation (spec §5 line 106)
     if (flags & OrderFlags::REDUCE_ONLY) != 0 {
         if side == OrderSide::BUY {
@@ -200,11 +208,12 @@ pub fn handle_place_order(ctx: Context<PlaceOrder>, args: PlaceOrderArgs) -> Res
     let mut existing_order_idx = None;
     for i in 0..(batch.num_orders as usize) {
         let order = &batch.orders[i];
-        if order.user_pda == user_pda && order.slot_id == slot_id {
-            if order.status == OrderStatus::OPEN || order.status == OrderStatus::CANCELLED {
-                existing_order_idx = Some(i);
-                break;
-            }
+        if order.user_pda == user_pda
+            && order.slot_id == slot_id
+            && (order.status == OrderStatus::OPEN || order.status == OrderStatus::CANCELLED)
+        {
+            existing_order_idx = Some(i);
+            break;
         }
     }
 

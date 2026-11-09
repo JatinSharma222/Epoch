@@ -21,11 +21,12 @@ fn test_order_buffer_reuse_cancelled_slot_prevents_exhaustion() {
         let mut existing_idx = None;
         for i in 0..(batch.num_orders as usize) {
             let order = &batch.orders[i];
-            if order.user_pda == user_pda && order.slot_id == slot_id {
-                if order.status == OrderStatus::OPEN || order.status == OrderStatus::CANCELLED {
-                    existing_idx = Some(i);
-                    break;
-                }
+            if order.user_pda == user_pda
+                && order.slot_id == slot_id
+                && (order.status == OrderStatus::OPEN || order.status == OrderStatus::CANCELLED)
+            {
+                existing_idx = Some(i);
+                break;
             }
         }
 

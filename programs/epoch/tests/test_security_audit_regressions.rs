@@ -273,7 +273,7 @@ fn test_h5_oracle_anchor_price_window_stalling_and_boundary_stacking() {
 
     // Layer A check (per-update rate limit with pause allowance):
     let slots_elapsed = current_slot.saturating_sub(last_slot); // 80 slots
-    let additional_allowance = (slots_elapsed.saturating_sub(2) as u128) * 1u128;
+    let additional_allowance = slots_elapsed.saturating_sub(2) as u128;
     let allowed_single_move_bps = (15u128 + additional_allowance).min(100u128); // 93 bps
     let delta = (current_market_price as i128 - last_price as i128).unsigned_abs();
     let move_bps = (delta * 10_000) / last_price as u128; // 45 bps
