@@ -110,9 +110,13 @@ pub fn compute_continuous_ema(raw_price: u64, prev_ema: u64, slots_elapsed: u64)
 ///    - Auction Ladder Protection: Epoch clears uniform-price double auctions with a VWAP crossing ladder.
 ///      Backstop quoting offsets (+12, +18, +25 bps) and the protocol taker fee (5 bps) exceed the
 ///      15 bps single-step movement bound, preventing toxic MEV sandwich extraction.
-///    - Liquidation Immunity: Solvent user positions require equity < MMR (500 bps = 5.0%) to become
-///      liquidatable. A bounded 30 bps oscillation is an order of magnitude smaller than MMR (30 bps << 500 bps),
-///      making it impossible to force liquidations of healthy positions through oscillation.
+///    - High-Leverage Liquidation Behavior: For accounts hovering near the liquidation boundary
+///      (e.g., 19x leverage with equity only 10–20 bps above MMR), a legitimate 15–30 bps oracle
+///      movement CAN and SHOULD trigger liquidation. The governor does NOT suppress legitimate
+///      liquidations of insolvent accounts. Rather, the rate governor guarantees that an adversary
+///      cannot create an instantaneous artificial 200–500 bps price spike to liquidate healthy,
+///      well-collateralized positions (e.g. accounts with >100 bps margin buffers), while ensuring
+///      that legitimate large market moves are smoothed through orderly, sequential liquidations.
 ///
 /// 3. Mathematical Relationship Between Slot-Based and Wall-Clock Expiration:
 ///    Solana clusters target nominal ~400ms per slot (150 slots = 60 seconds).

@@ -78,8 +78,15 @@ pub fn calculate_bankruptcy_price(
     if base_position_lots == 0 {
         return 0;
     }
-    let net_cash = collateral as i128 + quote_position - pending_funding;
-    let numerator = -net_cash * 1000;
+    let net_cash = (collateral as i128)
+        .checked_add(quote_position)
+        .and_then(|c| c.checked_sub(pending_funding));
+    let Some(net_cash) = net_cash else {
+        return 0;
+    };
+    let Some(numerator) = net_cash.checked_neg().and_then(|n| n.checked_mul(1000)) else {
+        return 0;
+    };
     let p_bk = numerator / (base_position_lots as i128);
     p_bk.max(0) as u64
 }
@@ -95,7 +102,7 @@ pub fn calculate_bankruptcy_price_from_entry_notional(
     if base_position_lots == 0 {
         return 0;
     }
-    let abs_q = base_position_lots.abs() as i128;
+    let abs_q = base_position_lots.unsigned_abs() as i128;
     let sign_q = if base_position_lots > 0 { 1i128 } else { -1i128 };
     let net_cash = collateral as i128 - funding_accrued as i128;
 
@@ -121,7 +128,7 @@ pub fn calculate_adl_score(
     let upnl = if base_position_lots > 0 {
         pos_value - entry_notional as i128
     } else {
-        entry_notional as i128 - pos_value.abs()
+        entry_notional as i128 - (pos_value.unsigned_abs() as i128)
     };
     if upnl <= 0 {
         return 0; // Only profitable positions are eligible for ADL
@@ -503,7 +510,7 @@ pub fn execute_liquidation(
             // Reconcile actual cash obligation:
             let net_cash = (user.collateral as i128) + user.quote_position;
             if net_cash < 0 {
-                let actual_deficit = (-net_cash) as u64;
+                let actual_deficit = u64::try_from(net_cash.unsigned_abs()).map_err(|_| EpochError::MathOverflow)?;
                 let covered = actual_deficit.min(market.insurance_fund);
                 if covered > 0 {
                     market.insurance_fund = market

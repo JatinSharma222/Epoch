@@ -74,7 +74,7 @@ pub fn check_margin_requirement(
     // 4. Worst-case position exposure in lots (spec §9 line 192)
     let long_exposure = base_position as i128 + pending_buy_lots as i128 + this_buy as i128;
     let short_exposure = base_position as i128 - (pending_sell_lots as i128 + this_sell as i128);
-    let worst_abs = long_exposure.abs().max(short_exposure.abs()) as u128;
+    let worst_abs = long_exposure.unsigned_abs().max(short_exposure.unsigned_abs());
 
     // 5. Margin requirement and slippage reserve (spec §9 line 194-196)
     let m_hi = (oracle_price as u128 * (10_000 + band_bps as u128)) / 10_000;
