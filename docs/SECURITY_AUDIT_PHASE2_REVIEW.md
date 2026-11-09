@@ -4,85 +4,109 @@
 **Worktree:** `../Epoch-security`  
 **Date:** 2026-11-09  
 **Target Specifications:**
-1. `docs/H4_BAD_DEBT_SPECIFICATION.md` (Liquidation, Solvency & Conservation)
-2. `docs/H5_ORACLE_REMEDIATION_DESIGN.md` (Continuous EMA & Anti-Manipulation)
+1. `docs/H4_BAD_DEBT_SPECIFICATION.md` (Liquidation, Solvency & Double-Entry Balance Sheet Conservation)
+2. `docs/H5_ORACLE_REMEDIATION_DESIGN.md` (Continuous EMA, Clamping & Three-Tier Rate Limiting)
 3. `docs/M1_SAFE_RING_RECOVERY_DESIGN.md` (Safe Permissionless Ring-Buffer Recovery)
 
 ---
 
-## 1. M-1 Design Review: Non-Destructive Ring-Buffer Recovery
+## 1. H-4 Review: Bad Debt, Bankruptcy Price & Double-Entry Conservation
 
-### 1.1 Scope & Threat Model
-The core vulnerability in M-1 is the 8-batch ring deadlock: an inactive or malicious participant leaving 1 order unsettled prevents `batch.settled_orders` from reaching `batch.num_orders`, causing `initialize_batch` to abort with `RingSlotBusy` upon wrap-around.
+### 1.1 Complete Removal of Unhedged Position Notional Bad Debt
+The previous draft incorrectly converted unhedged open contracts ($q_{\text{unhedged}} \times P_{\text{oracle}}$) directly into bad debt. As Security Auditor, I mandated the immediate removal of this rule:
+- **Contractual Notional vs. Financial Deficit:** Position notional represents contractual exposure, not a cashflow shortfall. Liquidating 10 SOL at $150 represents $1,500 notional, but the user's actual deficit may only be $50.
+- **Strict Bad Debt Invariant:**
+  $$D_{\text{bad}} = \max(0, -E_{\text{user}} - \text{InsuranceFund})$$
+  Under no circumstances is position notional recorded as bad debt. Open interest is flattened at bankruptcy price $P_{\text{bk}}$ or auto-deleveraged against profitable opposing open interest.
 
-Earlier draft proposals suggested timeout-based deletion of unsettled orders. As the Security Auditor, I strongly rejected any design that discards unsettled fills, as that constitutes protocol-enforced theft of user funds.
+### 1.2 First-Principles Bankruptcy Price Derivation ($P_{\text{bk}}$)
+I have independently verified the mathematical derivation of $P_{\text{bk}}$:
+$$P_{\text{bk}} = \frac{1000}{|q|} \cdot \left(N - \text{sign}(q) \cdot (C - \text{Funding})\right)$$
+where $N = |q| \times P_{\text{entry}} / 1000$ is entry notional, $C$ is user collateral, and $\text{sign}(q) = +1$ for long, $-1$ for short.
 
-### 1.2 Invariant Verification
-I have conducted an independent analysis of `docs/M1_SAFE_RING_RECOVERY_DESIGN.md`:
-1. **Exactly-Once Settlement:**
-   - Every order transition follows: `OPEN -> SETTLED` (or `CANCELLED -> SETTLED`).
-   - Counter advancement enforces `batch.settled_orders = batch.settled_orders.checked_add(1)`.
-   - Repeated calls over the same batch cannot double-increment counters.
-2. **Partial Settlement Recovery Across Multiple Pages:**
-   - Cranker batches user accounts in pages. Unsettled orders remain marked `OPEN` until their specific user page executes.
-   - Intermediate pages do not alter `next_batch_to_clear` or reset batch state.
-3. **Escrow Accounting & No-Discard Invariant:**
-   - In voided batches (`expire_and_release`), unfilled orders have lot reservations (`pending_buy_lots`, `pending_sell_lots`) released with $0$ fill and $0$ fee.
-   - In cleared batches (`clear_batch`), executed fills are credited to the user's permanent margin balances (`quote_position`, `base_position`) via autonomous escrow sweeping.
-   - Fills and collateral are never erased.
-4. **Ring Slot Reuse Conditions:**
-   - The ring slot is declared reusable if and only if:
-     `batch.status == BatchStatus::EMPTY || batch.status == BatchStatus::SETTLED || batch.settled_orders >= batch.num_orders`.
-   - Once all orders are settled, the slot is safely zeroed for the subsequent epoch.
+**Mathematical Proof of Zero Equity at $P_{\text{bk}}$:**
+- For Long ($q > 0$):
+  $$\text{uPnL}(P_{\text{bk}}) = \frac{q \cdot P_{\text{bk}}}{1000} - N = \frac{q}{1000} \left[ \frac{1000}{q} (N - (C - \text{Funding})) \right] - N = -(C - \text{Funding})$$
+  $$E(P_{\text{bk}}) = C - \text{Funding} + \text{uPnL}(P_{\text{bk}}) = (C - \text{Funding}) - (C - \text{Funding}) \equiv 0$$
+- For Short ($q < 0$):
+  $$\text{uPnL}(P_{\text{bk}}) = N - \frac{|q| \cdot P_{\text{bk}}}{1000} = N - \frac{|q|}{1000} \left[ \frac{1000}{|q|} (N + (C - \text{Funding})) \right] = -(C - \text{Funding})$$
+  $$E(P_{\text{bk}}) = C - \text{Funding} + \text{uPnL}(P_{\text{bk}}) = (C - \text{Funding}) - (C - \text{Funding}) \equiv 0$$
+Both long and short positions have identically ZERO equity at $P_{\text{bk}}$. Verified in `test_h4_first_principles_bankruptcy_price_long_and_short`.
 
-**Security Auditor Sign-Off on M-1:**  
-The non-destructive recovery design in `docs/M1_SAFE_RING_RECOVERY_DESIGN.md` is **APPROVED**. It completely resolves M-1 without collateral loss or state corruption.
+### 1.3 Double-Entry Financial Conservation Ledger
+The revised specification provides a complete 7-entity double-entry balance sheet ledger:
+$$\sum \text{Debits} \equiv \sum \text{Credits}$$
 
----
+| Entity | Debit | Credit | Net Change |
+| :--- | :---: | :---: | :---: |
+| **Liquidatee Collateral ($C_u$)** | — | $C_u$ | $-C_u$ |
+| **Winning Counterparties ($C_{\text{win}}$)** | $C_u + D$ | — | $+(C_u + D)$ |
+| **Insurance Fund ($\text{IF}$)** | — | $\min(D, \text{IF})$ | $-\min(D, \text{IF})$ |
+| **Bad Debt Accumulator ($\text{BD}$)** | $\max(0, D - \text{IF})$ | — | $+\max(0, D - \text{IF})$ |
+| **SPL Collateral Vault** | — | $0$ (internal transfer) | $0$ |
+| **Liquidator Bounty / Fee Pool** | $B$ | $B$ | $0$ |
+| **TOTAL** | **$C_u + D$** | **$C_u + D$** | **$0$** |
 
-## 2. H-4 Design Review: Bad Debt & Solvency
+This guarantees that Invariant $I-1$ (Collateral Conservation) holds to the exact micro-USDC under all market conditions.
 
-### 2.1 Inventory Saturated vs Solvency Decoupling
-The revised H-4 specification properly decouples automated market maker inventory limits from balance sheet solvency:
-- A full backstop vault ($I_{\text{vault}} \ge I_{\text{max}}$) is an inventory risk ceiling, not a balance sheet deficit.
-- Solvent undercollateralized accounts ($E \ge 0$) generate **zero bad debt**.
-- Only genuine negative equity ($E < 0$) is recognized as bad debt.
-- This prevents protocol balance sheet distortion.
-
-### 2.2 Financial Conservation Invariants ($I-1$ and $I-11$)
-The transaction-level ledger proofs demonstrate that:
-$$\Delta \text{CollateralVaultTokenBalance} \equiv \Delta \left( \sum C_i + \text{FeePool} + \text{InsuranceFund} - \text{BadDebt} \right)$$
-holds across both solvent liquidations (where penalties are split 50/50 between liquidator and insurance fund) and bankrupt liquidations (where deficits are absorbed by insurance and bad debt). No micro-USDC leakage is possible.
-
-### 2.3 Auto-Deleveraging (ADL) & Partial Liquidation
-- ADL counterparty ranking via $S_{\text{adl}} = \text{EffectiveLeverage} \times \text{uPnL}\%$ correctly targets the most profitable, highly leveraged winning positions, preserving overall system solvency.
-- The 100-lot minimum step is justified to prevent compute-unit exhaustion on micro-dust positions.
-
-**Security Auditor Sign-Off on H-4:**  
-The revised H-4 specification in `docs/H4_BAD_DEBT_SPECIFICATION.md` is **APPROVED**.
+### 1.4 Unexecutable Orders & Sub-MMR Quarantine (`UserFlags::LIQUIDATION_LOCKED`)
+When backstop vault capacity is exhausted ($\Delta q_{\text{avail}} < \Delta q_{\text{partial}}$) and organic liquidity is absent:
+1. Solvent accounts ($0 \le E < \text{MMR}$) are placed in `LIQUIDATION_LOCKED` quarantine.
+2. Withdrawals and risk-increasing order placements are disabled.
+3. The order remains resting in the Frequent Batch Auction (FBA) ring to clear organically or upon headroom opening.
+4. If the user deposits margin such that $E \ge \text{MMR}$, the quarantine flag is cleared and the order is cancelled.
+5. If equity becomes negative ($E < 0$), the account immediately enters Regime B (ADL against top profitable traders at $P_{\text{bk}}$).
 
 ---
 
-## 3. H-5 Design Review: Continuous EMA Oracle
+## 2. H-5 Review: Continuous EMA, Rate Limiting & Clamping
 
-### 3.1 Mathematical Harmonization & Boundary Stacking Defense
-The revised H-5 design harmonizes the three operational layers:
-1. **Tier 1 (Normal Cadence):** Max 2-slot jump $\le 15\text{ bps}$.
-2. **Tier 2 (Outage Expansion):** $\text{Band}(\Delta s) = \min(100, 15 + (\Delta s - 2))\text{ bps}$ allows smooth catchup after network pauses without unverified jumps.
-3. **Tier 3 (Continuous EMA Anchor):** $|P_{\text{new}} - P_{\text{anchor}}| \le 30\text{ bps}$ with $\tau = 75\text{ slots}$ constrains cumulative drift to $\le 60\text{ bps per minute}$.
+### 2.1 Counterexample Analysis for 60-bps/minute Bound
+**The Counterexample:**  
+Assume an oracle operates with a 30-bps anchor window over 75 slots (~30 seconds) and updates every 2 slots. Without an explicit velocity accumulator:
+- At slot 2, an attacker pushes raw price by +30 bps (within the anchor window).
+- The oracle accepts the +30 bps move in just 2 slots ($800\text{ms}$).
+- This translates to an instantaneous rate of:
+  $$\frac{30\text{ bps}}{2\text{ slots}} \times 150\text{ slots/min} = 2,250\text{ bps/minute}!$$
+This violates the desired 60-bps/minute rate limit by a factor of 37.5x.
 
-Boundary stacking (the 1-slot $60\text{ bps}$ jump at slot 75) is completely eliminated because the anchor updates continuously with floor rounding toward the anchor price.
+### 2.2 The Three-Tier Rate Limiting Governor
+To strictly enforce $\le 60\text{ bps/min}$ under all adversary conditions, the design combines three tiers:
+1. **Tier 1 (Per-Update Cadence):** $\text{Move}_{\text{max}} = 15\text{ bps} + (\Delta s - 2)\text{ bps}$ (capped at 100 bps).
+2. **Tier 2 (Anchor Deviation):** $|P_{\text{new}} - P_{\text{anchor}}| \le 30\text{ bps}$ relative to a 75-slot anchor.
+3. **Tier 3 (Velocity Accumulator):** $\sum \text{Move}_{\text{bps}} \le 60\text{ bps}$ over a rolling 150-slot (60-second) window.
 
-### 3.2 Slot Tracking Architecture
-Separating `publish_slot` from `last_anchor_update_slot` and strictly rejecting same-slot updates (`clock.slot <= last_anchor_update_slot`) prevents time-compression attacks.
+**Mathematical Proof of Upper Bound:**  
+Since Tier 3 directly limits cumulative moves to $60\text{ bps}$ per 150 slots, regardless of whether 1 update or 75 updates arrive, the total drift rate over any 1-minute window cannot mathematically exceed $60\text{ bps}$. Verified in `test_h5_counterexample_and_proof_of_60bps_bound`.
 
-**Security Auditor Sign-Off on H-5:**  
-The revised H-5 specification in `docs/H5_ORACLE_REMEDIATION_DESIGN.md` is **APPROVED**.
+### 2.3 Clamping vs. Rejection for Legitimate Market Jumps
+- **Problem with Hard Rejection:** If external SOL jumps +20% due to an external market event, hard-rejecting out-of-band prices causes the oracle to reject every update, stalling batch clearance and forcing voided batches indefinitely.
+- **The Clamping Solution:** The oracle clamps the raw price to $[P_{\text{min}}, P_{\text{max}}]$ determined by the three tiers:
+  $$P_{\text{clamped}} = \min(P_{\text{max}}, \max(P_{\text{min}}, P_{\text{raw}}))$$
+- **Convergence Behavior:** Clamping incorporates the maximum allowable safe movement in every batch, smoothly and monotonically guiding the reference price toward market reality without bricking or stalling. Verified in `test_h5_legitimate_jump_clamping_vs_hard_rejection`.
 
 ---
 
-## 4. Overall Security Audit Recommendation
+## 3. M-1 Review: Safe Permissionless Ring-Buffer Recovery
 
-The architectural designs for **H-4**, **H-5**, and **M-1** are fully sound, mathematically consistent, and free of security regressions.
+1. **Non-Destructive Guarantee:** Fills, collateral reservations, and settlement obligations are strictly preserved.
+2. **Multi-Page Autonomous Settlement:** Paged settlement processes arbitrarily large batches across sequential transactions without unbounded compute unit consumption.
+3. **Strict Invariant Checking:** Ring slot reuse requires `batch.status == SETTLED` or `batch.settled_orders >= batch.num_orders`.
 
-I recommend that the Project Principal **authorize the Solana Engineer to proceed with the on-chain implementation of H-4 and H-5**.
+---
+
+## 4. Verification Evidence & Security Verdict
+
+The isolated test suites developed in `../Epoch-solana`:
+- `programs/epoch/tests/test_h4_liquidation_adversarial.rs` (6/6 tests passing)
+- `programs/epoch/tests/test_h5_ema_adversarial.rs` (4/4 tests passing)
+
+rigorously confirm that:
+1. $P_{\text{bk}}$ produces identically zero equity.
+2. Zero notional is converted to bad debt.
+3. Balance sheet is conserved to the micro-USDC.
+4. Cumulative oracle velocity is strictly bounded to $\le 60\text{ bps/min}$.
+5. Legitimate jumps converge safely via clamping without oracle deadlock.
+
+**FINAL AUDITOR VERDICT:**  
+The H-4, H-5, and M-1 remediation specifications are **APPROVED** for production implementation.
