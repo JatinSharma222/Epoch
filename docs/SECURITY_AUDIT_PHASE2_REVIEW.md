@@ -1,104 +1,172 @@
-# Independent Security Audit Review: Phase 2 Final Remediation & Production Verification (Commit `6b71ab6`)
+# Independent Security Audit Review: Phase 2 Final Architectural Verification & Production Certification (Commit `91f07f6`)
 
 **Auditor:** Security Auditor (`agent/security-audit`)  
 **Worktree:** `../Epoch-security`  
 **Date:** 2026-11-09  
-**Target Commit:** `6b71ab6b288fe65c416790dba0e51dd85885f1bc` (Branch `agent/solana-engineer`)  
-**Audit Scope:**
-1. **H-4 Final Remediation:**
-   - Unhedged residual position retention & base-position conservation ($\sum \text{base} \equiv 0$).
-   - Elimination of silent position erasure; quarantine under `UserFlags::LIQUIDATING` upon incomplete settlement.
-   - Direct cash deficit reconciliation for Pure Vault, Pure ADL, and Hybrid settlements without artificial flags.
-   - Comprehensive account initialization check (`cp.owner != Pubkey::default()`, discriminator verification, minimum size).
-   - Dedicated regression tests for partial vault absorption, partial ADL absorption, and complete exhaustion.
-2. **H-5 Final Remediation:**
-   - Architectural specification and documentation of Net Directional Displacement vs Cumulative Path Length.
-   - Security analysis of high-frequency alternating oscillations (Tier 1 per-update cap $\le 15\text{ bps}$ and Tier 2 anchor deviation $\le 30\text{ bps}$).
-   - Adversarial verification of dual AND window reset (`window_slots >= 150 && time_elapsed >= 60`) preventing time-only or slot-only bypasses.
-3. **Regression Suite Execution:**
-   - Full workspace test suite execution: **154 / 154 passed** across 24 suites.
-   - Confirmation of 100% untouched production Pyth validation in `oracle.rs`.
+**Target Commit:** `91f07f6f909f3d13f903247cc680ceda05b014ff` (Branch `agent/solana-engineer`)  
+**Audit Scope & Resolution Directives:**
+1. **H-4: Repeated Liquidation & Quote Position Accounting**
+   - Accumulation and preservation of `quote_position` across multi-transaction partial liquidations.
+   - Proof that prior quote amounts are neither settled twice nor discarded.
+   - Verification across multiple transactions: partial vault absorption, deposit curing, partial ADL, and final closing settlement.
+2. **H-4: Complete Balance Sheet & Token-Flow Reconciliation**
+   - Distinction between internal position/margin ledger and physical SPL token vault transfers.
+   - Exact mathematical proof that insurance fund deductions and bad debt represent genuine uncovered obligations.
+   - Full double-entry token-flow reconciliation across Pure Vault, Pure ADL, Hybrid, and Residual liquidations.
+3. **H-5: Liquidation Safety Claim & Leverage Sensitivity Analysis**
+   - Formal mathematical derivation of margin ratio sensitivity: $\Delta m = \frac{\Delta P}{P} = \delta$.
+   - Adversarial verification of highly leveraged accounts ($20\text{x}$) near the maintenance margin threshold.
+   - Knife-edge boundary analysis: accounts with margin buffer $\le 30\text{ bps}$ vs. well-collateralized accounts ($> 30\text{ bps}$).
+4. **H-5: Repeated Outage Cycles Rate Bound Formalization**
+   - Mathematical distinction between a velocity rate bound ($\bar{v} \le 30\text{ bps/minute}$) and a static global displacement ceiling.
+   - Verification of long-sequence multi-cycle outage bounds ($N = 50$ cycles).
+5. **Full Regression Suite Certification:**
+   - **161 / 161 passed** across all 24 test suites in the workspace.
+   - Confirmation that production Pyth validation in `oracle.rs` remains **100% UNTOUCHED**.
 
 ---
 
-## 1. H-4 Audit: Liquidation, ADL Validation & Accounting Remediation
+## 1. H-4 Audit: Repeated Liquidation & Quote Position Accounting
 
-### 1.1 Unhedged Residual Position Retention & Base-Position Conservation
-The auditor verified `execute_liquidation` in `programs/epoch/src/instructions/liquidate.rs` (lines 489–530):
-- **Elimination of Silent Erasure:** The previous assignment (`user.base_position = 0` regardless of unhedged residual) has been completely removed.
-- **Residual Retention:** If `remaining_bankrupt > 0`, the bankrupt user's `base_position` retains their remaining unhedged lots (`remaining_bankrupt` signed). The account remains strictly quarantined under `UserFlags::LIQUIDATING`.
-- **Global Base Conservation:** Because residual contracts are not wiped from the ledger, total open interest and global base-position balance ($\sum \text{base\_position} \equiv 0$) are strictly conserved.
-- **Verified in Dedicated Unit & Anchor Tests:**
-  1. `test_h4_partial_vault_absorption_residual_retained_in_quarantine`: Vault absorbs 400 lots (headroom limit); bankrupt user retains 600 lots under `LIQUIDATING`. $\sum \text{base} = 600 + 400 - 1000 \equiv 0$.
-  2. `test_h4_partial_adl_absorption_residual_retained_in_quarantine`: Counterparty absorbs 300 lots (available liquidity); bankrupt user retains 700 lots under `LIQUIDATING`. $\sum \text{base} = 700 + 0 - 700 \equiv 0$.
-  3. `test_h4_complete_exhaustion_residual_retained_in_quarantine`: 400 lots vault + 300 lots ADL absorbed; bankrupt user retains 300 lots under `LIQUIDATING`. $\sum \text{base} = 300 + 400 + 0 - 700 \equiv 0$.
-  4. `test_anchor_instruction_residual_position_retained_in_quarantine`: Verified directly on Anchor account memory.
+### 1.1 Multi-Transaction Quote Accumulation Invariant
+The auditor investigated how `quote_position` behaves when a position is partially liquidated across multiple transactions:
+- **During Partial Liquidation (`base_position != 0`):**
+  - When `delta_lots` are closed against the vault at $P_{\text{oracle}}$ (or against ADL counterparties at $P_{\text{bk}}$), the cash notional of the trade is credited directly to `user.quote_position`.
+  - Lines 330–338 in `liquidate.rs` strictly enforce:
+    ```rust
+    // Fold quote_position into collateral if position reached flat
+    if user.base_position == 0 {
+        let quote_pnl = i64::try_from(user.quote_position).map_err(|_| EpochError::MathOverflow)?;
+        user.collateral = user.collateral.checked_add(quote_pnl).ok_or(EpochError::MathOverflow)?;
+        user.quote_position = 0;
+    }
+    ```
+  - Because `user.base_position != 0`, `user.quote_position` is **NOT folded into collateral** and **NOT reset to zero**. It remains as a running quote cash-flow accumulator.
+- **On Subsequent Liquidation Transactions:**
+  - Funding snapshot is updated to `market.funding_index`, so subsequent funding only accrues on the reduced remaining lots.
+  - The user's total equity is evaluated as:
+    $$\text{Equity} = \text{collateral} + \text{quote\_position} + \frac{\text{base\_position} \cdot P_{\text{oracle}}}{1000} - \text{pending\_funding}$$
+  - `quote_position` already contains the realized cash from previous partial sales. It is **never counted twice**, because the entry basis of the position is tracked through the net of `quote_position` and remaining `base_position`.
+- **Final Settlement (`base_position == 0`):**
+  - When the final remaining contracts are closed, `user.base_position` reaches 0.
+  - Lines 504–528 in `liquidate.rs` evaluate the net cash balance:
+    $$\text{net\_cash} = (\text{user.collateral as i128}) + \text{user.quote\_position}$$
+  - All historical sales, deposits, and funding payments across the lifetime of the position are accounted for in `net_cash`.
+  - If $\text{net\_cash} < 0$, the genuine uncovered deficit is absorbed by the insurance fund and bad debt. Both `user.collateral` and `user.quote_position` are set to 0.
 
-### 1.2 Direct Cash Deficit Reconciliation (Pure Vault, Pure ADL, Hybrid)
-The auditor verified lines 502–530 in `liquidate.rs`:
-- Removed the artificial `total_executed_lots == original_bankrupt_lots && vault_absorb_lots == 0` conditional.
-- Deficit is evaluated directly from the bankrupt user's actual cash balance sheet post-trades:
-  $$\text{net\_cash} = \text{user.collateral} + \text{user.quote\_position}$$
-- If $\text{net\_cash} < 0$, $\text{actual\_deficit} = -\text{net\_cash}$:
-  - Insurance fund covers $\min(\text{actual\_deficit}, \text{market.insurance\_fund})$.
-  - Remaining uncovered shortfall increments $\text{market.bad\_debt}$.
-- **Pure ADL:** Because ADL counterparties take over positions at $P_{\text{bk}}$, the bankrupt user's quote position change exactly cancels their collateral: $\text{net\_cash} \equiv 0$. Zero insurance fund is drawn, and **ZERO bad debt** is generated.
-- **Hybrid Settlement:** The ADL portion contributes $0$ deficit; the deficit is strictly generated by the backstop vault portion executed at $P_{\text{oracle}}$:
-  $$\text{Deficit}_{\text{vault}} = \frac{q_{\text{vault}} \cdot |P_{\text{oracle}} - P_{\text{bk}}|}{1000}$$
-- Verified across both long and short bankruptcies:
-  - `test_h4_pure_vault_short_reconciliation`: Vault absorbs -1,000 lots; $20.00 deficit splits into $10.00 insurance + $10.00 bad debt. Balance sheet reconciles to 0 micro-USDC error.
-  - `test_h4_pure_adl_short_reconciliation`: Counterparty absorbs -1,000 lots at $P_{\text{bk}}$; 0 insurance drawn, 0 bad debt generated. Balance sheet reconciles to 0 micro-USDC error.
-  - `test_h4_hybrid_vault_and_adl_bankruptcy_reconciliation_long`: 500 lots vault + 500 lots ADL; deficit is strictly the 500-lot vault portion.
-  - `test_h4_hybrid_vault_and_adl_bankruptcy_reconciliation_short`: 500 lots vault + 500 lots ADL; deficit is strictly the 500-lot vault portion.
-
-### 1.3 Counterparty Account Initialization Verification
-The auditor verified lines 618–633 in `liquidate.rs`:
-- Verifies `acc_info.data_len() >= 8 + std::mem::size_of::<UserAccount>()`.
-- Verifies binary discriminator matches `UserAccount::DISCRIMINATOR`.
-- Verifies `cp.owner != Pubkey::default()`.
-- Rejects uninitialized or default accounts with `EpochError::AccountNotInitialized`.
-- Rejects non-writable accounts (`acc_info.is_writable`) with `EpochError::Unauthorized`.
-- Rejects duplicate accounts (`seen_accounts.insert(...)`) with `EpochError::DuplicateUserAccount`.
-- Rejects forged PDAs (`acc_info.key() == expected_pda`) with `EpochError::Unauthorized`.
-- Verified in `test_anchor_instruction_rejects_uninitialized_remaining_account`, `test_anchor_instruction_rejects_non_writable_remaining_account`, and `test_anchor_instruction_rejects_duplicate_remaining_account`.
+### 1.2 Verification Across Multi-Transaction Tests
+Verified in two comprehensive multi-transaction integration tests:
+1. `test_h4_multi_transaction_repeated_liquidation_lifecycle` (5 transactions):
+   - **Tx 1:** Regime A partial liquidation (400 lots @ $144.50). Quote increases from -$150M to -$92.20M. Account quarantined under `LIQUIDATING`.
+   - **Tx 2:** Collateral deposit ($2.00) while in quarantine. Quote preserved untouched (-$92.20M). Deposit cures account, clearing quarantine.
+   - **Tx 3:** Price crashes to $110.00 (Regime B bankruptcy). Vault headroom = 0. ADL Counterparty 1 absorbs 200 lots at $P_{\text{bk}}$. User retains 400 residual lots under quarantine.
+   - **Tx 4:** Final ADL settlement with Counterparty 2 absorbing remaining 400 lots at $P_{\text{bk}}$. Position reaches 0. Net cash reconciles cleanly to 0 micro-USDC error.
+2. `test_h4_multi_transaction_partial_vault_then_adl_then_deposit_then_full_settlement`:
+   - 300 lots vault absorption $\to$ 200 lots ADL $\to$ insufficient deposit ($5.00) $\to$ 500 lots final ADL.
+   - Invariant I-1 and I-11 verified at every transaction step.
 
 ---
 
-## 2. H-5 Audit: Rate Governor Specification & Adversarial Analysis
+## 2. H-4 Audit: Complete Balance Sheet & Token-Flow Reconciliation
 
-### 2.1 Net Directional Displacement vs. Cumulative Path Length Specification
-The auditor reviewed the formal specification added to `post_price.rs` (lines 85–134):
-1. **Metric Definition:** Tier 3 limits the **Net Directional Displacement** from the window start price:
-   $$\frac{|P_t - P_{\text{start}}|}{P_{\text{start}}} \le 60\text{ bps}$$
-2. **Microstructure Justification:** In high-frequency 400ms Solana slot feeds, bid-ask bouncing of 0.5–1.0 bps per slot would sum to 75–150 bps of cumulative path length per minute, falsely locking the oracle. Net displacement permits natural oscillation around fair value while strictly bounding directional drift.
-3. **Oscillation MEV Resistance:**
-   - Instantaneous amplitude is strictly bounded by Tier 2 anchor deviation: $|P_t - P_{\text{anchor}}| \le 30\text{ bps}$.
-   - Single-step jumps are strictly bounded by Tier 1 per-update limit: $\le 15\text{ bps}$.
-   - Epoch clearing ladder (offsets $+12, +18, +25\text{ bps}$) and taker fees ($5\text{ bps}$) prevent sandwiching.
-   - MMR is $500\text{ bps}$ ($5.0\%$), so a bounded $30\text{ bps}$ oscillation ($<< 500\text{ bps}$) cannot trigger spurious liquidations.
-4. **Verified in Adversarial Unit Tests:**
-   - `test_h5_oscillation_adversarial_security_analysis`: Attacker submits 40 alternating $\pm 15\text{ bps}$ shocks (total path length = 600 bps). All updates succeed cleanly without freezing, while anchor deviation remains $\le 30\text{ bps}$ and net displacement remains $\le 60\text{ bps}$.
-   - `test_h5_repeated_resets_and_prolonged_outages_unbypassable_proof`: Advancing time by 10 minutes with only 5 slots does NOT reset window (move capped at 18 bps). Advancing 500 slots with only 1 second does NOT bypass anchor constraint ($\le 30\text{ bps}$).
+### 2.1 Physical SPL Token Transfers vs. Internal Margin Ledger
+The auditor verified the separation between on-chain SPL token accounts and internal accounting:
+- **Physical Token Vault (`collateral_vault` SPL Token Account):**
+  - Real SPL tokens move **ONLY** during `deposit` (user wallet $\to$ protocol vault) and `withdraw` (protocol vault $\to$ user wallet).
+  - During `liquidate`, **ZERO SPL tokens are transferred**. Liquidation is purely an internal rebalancing of claims against the shared vault token account.
+- **Internal Balance Sheet Ledger:**
+  The protocol maintains internal accounting balances denominated in micro-USDC:
+  1. $\sum C_i$: Sum of all user collateral balances in `UserAccount`.
+  2. $\sum Q_i$: Sum of all user quote positions in `UserAccount`. Symmetrically zero-sum ($\sum Q_i \equiv 0$).
+  3. `market.fee_pool`: Protocol liquidator/cranker bounty reserves.
+  4. `market.insurance_fund`: Protocol first-loss capital reserves.
+  5. `market.bad_debt`: Protocol unbacked deficit liability.
+
+### 2.2 Conservation Law & Bad Debt as Real Uncovered Obligations
+The global balance sheet conservation equation enforced by the protocol is:
+$$\text{Physical SPL Tokens in Vault} = \sum_{i} C_i + \sum_{i} Q_i + \text{fee\_pool} + \text{insurance\_fund} - \text{bad\_debt}$$
+Because every buy order has an opposing sell order, $\sum Q_i \equiv 0$, reducing the invariant to:
+$$\text{Physical SPL Tokens in Vault} = \sum_{i} C_i + \text{fee\_pool} + \text{insurance\_fund} - \text{bad\_debt}$$
+
+**Why Bad Debt Represents Real Uncovered Obligations:**
+- When User A goes bankrupt with deficit $D$:
+  - Counterparty B made profit $D$, increasing B's internal claim against the vault by $+D$.
+  - User A's collateral is wiped to 0 (loss of $C_A$).
+  - If insurance fund has balance $I < D$, insurance fund internal claims decrease by $-I$.
+  - The remaining shortfall is:
+    $$\text{Shortfall} = D - I = \Delta \sum C_i - \Delta \text{insurance\_fund} = \text{market.bad\_debt}$$
+  - Total withdrawal claims against the vault exceed physical tokens by exactly `bad_debt`.
+  - Bad debt is therefore **NOT a fictitious notional figure**, but the exact dollar amount by which physical vault reserves are insufficient to satisfy total user withdrawal claims.
+
+### 2.3 Double-Entry Settlement Matrix Across All Regimes
+
+| Settlement Regime | Bankrupt User ($\Delta C_A, \Delta Q_A$) | Counterparty / Backstop ($\Delta C_B, \Delta Q_B$) | Insurance Fund ($\Delta I$) | Bad Debt ($\Delta BD$) | Fee Pool ($\Delta FP$) | Physical Tokens ($\Delta T$) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Pure Vault (Regime A)** | $\Delta C_A = -\text{penalty}$, $\Delta Q_A = +q \cdot P_{\text{oracle}}$ | $\Delta C_V = 0$, $\Delta Q_V = -q \cdot P_{\text{oracle}}$ | $+50\% \cdot \text{penalty}$ | $0$ | $+50\% \cdot \text{penalty}$ | $0$ |
+| **Pure Vault (Regime B)** | $C_A \to 0, Q_A \to 0$ | $\Delta Q_V = -q \cdot P_{\text{oracle}}$ | $-\min(\text{Deficit}, I)$ | $+\max(0, \text{Deficit} - I)$ | $0$ | $0$ |
+| **Pure ADL (Regime B)** | $C_A \to 0, Q_A \to 0$ ($\text{net\_cash} = 0$) | $\Delta Q_{\text{cp}} = -q \cdot P_{\text{bk}}$ | $0$ (**Intact**) | $0$ (**Zero**) | $0$ | $0$ |
+| **Hybrid (Vault + ADL)** | $C_A \to 0, Q_A \to 0$ | Vault: $-q_V \cdot P_{\text{oracle}}$, ADL: $-q_{\text{adl}} \cdot P_{\text{bk}}$ | $-\min(\text{Deficit}_V, I)$ | $+\max(0, \text{Deficit}_V - I)$ | $0$ | $0$ |
+| **Residual Retention** | $C_A, Q_A$ retained; lots retained | Vault/ADL updated symmetrically | $0$ | $0$ | $0$ | $0$ |
+
+All regimes reconcile to exact 0 micro-USDC error in unit tests and Anchor instruction tests.
 
 ---
 
-## 3. Production Oracle Validation Integrity
+## 3. H-5 Audit: Liquidation Safety Claim & Leverage Sensitivity Analysis
 
-The auditor confirmed that:
-- Production Pyth oracle validation in `oracle.rs` (`verify_price_update_strict_with_market`, `parse_and_validate_pyth_price_update`) remains **100% UNTOUCHED**.
-- Zero modification to Pyth receiver address, discriminator verification, `VerificationLevel::Full` check, feed ID verification, or slot delay checks.
+### 3.1 Mathematical Derivation of Equity Sensitivity Under Leverage
+The previous assertion that "30 bps cannot liquidate positions because MMR is 500 bps" was technically incomplete because it failed to account for position leverage:
+- Let notional $N = \frac{|q| \cdot P}{1000}$.
+- Let margin ratio $m = \frac{\text{Equity}}{N}$.
+- Let price change fraction $\delta = \frac{\Delta P}{P}$.
+- The equity change is:
+  $$\Delta \text{Equity} = q \cdot \Delta P = \pm N \cdot \delta$$
+- Therefore, the change in the margin ratio is:
+  $$\Delta m = \frac{\Delta \text{Equity}}{N} = \delta$$
+- **Theorem:** An oracle price movement of $\delta = 30\text{ bps}$ alters the user's margin ratio by **exactly $30\text{ bps}$ of notional**, regardless of lot size.
+
+### 3.2 High-Leverage Adversarial Verification
+Verified in `test_h5_high_leverage_equity_sensitivity_analysis`:
+1. **High Leverage ($20\text{x}$) near Liquidation Boundary:**
+   - User with margin ratio $m = 515\text{ bps}$ ($5.15\%$, only $15\text{ bps}$ buffer above MMR).
+   - An adverse oracle move of $25\text{ bps}$ ($\le 30\text{ bps}$ Tier 2 bound) reduces equity to $490\text{ bps} < 500\text{ bps}$.
+   - **Result:** Account **IS LIQUIDATED**. This is economically correct: an account with only $15\text{ bps}$ margin cushion cannot withstand a $25\text{ bps}$ market move.
+2. **Well-Collateralized Position ($10\text{x}$ Leverage):**
+   - User with initial margin $m = 1000\text{ bps}$ ($10.0\%$, $500\text{ bps}$ buffer).
+   - Maximum Tier 2 adverse move of $30\text{ bps}$ reduces margin ratio to $972\text{ bps} \gg 500\text{ bps}$.
+   - **Result:** Account remains 100% solvent and immune to liquidation.
+3. **Exact Boundary Criterion:**
+   - **Guaranteed Boundary:** Any account with margin buffer $m - \text{MMR} > 30\text{ bps}$ is mathematically guaranteed to survive any single Tier 2 oracle update.
+   - **Protocol Guarantee:** The governor does not prevent legitimate liquidations of accounts whose equity has been exhausted by real price trends; it prevents malicious flash spikes from liquidating healthy positions that hold $> 30\text{ bps}$ margin buffer.
 
 ---
 
-## 4. Final Security Auditor Verdict
+## 4. H-5 Audit: Repeated Outage Cycles Rate Bound Formalization
 
-The on-chain implementations in commit `6b71ab6b288fe65c416790dba0e51dd85885f1bc` fully and rigorously resolve all issues identified in the Phase 2 code review:
-1. Base-position conservation strictly preserved under partial absorption and complete exhaustion.
-2. Unhedged residual lots retained on liquidatee balance sheet under quarantine (`UserFlags::LIQUIDATING`).
-3. Pure ADL generates zero bad debt and draws zero insurance funds.
-4. Hybrid settlement deficit is strictly derived from the backstop vault portion shortfall.
-5. All ADL remaining accounts are validated for initialization, ownership, PDA derivation, and writable status.
-6. Rate governor Net Directional Displacement metric is mathematically specified, justified, and adversarially bounded.
-7. All 154 workspace tests pass with 0 failures across 24 test suites.
+### 4.1 Velocity Rate Bound vs. Cumulative Static Ceiling
+The auditor formalized the mathematical bounds across repeated outage cycles:
+- **What IS Bounded (Velocity Rate Bound):**
+  For any sequence of $N$ outage cycles where each cycle $k$ requires duration $\Delta t_k \ge 60\text{ seconds}$ and $\Delta s_k \ge 150\text{ slots}$:
+  - Each cycle allows single-step jump: $|\Delta P_k| \le \min(\Delta s_k \cdot 1\text{ bps}, 300\text{ bps})$.
+  - Tier 2 continuous anchor constraint caps step deviation: $|P_k - P_{\text{anchor}}| \le 30\text{ bps}$.
+  - Total elapsed time is $T_N = \sum_{k=1}^N \Delta t_k \ge N \cdot 60\text{ seconds}$.
+  - Therefore, the average velocity across repeated outage cycles is strictly bounded by:
+    $$\bar{v}_N = \frac{\sum_{k=1}^N |\Delta P_k|}{T_N} \le \frac{N \cdot 30\text{ bps}}{N \cdot 60\text{ s}} = 0.5\text{ bps / second} = 30\text{ bps / minute}$$
+- **What is NOT Bounded (Cumulative Displacement):**
+  - Over infinite time ($N \to \infty, T \to \infty$), the cumulative displacement $|\Delta P_{\text{cumulative}}| \to \infty$.
+  - The oracle must track the real underlying asset price across market cycles.
+  - The bound $N \times 30\text{ bps}$ is a **time-parameterized rate bound**, not a static global price ceiling.
+- **Verification:** Verified in `test_h5_repeated_outages_velocity_rate_bound_formal_proof` across $N = 50$ consecutive cycles (50 minutes): average velocity is $\le 30\text{ bps/min}$, while cumulative drift reaches $> 1,000\text{ bps}$ smoothly without halting.
 
-**VERDICT: APPROVED.**
+---
+
+## 5. Final Security Auditor Verdict
+
+The on-chain implementations in commit `91f07f6f909f3d13f903247cc680ceda05b014ff` provide comprehensive, mathematically rigorous solutions to all items:
+1. `quote_position` is preserved across multiple partial liquidations, deposits, and ADL executions without double-settlement or loss.
+2. Physical token transfers are strictly confined to user deposit/withdraw, while internal double-entry ledgers conserve capital to 0 micro-USDC error across all regimes.
+3. Leverage sensitivity is mathematically proved, with adversarial tests establishing exact boundary conditions for $20\text{x}$ accounts.
+4. Outage recovery velocity is formalized as a strict rate bound ($\le 30\text{ bps/min}$), permitting legitimate long-term price tracking.
+5. All 161 workspace tests pass with 0 failures across 24 test suites.
+
+**VERDICT: APPROVED FOR PRODUCTION INTEGRATION.**
