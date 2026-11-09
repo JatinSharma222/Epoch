@@ -100,7 +100,7 @@ export const Header: React.FC<HeaderProps> = ({
           <span className="w-1.5 h-1.5 rounded-full bg-[#F59E0B] animate-pulse" />
           <span className="font-semibold">Oracle: trusted multi-venue median (test mode)</span>
           <span className="text-white font-bold ml-1 tabular-nums">${oraclePrice.toFixed(2)}</span>
-          <span className="text-[#848E9C] ml-1">({stats?.venueCount || 6}/6 active)</span>
+          <span className="text-[#848E9C] ml-1">({stats?.venueCount ?? 6}/6 active)</span>
         </div>
 
         {/* 24h & Protocol Metrics */}
