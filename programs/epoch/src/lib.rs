@@ -122,7 +122,12 @@ pub mod epoch {
     }
 
     /// Liquidate an undercollateralized user position directly against the Backstop Vault.
-    pub fn liquidate(ctx: Context<Liquidate>) -> Result<()> {
+    pub fn liquidate<'a, 'b, 'c, 'info>(
+        ctx: Context<'a, 'b, 'c, 'info, Liquidate<'info>>,
+    ) -> Result<()>
+    where
+        'c: 'info,
+    {
         handle_liquidate(ctx)
     }
 

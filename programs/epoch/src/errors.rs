@@ -183,5 +183,13 @@ pub enum EpochError {
     /// Oracle price change exceeds maximum allowed move per update.
     #[msg("Oracle price jump exceeds maximum allowed move")]
     OraclePriceJumpTooLarge,
+
+    /// Backstop vault inventory capacity is exhausted.
+    #[msg("Backstop vault inventory capacity exhausted")]
+    VaultCapacityExhausted,
+
+    /// User account is quarantined under liquidation lock.
+    #[msg("Account is locked in liquidation quarantine")]
+    PositionLiquidating,
 }
 
