@@ -45,8 +45,10 @@ pub struct UserAccount {
 pub mod UserFlags {
     /// No flags set.
     pub const NONE: u8 = 0;
-    /// User is undergoing liquidation.
+    /// User is undergoing liquidation or quarantined in sub-MMR liquidation lock.
     pub const LIQUIDATING: u8 = 1;
+    /// Sub-MMR quarantine flag (synonym for LIQUIDATING).
+    pub const LIQUIDATION_LOCKED: u8 = 1;
 }
 
 const _: () = {

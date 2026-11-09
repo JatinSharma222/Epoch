@@ -74,7 +74,7 @@ async function runRound12Test() {
   const rpcUrl =
     process.env.EPOCH_RPC_URL ||
     process.env.NEXT_PUBLIC_RPC_URL ||
-    "https://devnet.helius-rpc.com/?api-key=***";
+    "https://api.devnet.solana.com";
   console.log(`Connecting to RPC: ${rpcUrl}`);
   const connection = new Connection(rpcUrl, "confirmed");
 

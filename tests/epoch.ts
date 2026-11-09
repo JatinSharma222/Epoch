@@ -1,6 +1,6 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import { PublicKey } from "@solana/web3.js";
+import { PublicKey, Keypair } from "@solana/web3.js";
 import { Epoch } from "../target/types/epoch";
 import { expect } from "chai";
 import * as fs from "fs";
@@ -74,6 +74,31 @@ describe("Epoch Program Integration Tests", () => {
   let reusedRingIndex: number = -1;
   let fundingRingIndex: number = -1;
 
+  const advanceSlots = async (count: number) => {
+    for (let i = 0; i < count; i++) {
+      const tx = new anchor.web3.Transaction().add(
+        anchor.web3.SystemProgram.transfer({
+          fromPubkey: admin.publicKey,
+          toPubkey: admin.publicKey,
+          lamports: 1,
+        })
+      );
+      await provider.sendAndConfirm(tx);
+    }
+  };
+
+  const waitUntilBatchClosed = async (batchId: anchor.BN) => {
+    const market = await program.account.market.fetch(marketPda);
+    const closeSlot =
+      market.startSlot.toNumber() +
+      (batchId.toNumber() + 1) * market.params.batchSlots;
+    let curSlot = await provider.connection.getSlot();
+    while (curSlot < closeSlot) {
+      await advanceSlots(Math.max(1, closeSlot - curSlot));
+      curSlot = await provider.connection.getSlot();
+    }
+  };
+
   const defaultMarketArgs = {
     baseLot: new anchor.BN(1000),
     priceTick: new anchor.BN(1000),
@@ -88,9 +113,9 @@ describe("Epoch Program Integration Tests", () => {
     mmrBps: 500,
     feeBps: 5,
     liqPenaltyBps: 100,
-    maxOracleAgeSecs: 10,
+    maxOracleAgeSecs: 300,
     maxConfBps: 20,
-    maxClearDelaySlots: 4,
+    maxClearDelaySlots: 100,
     maxOrdersPerBatch: 128,
     fundingCapBps: 50,
   };
@@ -773,19 +798,6 @@ describe("Epoch Program Integration Tests", () => {
 
     const measurements: any[] = [];
 
-    const advanceSlots = async (count: number) => {
-      for (let i = 0; i < count; i++) {
-        const tx = new anchor.web3.Transaction().add(
-          anchor.web3.SystemProgram.transfer({
-            fromPubkey: admin.publicKey,
-            toPubkey: admin.publicKey,
-            lamports: 1,
-          })
-        );
-        await provider.sendAndConfirm(tx);
-      }
-    };
-
     const getTxCu = async (signature: string): Promise<number> => {
       for (let attempt = 0; attempt < 10; attempt++) {
         const details = await provider.connection.getTransaction(signature, {
@@ -805,12 +817,12 @@ describe("Epoch Program Integration Tests", () => {
 
     before(async () => {
       // Update market parameters for the CU benchmark:
-      // batchSlots: 500, lookahead: 10 to allow 128 sequential test txs
+      // batch_slots is immutable per C-2; lookahead is clamped to RING_SIZE - 1 (7)
       await program.methods
         .updateMarketParams({
           ...defaultMarketArgs,
-          batchSlots: 500,
-          lookahead: 10,
+          batchSlots: defaultMarketArgs.batchSlots,
+          lookahead: 7,
         })
         .accounts({
           market: marketPda,
@@ -945,6 +957,11 @@ describe("Epoch Program Integration Tests", () => {
         while (target % 8 !== ringIndex) {
           target++;
         }
+        const lookahead = market.params.lookahead;
+        if (target > currentBatch + lookahead) {
+          const slotsNeeded = (target - (currentBatch + lookahead)) * market.params.batchSlots;
+          await advanceSlots(slotsNeeded);
+        }
         const targetBatchId = new anchor.BN(target);
         const batchPda = getBatchPda(ringIndex);
 
@@ -965,16 +982,22 @@ describe("Epoch Program Integration Tests", () => {
             flags: 0,
           };
 
-          const txSig = await program.methods
-            .placeOrder(orderArgs)
-            .accounts({
-              market: marketPda,
-              batch: batchPda,
-              user: cuUserPdas[userIdx],
-              owner: cuUsers[userIdx].publicKey,
-            })
-            .signers([cuUsers[userIdx]])
-            .rpc({ skipPreflight: true });
+          let txSig: string;
+          try {
+            txSig = await program.methods
+              .placeOrder(orderArgs)
+              .accounts({
+                market: marketPda,
+                batch: batchPda,
+                user: cuUserPdas[userIdx],
+                owner: cuUsers[userIdx].publicKey,
+              })
+              .signers([cuUsers[userIdx]])
+              .rpc();
+          } catch (err) {
+            console.error(`placeOrder failed at i=${i}, load=${load}:`, err);
+            throw err;
+          }
 
           if (i === 0 && load === 10) {
             const firstCu = await getTxCu(txSig);
@@ -1008,16 +1031,24 @@ describe("Epoch Program Integration Tests", () => {
         const batchBefore = await program.account.batch.fetch(batchPda);
         expect(batchBefore.numOrders).to.equal(load);
 
-        // Admin cranker can clear immediately for benchmark
-        const clearTxSig = await program.methods
-          .clearBatch(targetBatchId, ringIndex)
-          .accounts({
-            market: marketPda,
-            batch: batchPda,
-            priceUpdate: pythPriceUpdate,
-            cranker: admin.publicKey,
-          })
-          .rpc({ skipPreflight: true });
+        // Wait until batch reaches close slot (H-2: admin timing bypass eliminated)
+        await waitUntilBatchClosed(targetBatchId);
+
+        let clearTxSig: string;
+        try {
+          clearTxSig = await program.methods
+            .clearBatch(targetBatchId, ringIndex)
+            .accounts({
+              market: marketPda,
+              batch: batchPda,
+              priceUpdate: pythPriceUpdate,
+              cranker: admin.publicKey,
+            })
+            .rpc();
+        } catch (err) {
+          console.error(`clearBatch failed at load=${load}, targetBatch=${targetBatchId.toNumber()}, ringIndex=${ringIndex}:`, err);
+          throw err;
+        }
 
         const clearCu = await getTxCu(clearTxSig);
 
@@ -1075,12 +1106,12 @@ describe("Epoch Program Integration Tests", () => {
     let t8RingIndex: number = -1;
 
     before(async () => {
-      // Configure market parameters for T-08 tests
+      // Configure market parameters for T-08 tests (batch_slots is immutable per C-2)
       await program.methods
         .updateMarketParams({
           ...defaultMarketArgs,
-          batchSlots: 500,
-          lookahead: 20,
+          batchSlots: defaultMarketArgs.batchSlots,
+          lookahead: 7,
         })
         .accounts({
           market: marketPda,
@@ -1163,16 +1194,24 @@ describe("Epoch Program Integration Tests", () => {
       const batchBefore = await program.account.batch.fetch(batchPda);
       expect(batchBefore.numOrders).to.equal(8);
 
+      // Wait until batch reaches close slot (H-2)
+      await waitUntilBatchClosed(targetBatchId);
+
       // Clear batch with on-chain Pyth oracle
-      await program.methods
-        .clearBatch(targetBatchId, t8RingIndex)
-        .accounts({
-          market: marketPda,
-          batch: batchPda,
-          priceUpdate: pythPriceUpdate,
-          cranker: admin.publicKey,
-        })
-        .rpc({ skipPreflight: true });
+      try {
+        await program.methods
+          .clearBatch(targetBatchId, t8RingIndex)
+          .accounts({
+            market: marketPda,
+            batch: batchPda,
+            priceUpdate: pythPriceUpdate,
+            cranker: admin.publicKey,
+          })
+          .rpc();
+      } catch (err) {
+        console.error("clearBatch failed in worked example:", err);
+        throw err;
+      }
 
       const batchAfter = await program.account.batch.fetch(batchPda);
       expect(batchAfter.status).to.equal(2); // CLEARED
@@ -1283,6 +1322,21 @@ describe("Epoch Program Integration Tests", () => {
         .signers([cuUsers[1]])
         .rpc({ skipPreflight: true });
 
+      // Temporarily set maxOracleAgeSecs to 0 to deterministically force staleness
+      await program.methods
+        .updateMarketParams({
+          ...defaultMarketArgs,
+          maxOracleAgeSecs: 0,
+        })
+        .accounts({
+          market: marketPda,
+          admin: admin.publicKey,
+        })
+        .rpc();
+
+      // Wait until batch reaches close slot (H-2)
+      await waitUntilBatchClosed(targetBatchId);
+
       // Clear batch with on-chain price update
       await program.methods
         .clearBatch(targetBatchId, staleRing)
@@ -1301,12 +1355,31 @@ describe("Epoch Program Integration Tests", () => {
       expect(batchAfter.orders[0].filledLots.toNumber()).to.equal(0);
       expect(batchAfter.orders[1].status).to.equal(4); // EXPIRED
       expect(batchAfter.orders[1].filledLots.toNumber()).to.equal(0);
+
+      // Restore maxOracleAgeSecs to 300 for subsequent test suites
+      await program.methods
+        .updateMarketParams({
+          ...defaultMarketArgs,
+          maxOracleAgeSecs: 300,
+        })
+        .accounts({
+          market: marketPda,
+          admin: admin.publicKey,
+        })
+        .rpc();
     });
 
     it("Marks batch VOID when oracle confidence is too wide (> max_conf_bps)", async () => {
-      // We can reuse the VOID ring slot since VOID slots can be re-opened
-      const staleRing = (await program.account.market.fetch(marketPda)).nextBatchToClear.toNumber() - 1;
-      const ringIndex = staleRing % 8;
+      // Find an available ring slot (VOID or empty)
+      let ringIndex = -1;
+      for (let r = 0; r < 8; r++) {
+        const b = await program.account.batch.fetch(getBatchPda(r));
+        if (b.status === 3 || b.status === 4 || b.numOrders === 0) {
+          ringIndex = r;
+          break;
+        }
+      }
+      if (ringIndex === -1) ringIndex = 0;
       const batchPda = getBatchPda(ringIndex);
 
       const market = await program.account.market.fetch(marketPda);
@@ -1319,6 +1392,11 @@ describe("Epoch Program Integration Tests", () => {
       let target = Math.max(currentBatch + 1, existingBatch.batchId.toNumber() + 1);
       while (target % 8 !== ringIndex) {
         target++;
+      }
+      const lookahead = market.params.lookahead;
+      if (target > currentBatch + lookahead) {
+        const slotsNeeded = (target - (currentBatch + lookahead)) * market.params.batchSlots;
+        await advanceSlots(slotsNeeded);
       }
       const targetBatchId = new anchor.BN(target);
 
@@ -1361,8 +1439,21 @@ describe("Epoch Program Integration Tests", () => {
         .signers([cuUsers[1]])
         .rpc({ skipPreflight: true });
 
-      // max_conf_bps is 20 bps. $150.00 * 20 bps = $0.30 (300_000 micro-USDC).
-      // Pass conf = 5_000_000 ($5.00 = 333 bps > 20 bps!)
+      // Temporarily set maxConfBps to 0 to deterministically force wide confidence VOID
+      await program.methods
+        .updateMarketParams({
+          ...defaultMarketArgs,
+          maxConfBps: 0,
+        })
+        .accounts({
+          market: marketPda,
+          admin: admin.publicKey,
+        })
+        .rpc();
+
+      // Wait until batch reaches close slot (H-2)
+      await waitUntilBatchClosed(targetBatchId);
+
       await program.methods
         .clearBatch(targetBatchId, ringIndex)
         .accounts({
@@ -1371,7 +1462,7 @@ describe("Epoch Program Integration Tests", () => {
           priceUpdate: pythPriceUpdate,
           cranker: admin.publicKey,
         })
-        .rpc({ skipPreflight: true });
+        .rpc();
 
       const batchAfter = await program.account.batch.fetch(batchPda);
       expect(batchAfter.status).to.equal(3); // VOID
@@ -1380,21 +1471,36 @@ describe("Epoch Program Integration Tests", () => {
       expect(batchAfter.orders[0].filledLots.toNumber()).to.equal(0);
       expect(batchAfter.orders[1].status).to.equal(4); // EXPIRED
       expect(batchAfter.orders[1].filledLots.toNumber()).to.equal(0);
+
+      // Restore maxConfBps to defaultMarketArgs for subsequent tests
+      await program.methods
+        .updateMarketParams({
+          ...defaultMarketArgs,
+          maxConfBps: defaultMarketArgs.maxConfBps,
+        })
+        .accounts({
+          market: marketPda,
+          admin: admin.publicKey,
+        })
+        .rpc();
     });
 
     it("Marks batch VOID when clear delay exceeds max_clear_delay_slots", async () => {
       // Re-open the VOID ring slot
-      const staleRing = (await program.account.market.fetch(marketPda)).nextBatchToClear.toNumber() - 1;
-      const ringIndex = staleRing % 8;
+      const marketAcct = await program.account.market.fetch(marketPda);
+      const staleRing = marketAcct.nextBatchToClear.toNumber() > 0
+        ? marketAcct.nextBatchToClear.toNumber() - 1
+        : 0;
+      const ringIndex = ((staleRing % 8) + 8) % 8;
       const batchPda = getBatchPda(ringIndex);
 
       // Configure batch_slots: 5, max_clear_delay_slots: 2
       await program.methods
         .updateMarketParams({
           ...defaultMarketArgs,
-          batchSlots: 5,
+          batchSlots: defaultMarketArgs.batchSlots,
           maxClearDelaySlots: 2,
-          lookahead: 20,
+          lookahead: 7,
         })
         .accounts({
           market: marketPda,
@@ -1454,6 +1560,9 @@ describe("Epoch Program Integration Tests", () => {
       }
 
       // Now clear_batch is called after the delay window
+      // Wait until batch reaches close slot (H-2)
+      await waitUntilBatchClosed(targetBatchId);
+
       await program.methods
         .clearBatch(targetBatchId, ringIndex)
         .accounts({
@@ -1468,6 +1577,18 @@ describe("Epoch Program Integration Tests", () => {
       expect(batchAfter.status).to.equal(3); // VOID
       expect(batchAfter.matchedLots.toNumber()).to.equal(0);
       expect(batchAfter.orders[0].status).to.equal(4); // EXPIRED
+
+      // Restore maxClearDelaySlots to defaultMarketArgs for subsequent tests
+      await program.methods
+        .updateMarketParams({
+          ...defaultMarketArgs,
+          maxClearDelaySlots: defaultMarketArgs.maxClearDelaySlots,
+        })
+        .accounts({
+          market: marketPda,
+          admin: admin.publicKey,
+        })
+        .rpc();
     });
   });
 
@@ -1670,8 +1791,8 @@ describe("Epoch Program Integration Tests", () => {
       await program.methods
         .updateMarketParams({
           ...defaultMarketArgs,
-          batchSlots: 5,
-          lookahead: 20,
+          batchSlots: defaultMarketArgs.batchSlots,
+          lookahead: 7,
         })
         .accounts({
           market: marketPda,
@@ -1754,6 +1875,9 @@ describe("Epoch Program Integration Tests", () => {
       }
 
       // Clear batch (matched lots = 50)
+      // Wait until batch reaches close slot (H-2)
+      await waitUntilBatchClosed(targetBatchId);
+
       await program.methods
         .clearBatch(targetBatchId, ringIndex)
         .accounts({
@@ -1938,12 +2062,12 @@ describe("Epoch Program Integration Tests", () => {
     let preSettleFeePool: anchor.BN;
 
     it("Clears batch with clearing offset, advances funding index, and settles with Invariant I-1 conservation", async () => {
-      // Configure market parameters: 5 slots per batch, lookahead 20, funding_period_slots = 72000
+      // Configure market parameters: 2 slots per batch, lookahead 7, funding_period_slots = 72000
       await program.methods
         .updateMarketParams({
           ...defaultMarketArgs,
-          batchSlots: 5,
-          lookahead: 20,
+          batchSlots: defaultMarketArgs.batchSlots,
+          lookahead: 7,
           fundingPeriodSlots: 72000,
         })
         .accounts({
@@ -2560,8 +2684,8 @@ describe("Epoch Program Integration Tests", () => {
       await program.methods
         .updateMarketParams({
           ...defaultMarketArgs,
-          batchSlots: 5,
-          lookahead: 20,
+          batchSlots: defaultMarketArgs.batchSlots,
+          lookahead: 7,
           maxClearDelaySlots: 50,
         })
         .accounts({

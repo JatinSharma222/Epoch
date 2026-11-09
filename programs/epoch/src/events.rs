@@ -91,3 +91,37 @@ pub struct OrderCancelled {
     pub slot_id: u8,
     pub lots: u64,
 }
+
+/// Emitted when funding accrues to the global market funding index upon batch clearance.
+#[event]
+pub struct FundingAccrued {
+    pub market: Pubkey,
+    pub batch_id: u64,
+    pub slot: u64,
+    pub clearing_price: u64,
+    pub oracle_price: u64,
+    pub offset_bps: i16,
+    pub funding_rate_bps: i16,
+    pub funding_index: i128,
+    pub accrual_amount: i128,
+}
+
+/// Emitted when market risk parameters are updated by governance.
+#[event]
+pub struct MarketParamsUpdated {
+    pub market: Pubkey,
+    pub admin: Pubkey,
+    pub slot: u64,
+    pub old_params: crate::state::MarketParams,
+    pub new_params: crate::state::MarketParams,
+}
+
+/// Emitted when Backstop Vault parameters are updated by governance.
+#[event]
+pub struct VaultParamsUpdated {
+    pub market: Pubkey,
+    pub admin: Pubkey,
+    pub slot: u64,
+    pub old_params: crate::state::VaultParams,
+    pub new_params: crate::state::VaultParams,
+}

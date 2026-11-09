@@ -41,7 +41,7 @@ export const EvidenceView: React.FC = () => {
   const worstCaseLocalCu = worstCaseSingleTick?.cu_consumed || 34812;
   const devnetMeasuredCu = 17267; // Batch #6579 live execution on Devnet with 10 lots matched
   const solanaTxLimit = 1_400_000;
-  const gateG1Budget = cuData.gate_g1_budget_targets.clear_batch_max_cu || 600_000;
+  const gateG1Budget = cuData.gate_g1_budget_targets.clear_batch_max ?? 600_000;
 
   const pctLocalOfTxLimit = ((worstCaseLocalCu / solanaTxLimit) * 100).toFixed(2);
   const pctLocalOfG1Budget = ((worstCaseLocalCu / gateG1Budget) * 100).toFixed(2);
@@ -96,7 +96,7 @@ export const EvidenceView: React.FC = () => {
             <span className="text-[#272A2E]">|</span>
             <div className="flex items-center gap-1.5">
               <Terminal className="w-3.5 h-3.5 text-[#00F0FF]" />
-              <span>Solana {cuData.toolchain.solana} · Anchor {cuData.toolchain.anchor} · Rustc {cuData.toolchain.rustc}</span>
+              <span>Solana {cuData.toolchain.solana} · Anchor {cuData.toolchain.anchor} · Rustc {(cuData.toolchain as any).rustc ?? (cuData.toolchain as any).rust ?? "1.89.0"}</span>
             </div>
           </div>
         </div>
