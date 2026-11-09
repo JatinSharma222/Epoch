@@ -13,9 +13,9 @@
 | Role | Worktree Path | Active Branch | Latest 40-Char Commit Hash | Commit Summary | Current Workstream Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Lead Architect & Engineering Manager** | `.` (Root) | `feat/epoch-multi-agent` | `45c05c9e60c53e8e4098c00a5a733eddaf1fda62` | `docs: update multi-agent status board with final Phase 2 verification deliverables` | **Active** (Final Technical Verification & Certification Complete) |
-| **Solana Engineer** | `../Epoch-solana` | `agent/solana-engineer` | `91f07f6f909f3d13f903247cc680ceda05b014ff` | `test(oracle): add formal adversarial proof for high-leverage liquidation sensitivity and repeated outage velocity rate bound` | **Verified & Isolated** (**161 / 161 Passed**; Multi-Tx Quote Invariants, Safe Math, Leverage Sensitivity & Rate Bounds; Gated from Main) |
+| **Solana Engineer** | `../Epoch-solana` | `agent/solana-engineer` | `d4a68e6b56a771fa682373c732f1877ac5c910b5` | `fix(phase2): complete H-4 liquidation reconciliation and H-5 economic proofs` | **Verified & Certified** (**170 / 170 Passed**; Clippy clean with 0 warnings; Gated from Main) |
 | **QA Engineer** | `../Epoch-qa` | `agent/qa-engineer` | `0878357b52651fc115ae2a2eaef339e805ca1c4f` | `chore(qa): update measured compute unit benchmarks in cu.json` | **Active** (Harness Parity Formulated; 117/117 Regression Tests Passing) |
-| **Security Auditor** | `../Epoch-security` | `agent/security-audit` | `65474652938fd67a6bfc9f17667cacf293af9129` | `docs(audit): sign independent audit verdict for Phase 2 certification (commit 91f07f6)` | **Completed** (Full Independent Written Review & Sign-Off Signed for Commit `91f07f6`) |
+| **Security Auditor** | `../Epoch-security` | `agent/security-audit` | `571e6430b806dcfdf4c1a55feea7aa356267e761` | `docs(audit): certify final implementation commit d4a68e6 for production integration` | **Completed** (Full Independent Written Review & Sign-Off Signed for Commit `d4a68e6`) |
 | **Keeper Engineer** | `../Epoch-keeper` | `agent/keeper-engineer` | `8cb6016d7d0c8c5284e39505509cc033efbf9282` | `docs(keeper): commit Phase 2 keeper compatibility audit for H-4, H-5, and RPC failover` | **Completed** (Phase 2 Compatibility & RPC Failover Audit Complete; 4/4 Tests Passing) |
 | **Infrastructure Engineer** | `../Epoch-infra` | `agent/infrastructure-engineer` | `633efb0edbf274f64584561341b16b42119e3991` | `feat(infra): implement idempotent event processor, migration history, and replay tests` | **Completed** (Idempotent Processor, DB Schema & Replay Tests Passing 5/5) |
 | **Frontend Engineer** | `../Epoch-frontend` | `agent/frontend-engineer` | `7317c755c56bca22f6fbccab80fd03838d8b965e` | `fix(frontend): align gate_g1_budget_targets with cu.json and resolve MarketStats venueCount` | **Completed** (PnL Parity, Headroom & Gate G1 Alignments Passing 2/2) |
@@ -28,10 +28,10 @@ All agents strictly execute standardized test commands. Below are the verified t
 
 | Layer / Component | Standardized Command | Runner / Environment | Executed Test Count | Status | Notes |
 | :--- | :--- | :--- | :---: | :---: | :--- |
-| **Solana On-Chain Test Suite** | `cargo test --workspace` (in `../Epoch-solana`) | Native Rust Cargo 1.89+ | **161 / 161 passed** | **PASSED** | 23 unit (`epoch`), 14 unit (`epoch-ref`), 124 integration tests across 24 test harnesses |
+| **Solana On-Chain Test Suite** | `cargo test --workspace` (in `../Epoch-solana`) | Native Rust Cargo 1.89+ | **170 / 170 passed** | **PASSED** | 23 unit (`epoch`), 14 unit (`epoch-ref`), 133 integration tests across 24 test harnesses |
 | **H-4 Anchor Instruction Suite** | `cargo test --test test_h4_anchor_instruction` | Native Rust Cargo | **10 / 10 passed** | **PASSED** | Aligned binary memory, uninitialized account rejection, forged PDA rejection, residual retention, deposit curing |
-| **H-4 Production Liquidation Suite** | `cargo test --test test_h4_production_liquidation` | Native Rust Cargo | **16 / 16 passed** | **PASSED** | Multi-tx lifecycle, multi-tx deposit curing, partial vault, partial ADL, exhaustion, safe math, zero bad debt |
-| **H-5 Governor Remediation Suite** | `cargo test --test test_h5_governor_remediation` | Native Rust Cargo | **12 / 12 passed** | **PASSED** | High-leverage sensitivity, 50-cycle rate bound proof, 40 alternating moves (600 bps path), unbypassable dual AND |
+| **H-4 Production Liquidation Suite** | `cargo test --test test_h4_production_liquidation` | Native Rust Cargo | **22 / 22 passed** | **PASSED** | Undistorted P_bk proofs across vault/ADL sequences, flat position quarantine clearance, stale oracle curing rejection, counterparty funding settlement |
+| **H-5 Governor Remediation Suite** | `cargo test --test test_h5_governor_remediation` | Native Rust Cargo | **13 / 13 passed** | **PASSED** | Oscillation attack unprofitability proof, high-leverage sensitivity, 50-cycle rate bound proof, 40 alternating moves |
 | **H-5 Production Oracle Governor** | `cargo test --test test_h5_production_oracle_governor` | Native Rust Cargo | **9 / 9 passed** | **PASSED** | Bounded outage recovery, continuous EMA anchor resistance, 60-bps directional drift, slot jitter handling |
 | **QA Extended Regression Suite** | `cargo test --workspace` (in `../Epoch-qa`) | Native Rust Cargo | **117 / 117 passed** | **PASSED** | 105 base + 7 security reproduction tests + 5 remediation proof tests |
 | **Localnet Authority Oracle E2E** | `EPOCH_RPC_URL=http://127.0.0.1:8899 bun run scripts/test_local_e2e.ts` | Local Validator + Reference Engine | **11 / 11 passed** | **PASSED** | Real on-chain trades, vault sweeps, reference engine parity, outage tests |
@@ -76,9 +76,9 @@ All agents strictly execute standardized test commands. Below are the verified t
 | Worktree | Branch | Full 40-Char Commit Hash | Status |
 | :--- | :--- | :--- | :--- |
 | **Coordinator (`.`)** | `feat/epoch-multi-agent` | `45c05c9e60c53e8e4098c00a5a733eddaf1fda62` | Clean, ahead of origin by 6 commits (no push) |
-| **Solana (`../Epoch-solana`)** | `agent/solana-engineer` | `91f07f6f909f3d13f903247cc680ceda05b014ff` | Clean, 161/161 tests passing, strictly isolated |
+| **Solana (`../Epoch-solana`)** | `agent/solana-engineer` | `d4a68e6b56a771fa682373c732f1877ac5c910b5` | Clean, 170/170 tests passing, 0 clippy warnings, strictly isolated |
 | **QA (`../Epoch-qa`)** | `agent/qa-engineer` | `0878357b52651fc115ae2a2eaef339e805ca1c4f` | Clean, 117/117 regression tests passing |
-| **Security (`../Epoch-security`)** | `agent/security-audit` | `65474652938fd67a6bfc9f17667cacf293af9129` | Clean, Signed certification for commit `91f07f6` |
+| **Security (`../Epoch-security`)** | `agent/security-audit` | `571e6430b806dcfdf4c1a55feea7aa356267e761` | Clean, Signed certification for commit `d4a68e6` |
 | **Keeper (`../Epoch-keeper`)** | `agent/keeper-engineer` | `8cb6016d7d0c8c5284e39505509cc033efbf9282` | Clean, Phase 2 keeper audit signed, 4/4 passing |
 | **Infra (`../Epoch-infra`)** | `agent/infrastructure-engineer` | `633efb0edbf274f64584561341b16b42119e3991` | Clean, Idempotent processor passing 5/5 |
 | **Frontend (`../Epoch-frontend`)** | `agent/frontend-engineer` | `7317c755c56bca22f6fbccab80fd03838d8b965e` | Clean, Gate G1 budget & UI parity passing 2/2 |
