@@ -333,3 +333,100 @@ fn test_h5_production_process_price_update_direct_instruction_logic() {
     );
 }
 
+#[test]
+fn test_h5_cumulative_bounds_across_repeated_outages() {
+    use epoch::instructions::post_price::{process_price_update, AuthorityPriceUpdate};
+
+    let mut oracle = AuthorityPriceUpdate::default();
+    let initial_price = 150_000_000u64; // $150.00
+    let mut current_slot = 100u64;
+    let mut current_time = 1000i64;
+
+    // Bootstrap
+    let _ = process_price_update(&mut oracle, initial_price, 50_000, current_time, current_slot).unwrap();
+
+    // Attacker triggers 10 consecutive prolonged outages of 500 slots and 200 seconds each.
+    // In each recovery, attacker attempts to push the price up by +50% ($225.00).
+    for i in 1..=10 {
+        let pre_outage_price = oracle.price;
+        current_slot += 500; // 500-slot outage (> 150 slot window)
+        current_time += 200; // 200s outage (> 60s window)
+
+        let p_outage = process_price_update(&mut oracle, 225_000_000, 50_000, current_time, current_slot)
+            .expect("Outage recovery succeeds via clamping");
+
+        // Single outage recovery must be strictly bounded by Tier 2 anchor deviation (<= 30 bps)
+        let step_bps = ((p_outage - pre_outage_price) * 10_000) / pre_outage_price;
+        assert!(
+            step_bps <= 30,
+            "Outage cycle #{} step {} bps exceeded 30 bps anchor bound",
+            i, step_bps
+        );
+    }
+
+    // Cumulative drift across 10 repeated outage-reset cycles is strictly capped:
+    // (1 + 0.0030)^10 ≈ +3.04% maximum theoretical upper bound over 2,000 seconds (33 minutes).
+    let total_bps = ((oracle.price - initial_price) * 10_000) / initial_price;
+    assert!(
+        total_bps <= 310,
+        "10 repeated outage cycles resulted in {} bps drift (must be <= 310 bps)",
+        total_bps
+    );
+}
+
+#[test]
+fn test_h5_extreme_values_and_overflow_protection() {
+    use epoch::instructions::post_price::{process_price_update, AuthorityPriceUpdate};
+
+    let mut oracle = AuthorityPriceUpdate::default();
+    let initial_price = 150_000_000u64;
+
+    // 1. Zero price rejected
+    let err_zero_price = process_price_update(&mut oracle, 0, 50_000, 1000, 100);
+    assert_eq!(err_zero_price.unwrap_err(), EpochError::InvalidOraclePrice.into());
+
+    // 2. Zero confidence rejected
+    let err_zero_conf = process_price_update(&mut oracle, initial_price, 0, 1000, 100);
+    assert_eq!(err_zero_conf.unwrap_err(), EpochError::OracleConfidenceTooLow.into());
+
+    // 3. Bootstrap with valid parameters
+    let p0 = process_price_update(&mut oracle, initial_price, 50_000, 1000, 100).unwrap();
+    assert_eq!(p0, initial_price);
+
+    // 4. Extreme price value (near u64::MAX / 2) does not cause arithmetic overflow
+    let extreme_price = u64::MAX / 4;
+    let p_extreme = process_price_update(&mut oracle, extreme_price, 50_000, 1001, 102)
+        .expect("Extreme price safely clamped without overflow");
+    assert!(p_extreme > initial_price && p_extreme < initial_price + 1_000_000);
+
+    // 5. Massive slot gap (10,000,000 slots) does not cause arithmetic overflow
+    let p_huge_gap = process_price_update(&mut oracle, 200_000_000, 50_000, 10_000_000, 10_000_102)
+        .expect("Massive slot gap safely processed");
+    let gap_step_bps = ((p_huge_gap - oracle.anchor_price) * 10_000) / oracle.anchor_price;
+    assert!(gap_step_bps <= 30, "Massive gap still bounded by anchor deviation limit");
+}
+
+#[test]
+fn test_h5_continuous_ema_anchor_tamper_resistance() {
+    use epoch::instructions::post_price::{compute_continuous_ema, process_price_update, AuthorityPriceUpdate};
+
+    let mut oracle = AuthorityPriceUpdate::default();
+    let initial_price = 100_000_000u64; // $100.00
+    let _ = process_price_update(&mut oracle, initial_price, 50_000, 1000, 100).unwrap();
+
+    // Verify mathematical decay properties of continuous EMA:
+    // Calibrated to 1 - 1/e ≈ 63.21% time constant at 75 slots
+    let ema_1 = compute_continuous_ema(110_000_000, 100_000_000, 1);
+    assert_eq!(ema_1, 100_084_000, "1 slot elapsed gives exactly 84 bps response");
+
+    let ema_75 = compute_continuous_ema(110_000_000, 100_000_000, 75);
+    assert_eq!(ema_75, 106_321_000, "75 slots elapsed gives exact 1 - 1/e (63.21%) response");
+
+    // Verify that alternating price updates smoothly center the anchor without bias
+    let ema_up = compute_continuous_ema(100_300_000, 100_000_000, 2);
+    let ema_down = compute_continuous_ema(99_700_000, ema_up, 2);
+    // Symmetric 30 bps excursion returns cleanly to near $100.00
+    assert!(ema_down >= 99_990_000 && ema_down <= 100_010_000);
+}
+
+

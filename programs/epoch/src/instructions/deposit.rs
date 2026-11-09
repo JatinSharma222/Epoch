@@ -70,6 +70,26 @@ pub fn handle_deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
 
     // Deposit curing (H-4 §5.6): If account was quarantined in LIQUIDATING state,
     // verify whether this deposit cures equity back above maintenance margin.
+    apply_deposit_curing(&mut user, &market);
+
+    msg!(
+        "Deposit: user={}, amount={}, total_collateral={}",
+        user.owner,
+        amount,
+        user.collateral
+    );
+
+    Ok(())
+}
+
+/// Applies deposit curing (spec H-4 §5.6):
+/// If an account was quarantined under liquidation lock (LIQUIDATING / LIQUIDATION_LOCKED),
+/// check if the new collateral balance restores equity >= MMR at current oracle price.
+/// If so, clear the quarantine flags.
+pub fn apply_deposit_curing(
+    user: &mut UserAccount,
+    market: &Market,
+) {
     if (user.flags & crate::state::UserFlags::LIQUIDATING) != 0 {
         if user.base_position == 0 {
             user.flags &= !crate::state::UserFlags::LIQUIDATING;
@@ -89,13 +109,4 @@ pub fn handle_deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
             }
         }
     }
-
-    msg!(
-        "Deposit: user={}, amount={}, total_collateral={}",
-        user.owner,
-        amount,
-        user.collateral
-    );
-
-    Ok(())
 }

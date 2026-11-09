@@ -132,6 +132,11 @@ pub fn calculate_adl_score(
 }
 
 /// Executes auto-deleveraging (ADL) on a single counterparty position against remaining bankrupt lots at P_bk.
+///
+/// Direction Validation (Spec H-4 §10.5):
+/// - Rejects same-direction positions (bankrupt long vs cp long, bankrupt short vs cp short)
+/// - Rejects flat positions (cp.base_position == 0)
+/// - Rejects invalid bankruptcy price (p_bk == 0)
 pub fn apply_adl_counterparty(
     cp: &mut UserAccount,
     bankrupt_is_long: bool,
@@ -144,12 +149,13 @@ pub fn apply_adl_counterparty(
     if *remaining_bankrupt == 0 {
         return Ok(());
     }
-    // Must be opposing position
-    if bankrupt_is_long && cp.base_position >= 0 {
-        return Ok(());
-    }
-    if !bankrupt_is_long && cp.base_position <= 0 {
-        return Ok(());
+    require!(p_bk > 0, EpochError::InvalidOraclePrice);
+
+    // Strict direction check: opposing position required
+    if bankrupt_is_long {
+        require!(cp.base_position < 0, EpochError::InvalidAdlCounterparty);
+    } else {
+        require!(cp.base_position > 0, EpochError::InvalidAdlCounterparty);
     }
 
     let cp_lots = cp.base_position.unsigned_abs();
@@ -160,8 +166,8 @@ pub fn apply_adl_counterparty(
 
     let adl_notional = (((adl_step as u128) * p_bk as u128) / 1000) as u64;
     if bankrupt_is_long {
-        // Bankrupt was long, counterparty is short
-        // Counterparty buys adl_step lots at p_bk
+        // Bankrupt user was long (+q), counterparty was short (-q).
+        // Counterparty buys adl_step lots at p_bk: base increases towards 0, quote decreases.
         cp.base_position = cp
             .base_position
             .checked_add(adl_step as i64)
@@ -171,8 +177,8 @@ pub fn apply_adl_counterparty(
             .checked_sub(adl_notional as i128)
             .ok_or(EpochError::MathOverflow)?;
     } else {
-        // Bankrupt was short, counterparty is long
-        // Counterparty sells adl_step lots at p_bk
+        // Bankrupt user was short (-q), counterparty was long (+q).
+        // Counterparty sells adl_step lots at p_bk: base decreases towards 0, quote increases.
         cp.base_position = cp
             .base_position
             .checked_sub(adl_step as i64)
@@ -377,42 +383,24 @@ pub fn execute_liquidation(
         // ── REGIME B: Insolvent Bankruptcy (E < 0) ──
         p_bk = calculate_bankruptcy_price(user.collateral, user.quote_position, user.base_position, 0);
 
-        let deficit = u64::try_from(user_equity.checked_abs().ok_or(EpochError::MathOverflow)?)
-            .map_err(|_| EpochError::MathOverflow)?;
-
-        let covered = deficit.min(market.insurance_fund);
-        if covered > 0 {
-            market.insurance_fund = market
-                .insurance_fund
-                .checked_sub(covered)
-                .ok_or(EpochError::MathOverflow)?;
-            insurance_covered = covered;
-        }
-        let remaining_deficit = deficit.saturating_sub(covered);
-        if remaining_deficit > 0 {
-            market.bad_debt = market
-                .bad_debt
-                .checked_add(remaining_deficit)
-                .ok_or(EpochError::MathOverflow)?;
-            bad_debt = remaining_deficit;
-        }
-
-        // Bankrupt user account completely zeroed out:
-        // Cash deficit is fully absorbed by insurance fund and protocol bad debt.
-        user.collateral = 0;
-        user.quote_position = 0;
-        user.base_position = 0;
-        user.flags = UserFlags::NONE;
-
         let bankrupt_lots = abs_base as u64;
         let vault_absorbed = bankrupt_lots.min(avail_lots);
         delta_lots = vault_absorbed;
 
         if vault_absorbed > 0 {
-            let vault_notional = (((vault_absorbed as u128) * p_bk as u128) / 1000) as u64;
+            let vault_notional = (((vault_absorbed as u128) * oracle_price as u128) / 1000) as u64;
             notional = notional.saturating_add(vault_notional);
 
             if old_user_base > 0 {
+                user.base_position = user
+                    .base_position
+                    .checked_sub(vault_absorbed as i64)
+                    .ok_or(EpochError::MathOverflow)?;
+                user.quote_position = user
+                    .quote_position
+                    .checked_add(vault_notional as i128)
+                    .ok_or(EpochError::MathOverflow)?;
+
                 vault_user.base_position = vault_user
                     .base_position
                     .checked_add(vault_absorbed as i64)
@@ -422,6 +410,15 @@ pub fn execute_liquidation(
                     .checked_sub(vault_notional as i128)
                     .ok_or(EpochError::MathOverflow)?;
             } else {
+                user.base_position = user
+                    .base_position
+                    .checked_add(vault_absorbed as i64)
+                    .ok_or(EpochError::MathOverflow)?;
+                user.quote_position = user
+                    .quote_position
+                    .checked_sub(vault_notional as i128)
+                    .ok_or(EpochError::MathOverflow)?;
+
                 vault_user.base_position = vault_user
                     .base_position
                     .checked_sub(vault_absorbed as i64)
@@ -433,12 +430,22 @@ pub fn execute_liquidation(
             }
         }
 
-        // Auto-Deleveraging (ADL) for remaining bankrupt lots
+        // Auto-Deleveraging (ADL) for remaining bankrupt lots against candidate counterparties
         remaining_bankrupt = bankrupt_lots.saturating_sub(vault_absorbed);
         if remaining_bankrupt > 0 && !counterparties.is_empty() {
             let is_bankrupt_long = old_user_base > 0;
 
             for cp in counterparties.iter_mut() {
+                if remaining_bankrupt == 0 {
+                    break;
+                }
+                let cp_lots = cp.base_position.unsigned_abs();
+                let adl_step = remaining_bankrupt.min(cp_lots);
+                if adl_step == 0 {
+                    continue;
+                }
+                let adl_notional = (((adl_step as u128) * p_bk as u128) / 1000) as u64;
+
                 apply_adl_counterparty(
                     cp,
                     is_bankrupt_long,
@@ -448,12 +455,75 @@ pub fn execute_liquidation(
                     &mut delta_lots,
                     &mut adl_executed_lots,
                 )?;
+
+                // Update bankrupt user symmetrically at p_bk
+                if is_bankrupt_long {
+                    user.base_position = user
+                        .base_position
+                        .checked_sub(adl_step as i64)
+                        .ok_or(EpochError::MathOverflow)?;
+                    user.quote_position = user
+                        .quote_position
+                        .checked_add(adl_notional as i128)
+                        .ok_or(EpochError::MathOverflow)?;
+                } else {
+                    user.base_position = user
+                        .base_position
+                        .checked_add(adl_step as i64)
+                        .ok_or(EpochError::MathOverflow)?;
+                    user.quote_position = user
+                        .quote_position
+                        .checked_sub(adl_notional as i128)
+                        .ok_or(EpochError::MathOverflow)?;
+                }
             }
+        }
+
+        // If vault capacity was saturated (0 headroom) and no lots were closed via ADL,
+        // quarantine account under LIQUIDATION_LOCKED
+        if delta_lots == 0 {
+            user.flags |= UserFlags::LIQUIDATION_LOCKED;
+            return Err(EpochError::VaultCapacityExhausted.into());
         }
 
         // Zero-Notional Bad Debt Invariant:
         // Any remaining unhedged contracts are cancelled from global open interest at P_bk.
         // Under NO circumstances is remaining position notional converted into bad debt!
+        if user.base_position != 0 {
+            user.base_position = 0;
+        }
+
+        // Fold bankrupt user quote position into collateral to settle actual uncovered obligation
+        let quote_pnl = i64::try_from(user.quote_position).map_err(|_| EpochError::MathOverflow)?;
+        user.collateral = user
+            .collateral
+            .checked_add(quote_pnl)
+            .ok_or(EpochError::MathOverflow)?;
+        user.quote_position = 0;
+
+        if user.collateral < 0 {
+            let actual_deficit = (-user.collateral) as u64;
+            let covered = actual_deficit.min(market.insurance_fund);
+            if covered > 0 {
+                market.insurance_fund = market
+                    .insurance_fund
+                    .checked_sub(covered)
+                    .ok_or(EpochError::MathOverflow)?;
+                insurance_covered = covered;
+            }
+            let rem_deficit = actual_deficit.saturating_sub(covered);
+            if rem_deficit > 0 {
+                market.bad_debt = market
+                    .bad_debt
+                    .checked_add(rem_deficit)
+                    .ok_or(EpochError::MathOverflow)?;
+                bad_debt = rem_deficit;
+            }
+            user.collateral = 0;
+        } else {
+            user.collateral = 0;
+        }
+        user.flags = UserFlags::NONE;
     }
 
     // Update Market Open Interest based on long position changes
@@ -484,81 +554,153 @@ pub fn execute_liquidation(
     })
 }
 
+pub fn process_liquidate_with_accounts<'a, 'info>(
+    market_loader: &AccountLoader<'info, Market>,
+    vault_user_loader: &AccountLoader<'info, UserAccount>,
+    user_loader: &AccountLoader<'info, UserAccount>,
+    liquidatee_key: &Pubkey,
+    oracle_price: u64,
+    current_slot: u64,
+    remaining_accounts: &'a [AccountInfo<'info>],
+) -> Result<LiquidationExecutionResult> {
+    // 1. Prevent self-liquidation of vault against itself
+    require_keys_neq!(
+        user_loader.key(),
+        vault_user_loader.key(),
+        EpochError::SelfLiquidation
+    );
+
+    let mut market = market_loader.load_mut()?;
+    let mut user = user_loader.load_mut()?;
+    let mut vault_user = vault_user_loader.load_mut()?;
+
+    // 2. Liquidatee identity verification
+    require_keys_eq!(
+        user.owner,
+        *liquidatee_key,
+        EpochError::Unauthorized
+    );
+
+    let old_user_base = user.base_position;
+    let is_bankrupt_long = old_user_base > 0;
+
+    // Remaining-account validation & deterministic ranking (Spec H-4 §10.5):
+    let mut seen_accounts = std::collections::BTreeSet::new();
+
+    struct RankedCandidate<'a, 'info> {
+        info: &'a AccountInfo<'info>,
+        score: u128,
+        key: Pubkey,
+    }
+    let mut candidates: Vec<RankedCandidate> = Vec::with_capacity(remaining_accounts.len());
+
+    for acc_info in remaining_accounts.iter() {
+        // 1. Reject duplicate accounts
+        if !seen_accounts.insert(acc_info.key()) {
+            return err!(EpochError::DuplicateUserAccount);
+        }
+
+        // 2. Reject self or vault as counterparty
+        require_keys_neq!(acc_info.key(), user_loader.key(), EpochError::InvalidUserAccount);
+        require_keys_neq!(acc_info.key(), vault_user_loader.key(), EpochError::InvalidUserAccount);
+
+        // 3. Ownership and writable validation
+        require_keys_eq!(*acc_info.owner, crate::ID, EpochError::Unauthorized);
+        require!(acc_info.is_writable, EpochError::Unauthorized);
+
+        // 4. Account type validation
+        let cp_loader = AccountLoader::<UserAccount>::try_from(acc_info)?;
+        let cp = cp_loader.load()?;
+
+        // 5. Market / PDA derivation verification
+        let expected_pda = Pubkey::find_program_address(&[b"user", cp.owner.as_ref()], &crate::ID).0;
+        require_keys_eq!(acc_info.key(), expected_pda, EpochError::Unauthorized);
+
+        // 6. Direction check: must be opposing
+        if is_bankrupt_long {
+            require!(cp.base_position < 0, EpochError::InvalidAdlCounterparty);
+        } else {
+            require!(cp.base_position > 0, EpochError::InvalidAdlCounterparty);
+        }
+
+        // 7. Calculate ADL score for deterministic protocol ranking
+        let cp_delta = market.funding_index.saturating_sub(cp.funding_snapshot);
+        let cp_pending_funding = (cp.base_position as i128 * cp_delta) / F_SCALE;
+        let cp_pos_val = (cp.base_position as i128 * oracle_price as i128) / 1000;
+        let cp_equity = cp.collateral as i128 + cp.quote_position + cp_pos_val - cp_pending_funding;
+        let cp_upnl = cp.quote_position + cp_pos_val;
+
+        // Only profitable positions with positive equity are eligible for ADL
+        require!(cp_equity > 0 && cp_upnl > 0, EpochError::InvalidAdlCounterparty);
+
+        let score = ((cp_upnl as u128) * 1_000_000) / (cp_equity as u128);
+        candidates.push(RankedCandidate {
+            info: acc_info,
+            score,
+            key: acc_info.key(),
+        });
+    }
+
+    // Deterministic protocol ranking: sort candidates descending by score (tie-breaker: pubkey)
+    // Completely independent of caller-supplied order!
+    candidates.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| b.key.cmp(&a.key)));
+
+    // Load candidate accounts in ranked order
+    let mut loaders = Vec::with_capacity(candidates.len());
+    for c in candidates.iter() {
+        let loader = AccountLoader::<'info, UserAccount>::try_from(c.info)?;
+        loaders.push(loader);
+    }
+    let mut loaded_cps = Vec::with_capacity(loaders.len());
+    for l in loaders.iter() {
+        loaded_cps.push(l.load_mut()?);
+    }
+    let mut cp_refs: Vec<&mut UserAccount> = loaded_cps.iter_mut().map(|g| &mut **g).collect();
+
+    execute_liquidation(
+        &mut market,
+        &mut user,
+        &mut vault_user,
+        &mut cp_refs[..],
+        oracle_price,
+        current_slot,
+    )
+}
+
 pub fn handle_liquidate<'a, 'b, 'c, 'info>(
     ctx: Context<'a, 'b, 'c, 'info, Liquidate<'info>>,
 ) -> Result<()>
 where
     'c: 'info,
 {
-    // 1. Prevent self-liquidation of vault against itself
-    require_keys_neq!(
-        ctx.accounts.user.key(),
-        ctx.accounts.vault_user.key(),
-        EpochError::SelfLiquidation
-    );
-
-    let mut market = ctx.accounts.market.load_mut()?;
-    let mut user = ctx.accounts.user.load_mut()?;
-    let mut vault_user = ctx.accounts.vault_user.load_mut()?;
-
-    // 2. Liquidatee identity verification
-    require_keys_eq!(
-        user.owner,
-        ctx.accounts.liquidatee.key(),
-        EpochError::Unauthorized
-    );
-
-    // 3. Oracle price resolution and safety guards via oracle account
+    // Oracle price resolution and safety guards via oracle account
     let clock = Clock::get()?;
-    let pyth_data = verify_price_update_strict_with_market(
-        &ctx.accounts.price_update,
-        &market.oracle_feed_id,
-        &ctx.accounts.market.key(),
-        market.params.max_oracle_age_secs,
-        market.params.max_conf_bps,
-        clock.unix_timestamp,
-    )?;
+    let pyth_data = {
+        let market = ctx.accounts.market.load()?;
+        verify_price_update_strict_with_market(
+            &ctx.accounts.price_update,
+            &market.oracle_feed_id,
+            &ctx.accounts.market.key(),
+            market.params.max_oracle_age_secs,
+            market.params.max_conf_bps,
+            clock.unix_timestamp,
+        )?
+    };
     let oracle_price = pyth_data.price;
+    let old_user_base = ctx.accounts.user.load()?.base_position;
 
-    let old_user_base = user.base_position;
-
-    let mut res = execute_liquidation(
-        &mut market,
-        &mut user,
-        &mut vault_user,
-        &mut [],
+    let res = process_liquidate_with_accounts(
+        &ctx.accounts.market,
+        &ctx.accounts.vault_user,
+        &ctx.accounts.user,
+        ctx.accounts.liquidatee.key,
         oracle_price,
         clock.slot,
+        ctx.remaining_accounts,
     )?;
 
-    // If there are unabsorbed bankrupt lots and remaining accounts were provided, perform ADL on them
-    if !res.is_solvent && res.remaining_bankrupt_lots > 0 && !ctx.remaining_accounts.is_empty() {
-        let is_bankrupt_long = old_user_base > 0;
-        let mut remaining = res.remaining_bankrupt_lots;
-        for acc in ctx.remaining_accounts.iter() {
-            if remaining == 0 {
-                break;
-            }
-            if *acc.owner == crate::ID {
-                if let Ok(loader) = AccountLoader::<'info, UserAccount>::try_from(acc) {
-                    if let Ok(mut cp) = loader.load_mut() {
-                        apply_adl_counterparty(
-                            &mut cp,
-                            is_bankrupt_long,
-                            &mut remaining,
-                            res.bankruptcy_price,
-                            &mut res.notional,
-                            &mut res.delta_lots,
-                            &mut res.adl_executed_lots,
-                        )?;
-                    }
-                }
-            }
-        }
-        res.remaining_bankrupt_lots = remaining;
-    }
-
     // Determine current batch ID & emit event
+    let market = ctx.accounts.market.load()?;
     let n_slots = market.params.batch_slots as u64;
     let current_batch = if clock.slot >= market.start_slot && n_slots > 0 {
         (clock.slot - market.start_slot) / n_slots

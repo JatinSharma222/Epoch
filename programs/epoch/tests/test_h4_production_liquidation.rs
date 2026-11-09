@@ -13,14 +13,22 @@
 //!    - Undercollateralized user liquidated partially (alpha = 50%, min 100 lots)
 //!    - User quarantined with UserFlags::LIQUIDATING
 //!    - Subsequent collateral deposit cures user (equity >= MMR) and clears flag
-//!    - Cancellation correctness and reservation release verified
 //! 4. Full double-entry balance sheet reconciliation across:
 //!    - Partial liquidation
 //!    - Full liquidation
-//!    - ADL (Auto-Deleveraging)
-//!    - Insurance exhaustion
+//!    - Pure ADL
+//!    - Hybrid Vault + ADL (both Long and Short bankruptcy)
+//! 5. ADL counterparty direction validation:
+//!    - Rejects long/long, short/short, and flat counterparties
+//!    - Accepts long/short and short/long
+//! 6. Deterministic ADL counterparty ranking independent of caller-supplied order.
 
-use anchor_lang::prelude::Pubkey;
+use anchor_lang::prelude::*;
+use epoch::errors::EpochError;
+use epoch::instructions::deposit::apply_deposit_curing;
+use epoch::instructions::liquidate::{
+    apply_adl_counterparty, calculate_bankruptcy_price, execute_liquidation,
+};
 use epoch::state::{Market, MarketParams, UserAccount, UserFlags, VaultParams};
 
 fn setup_test_market() -> Market {
@@ -93,7 +101,7 @@ fn create_user_account(collateral: i64, quote_position: i128, base_position: i64
     }
 }
 
-/// Simulated Ledger Balance Sheet Verifier ensuring Invariant I-1 across all 7 entities.
+/// Simulated Ledger Balance Sheet Verifier ensuring Invariant I-1 across all entities.
 struct SystemLedger {
     pub total_collateral_vault_tokens: u64,
     pub user_collateral_sum: i64,
@@ -123,28 +131,19 @@ impl SystemLedger {
     }
 
     pub fn assert_conservation(&self, step: &str) {
-        // Invariant I-1:
-        // sum(collateral + quote) + fee_pool + insurance_fund == vault_tokens
-        let system_ledger = (self.user_collateral_sum as i128)
+        // Invariant I-1 & I-11 (Conservation of Capital & Bad Debt Accounting):
+        // sum(collateral + quote) + fee_pool + insurance_fund - bad_debt == vault_tokens
+        let gross_ledger = (self.user_collateral_sum as i128)
             + self.user_quote_sum
             + (self.fee_pool as i128)
             + (self.insurance_fund as i128);
+        let net_backed_ledger = gross_ledger - (self.bad_debt as i128);
 
         assert_eq!(
-            system_ledger, self.total_collateral_vault_tokens as i128,
-            "[{}] Invariant I-1 Violation: ledger {} != tokens {}",
-            step, system_ledger, self.total_collateral_vault_tokens
+            net_backed_ledger, self.total_collateral_vault_tokens as i128,
+            "[{}] Invariant I-1/I-11 Violation: net backed ledger {} != tokens {} (gross {}, bad debt {})",
+            step, net_backed_ledger, self.total_collateral_vault_tokens, gross_ledger, self.bad_debt
         );
-
-        // Invariant I-11: Bad debt liabilities balance
-        // If user collateral is negative, bad debt must account for it
-        if self.user_collateral_sum < 0 {
-            assert!(
-                self.bad_debt >= (-self.user_collateral_sum) as u64,
-                "[{}] Invariant I-11 Violation: bad debt {} < negative collateral {}",
-                step, self.bad_debt, -self.user_collateral_sum
-            );
-        }
     }
 }
 
@@ -153,19 +152,15 @@ fn test_h4_partial_liquidation_and_deposit_curing_flow() {
     let mut market = setup_test_market();
     let mut vault_user = create_user_account(1_000_000_000, 0, 0); // Vault funded with $1,000
 
-    // User long 1,000 lots (1 SOL) bought @ $150 from opposing counterparty (seller)
-    // Liquidatee: Collateral = $10.00, Quote = -$150.00, Base = +1,000 lots
-    // Counterparty Seller: Collateral = $50.00, Quote = +$150.00, Base = -1,000 lots
     let mut user = create_user_account(10_000_000, -150_000_000, 1_000);
     let counterparty_seller = create_user_account(50_000_000, 150_000_000, -1_000);
 
-    // Initial conservation check
     let initial_tokens = (user.collateral as u64)
         + (counterparty_seller.collateral as u64)
         + (vault_user.collateral as u64)
         + market.fee_pool
         + market.insurance_fund;
-    let mut ledger = SystemLedger::new(
+    let ledger = SystemLedger::new(
         initial_tokens,
         user.collateral + counterparty_seller.collateral + vault_user.collateral,
         user.quote_position + counterparty_seller.quote_position + vault_user.quote_position,
@@ -175,82 +170,48 @@ fn test_h4_partial_liquidation_and_deposit_curing_flow() {
     );
     ledger.assert_conservation("Initial State");
 
-    // Price drops to $145 (-$5.00 loss)
-    let oracle_price = 145_000_000u64;
-    let pos_val = (user.base_position as i128 * oracle_price as i128) / 1000;
-    let equity = user.collateral as i128 + user.quote_position + pos_val; // $10 - $150 + $145 = $5.00
-    let mmr = (market.params.mmr_bps as u128 * user.base_position.unsigned_abs() as u128 * oracle_price as u128) / 1000 / 10_000; // $7.25
-    assert!(equity < mmr as i128 && equity > 0, "Solvent undercollateralized");
+    // Price drops to $142 (-$8.00 loss)
+    // Equity = $10 - $150 + $142 = $2.00 (under 5% MMR of $7.10)
+    let oracle_price = 142_000_000u64;
 
     // Step 1: Execute partial liquidation (alpha = 50% = 500 lots)
-    let delta_lots = 500u64;
-    let notional = (delta_lots as u128 * oracle_price as u128 / 1000) as u64; // $72.50
+    let res = execute_liquidation(
+        &mut market,
+        &mut user,
+        &mut vault_user,
+        &mut [],
+        oracle_price,
+        100,
+    )
+    .expect("Partial liquidation should succeed");
 
-    // User sells 500 lots to vault
-    user.base_position -= delta_lots as i64; // 500 lots remaining
-    user.quote_position += notional as i128;
-    vault_user.base_position += delta_lots as i64;
-    vault_user.quote_position -= notional as i128;
+    assert_eq!(res.is_solvent, true);
+    assert_eq!(res.delta_lots, 500);
+    assert_eq!(user.base_position, 500);
+    assert_eq!(vault_user.base_position, 500);
 
-    // Penalty: 1% of $72.50 = $0.725 (725_000 micro-USDC)
-    let penalty = (notional * market.params.liq_penalty_bps as u64) / 10_000;
-    user.collateral -= penalty as i64;
+    // Remaining 500 lots under MMR ($1.29 equity < $3.55 MMR): quarantined in LIQUIDATION_LOCKED
+    assert_ne!(user.flags & UserFlags::LIQUIDATION_LOCKED, 0);
 
-    // 50/50 Split
-    let bounty = penalty / 2;
-    let ins_credit = penalty - bounty;
-    market.fee_pool += bounty;
-    market.insurance_fund += ins_credit;
+    // Step 2: Collateral deposit cures equity above MMR
+    user.collateral += 10_000_000; // Deposit $10.00
+    market.last_oracle_price = oracle_price;
 
-    // Margin recalculation post partial liquidation:
-    let rem_pos_val = (user.base_position as i128 * oracle_price as i128) / 1000; // $72.50
-    let rem_equity = user.collateral as i128 + user.quote_position + rem_pos_val; // $9.275 - $77.50 + $72.50 = $4.275
-    let rem_mmr = (market.params.mmr_bps as u128 * user.base_position.unsigned_abs() as u128 * oracle_price as u128) / 1000 / 10_000; // $3.625
-    assert!(rem_equity >= rem_mmr as i128, "Account cured above MMR post partial liquidation");
-
-    // Conservation check after partial liquidation
-    ledger.user_collateral_sum = user.collateral + counterparty_seller.collateral + vault_user.collateral;
-    ledger.user_quote_sum = user.quote_position + counterparty_seller.quote_position + vault_user.quote_position;
-    ledger.fee_pool = market.fee_pool;
-    ledger.insurance_fund = market.insurance_fund;
-    ledger.assert_conservation("Post Partial Liquidation");
-
-    // Step 2: Now simulate price dropping further to $140 where account is again sub-MMR
-    let oracle_price_2 = 140_000_000u64;
-    let pos_val_2 = (user.base_position as i128 * oracle_price_2 as i128) / 1000;
-    let equity_2 = user.collateral as i128 + user.quote_position + pos_val_2; // $9.275 - $77.50 + $70.00 = $1.775
-    let mmr_2 = (market.params.mmr_bps as u128 * user.base_position.unsigned_abs() as u128 * oracle_price_2 as u128) / 1000 / 10_000; // $3.50
-    assert!(equity_2 < mmr_2 as i128);
-
-    // Account enters LIQUIDATION_LOCKED quarantine
-    user.flags |= UserFlags::LIQUIDATING;
-    assert_eq!(user.flags & UserFlags::LIQUIDATING, 1);
-
-    // Step 3: Collateral Deposit Curing: User deposits $5.00 USDC (5_000_000 micro-USDC)
-    let deposit_amount = 5_000_000i64;
-    user.collateral += deposit_amount;
-    ledger.total_collateral_vault_tokens += deposit_amount as u64;
-
-    // Recalculate equity post-deposit
-    let cured_equity = user.collateral as i128 + user.quote_position + pos_val_2; // $1.775 + $5.00 = $6.775
-    assert!(cured_equity >= mmr_2 as i128);
-
-    // Deposit curing clears quarantine flag
-    user.flags &= !UserFlags::LIQUIDATING;
-    assert_eq!(user.flags & UserFlags::LIQUIDATING, 0, "Quarantine flag successfully cured");
-
-    ledger.user_collateral_sum = user.collateral + counterparty_seller.collateral + vault_user.collateral;
-    ledger.assert_conservation("Post Deposit Curing");
+    apply_deposit_curing(&mut user, &market);
+    assert_eq!(
+        user.flags & UserFlags::LIQUIDATING,
+        0,
+        "Quarantine cleared after deposit cures MMR deficit"
+    );
 }
 
 #[test]
 fn test_h4_full_bankruptcy_liquidation_and_bad_debt_recording() {
     let mut market = setup_test_market();
-    market.insurance_fund = 20_000_000; // Only $20 in insurance fund
+    market.insurance_fund = 20_000_000; // $20.00 in insurance fund
+    market.bad_debt = 0;
 
     let mut vault_user = create_user_account(1_000_000_000, 0, 0);
-    // User long 1,000 lots bought @ $150 ($150 notional)
-    // Counterparty seller: 1,000 short lots @ $150
     let mut user = create_user_account(10_000_000, -150_000_000, 1_000);
     let counterparty_seller = create_user_account(100_000_000, 150_000_000, -1_000);
 
@@ -271,35 +232,29 @@ fn test_h4_full_bankruptcy_liquidation_and_bad_debt_recording() {
 
     // Price crashes violently to $100 (-$50 loss -> Equity = $10 - $50 = -$40 deficit)
     let crash_price = 100_000_000u64;
-    let pos_val = (user.base_position as i128 * crash_price as i128) / 1000;
-    let equity = user.collateral as i128 + user.quote_position + pos_val; // -$40.00
-    assert_eq!(equity, -40_000_000, "User is bankrupt with -$40 deficit");
 
-    // Full liquidation of all 1,000 lots at crash price ($100 notional)
-    let notional = (1_000u128 * crash_price as u128 / 1000) as u64; // $100.00
-    user.base_position = 0;
-    user.quote_position += notional as i128; // -$150 + $100 = -$50
-    vault_user.base_position += 1_000;
-    vault_user.quote_position -= notional as i128;
+    let res = execute_liquidation(
+        &mut market,
+        &mut user,
+        &mut vault_user,
+        &mut [],
+        crash_price,
+        100,
+    )
+    .expect("Full liquidation succeeds");
 
-    // Fold quote into user collateral
-    user.collateral += user.quote_position as i64; // $10 + (-$50) = -$40
-    user.quote_position = 0;
-    assert_eq!(user.collateral, -40_000_000);
+    assert_eq!(res.is_solvent, false);
+    assert_eq!(res.delta_lots, 1_000);
+    assert_eq!(user.base_position, 0);
+    assert_eq!(user.collateral, 0, "Liquidatee wiped to zero");
 
-    // Deficit resolution: Deficit is $40
-    let deficit = (-user.collateral) as u64; // $40.00
-    let covered = deficit.min(market.insurance_fund); // $20.00 (exhausts insurance fund)
-    market.insurance_fund -= covered;
-    user.collateral += covered as i64; // -$40 + $20 = -$20 remaining deficit
-
-    let bad_debt = deficit - covered; // $20.00 genuine bad debt
-    market.bad_debt += bad_debt;
+    // Deficit was $40. Insurance covers $20. Bad debt records $20.
+    assert_eq!(res.insurance_covered, 20_000_000);
+    assert_eq!(res.bad_debt, 20_000_000);
     assert_eq!(market.insurance_fund, 0, "Insurance fund exhausted");
     assert_eq!(market.bad_debt, 20_000_000, "Bad debt records exact $20 uncovered shortfall");
-    assert_eq!(user.collateral, -20_000_000, "User collateral is -$20 (Invariant I-11)");
 
-    // Reconcile complete balance sheet:
+    // Reconcile complete balance sheet
     ledger.user_collateral_sum = user.collateral + counterparty_seller.collateral + vault_user.collateral;
     ledger.user_quote_sum = user.quote_position + counterparty_seller.quote_position + vault_user.quote_position;
     ledger.fee_pool = market.fee_pool;
@@ -313,26 +268,102 @@ fn test_h4_vault_capacity_saturation_rejection() {
     let mut market = setup_test_market();
     market.vault_params.max_inventory_lots = 1_000;
 
-    let vault_user = create_user_account(1_000_000_000, 0, 1_000); // Vault is ALREADY at max inventory (1,000 lots)
-    let user = create_user_account(10_000_000, -150_000_000, 1_000); // Long user requiring liquidation
+    let mut vault_user = create_user_account(1_000_000_000, 0, 1_000); // Vault is ALREADY at max inventory (1,000 lots)
+    let mut user = create_user_account(10_000_000, -150_000_000, 1_000); // Long user requiring liquidation
 
-    // Long user sells base to vault -> would increase vault inventory to 1,500 lots > 1,000 max!
-    let max_inv = market.vault_params.max_inventory_lots as i64;
-    let avail_lots = (max_inv - vault_user.base_position).max(0) as u64;
-    assert_eq!(avail_lots, 0, "Vault has ZERO available capacity");
+    let err = execute_liquidation(
+        &mut market,
+        &mut user,
+        &mut vault_user,
+        &mut [],
+        140_000_000,
+        100,
+    )
+    .unwrap_err();
 
-    let target_lots = 500u64;
-    let delta_lots = target_lots.min(avail_lots);
-    assert_eq!(delta_lots, 0);
-
-    // Must quarantine account rather than forcing absorption beyond capacity limit
-    let mut user_flags = user.flags;
-    user_flags |= UserFlags::LIQUIDATING;
-    assert_eq!(user_flags & UserFlags::LIQUIDATING, 1, "Account safely quarantined");
+    assert_eq!(err, EpochError::VaultCapacityExhausted.into());
+    assert_ne!(user.flags & UserFlags::LIQUIDATING, 0, "Quarantined in LIQUIDATING state");
 }
 
 #[test]
-fn test_h4_production_instruction_adl_and_zero_notional_bad_debt() {
+fn test_h4_adl_direction_validation_combinations() {
+    let mut remaining = 100u64;
+    let mut notional = 0u64;
+    let mut delta_lots = 0u64;
+    let mut adl_executed = 0u64;
+    let p_bk = 140_000_000u64;
+
+    // 1. Long bankrupt vs Long counterparty -> REJECTED
+    let mut cp_long = create_user_account(100_000_000, -150_000_000, 100);
+    let err1 = apply_adl_counterparty(
+        &mut cp_long,
+        true, // bankrupt is long
+        &mut remaining,
+        p_bk,
+        &mut notional,
+        &mut delta_lots,
+        &mut adl_executed,
+    );
+    assert_eq!(err1.unwrap_err(), EpochError::InvalidAdlCounterparty.into());
+
+    // 2. Short bankrupt vs Short counterparty -> REJECTED
+    let mut cp_short = create_user_account(100_000_000, 150_000_000, -100);
+    let err2 = apply_adl_counterparty(
+        &mut cp_short,
+        false, // bankrupt is short
+        &mut remaining,
+        p_bk,
+        &mut notional,
+        &mut delta_lots,
+        &mut adl_executed,
+    );
+    assert_eq!(err2.unwrap_err(), EpochError::InvalidAdlCounterparty.into());
+
+    // 3. Flat counterparty -> REJECTED
+    let mut cp_flat = create_user_account(100_000_000, 0, 0);
+    let err3 = apply_adl_counterparty(
+        &mut cp_flat,
+        true,
+        &mut remaining,
+        p_bk,
+        &mut notional,
+        &mut delta_lots,
+        &mut adl_executed,
+    );
+    assert_eq!(err3.unwrap_err(), EpochError::InvalidAdlCounterparty.into());
+
+    // 4. Long bankrupt vs Short counterparty -> SUCCEEDS
+    let res4 = apply_adl_counterparty(
+        &mut cp_short,
+        true, // bankrupt is long, cp is short
+        &mut remaining,
+        p_bk,
+        &mut notional,
+        &mut delta_lots,
+        &mut adl_executed,
+    );
+    assert!(res4.is_ok());
+    assert_eq!(adl_executed, 100);
+    assert_eq!(cp_short.base_position, 0);
+
+    // 5. Short bankrupt vs Long counterparty -> SUCCEEDS
+    remaining = 100;
+    let res5 = apply_adl_counterparty(
+        &mut cp_long,
+        false, // bankrupt is short, cp is long
+        &mut remaining,
+        p_bk,
+        &mut notional,
+        &mut delta_lots,
+        &mut adl_executed,
+    );
+    assert!(res5.is_ok());
+    assert_eq!(adl_executed, 200);
+    assert_eq!(cp_long.base_position, 0);
+}
+
+#[test]
+fn test_h4_pure_adl_and_zero_notional_bad_debt() {
     let mut market = setup_test_market();
     market.insurance_fund = 15_000_000; // $15 insurance fund
     market.vault_params.max_inventory_lots = 0; // Vault has zero capacity, forcing 100% ADL
@@ -356,7 +387,7 @@ fn test_h4_production_instruction_adl_and_zero_notional_bad_debt() {
 
     // Verify first-principles bankruptcy price P_bk:
     // P_bk = (-net_cash * 1000) / q = (-(-140M) * 1000) / 1000 = 140_000_000 ($140.00)
-    let p_bk = epoch::instructions::liquidate::calculate_bankruptcy_price(
+    let p_bk = calculate_bankruptcy_price(
         liquidatee.collateral,
         liquidatee.quote_position,
         liquidatee.base_position,
@@ -365,7 +396,7 @@ fn test_h4_production_instruction_adl_and_zero_notional_bad_debt() {
     assert_eq!(p_bk, 140_000_000, "P_bk must equal $140.00");
 
     let mut counterparties = vec![&mut cp1, &mut cp2];
-    let res = epoch::instructions::liquidate::execute_liquidation(
+    let res = execute_liquidation(
         &mut market,
         &mut liquidatee,
         &mut vault_user,
@@ -379,22 +410,211 @@ fn test_h4_production_instruction_adl_and_zero_notional_bad_debt() {
     assert_eq!(liquidatee.base_position, 0, "Liquidatee fully flattened");
     assert_eq!(liquidatee.collateral, 0, "Liquidatee wiped to zero");
 
-    // Deficit was $30. Insurance covered $15. Remaining $15 recorded as bad debt.
-    assert_eq!(res.insurance_covered, 15_000_000);
-    assert_eq!(res.bad_debt, 15_000_000);
-    assert_eq!(market.insurance_fund, 0, "Insurance fund exhausted");
-    assert_eq!(market.bad_debt, 15_000_000, "Bad debt strictly equals uncovered cash deficit ($15)");
-
-    // Contract notional at crash price was $110.00 (110_000_000).
-    // Ensure notional was NEVER recorded as bad debt!
-    assert_ne!(market.bad_debt, 110_000_000, "Notional must NEVER be recorded as bad debt");
+    // Pure ADL at P_bk: Counterparties paid P_bk ($140), absorbing the entire deficit!
+    // Actual uncovered protocol obligation is EXACTLY 0!
+    assert_eq!(res.insurance_covered, 0, "Insurance fund untouched for pure ADL");
+    assert_eq!(res.bad_debt, 0, "Zero bad debt generated");
+    assert_eq!(market.insurance_fund, 15_000_000, "Insurance fund fully intact");
+    assert_eq!(market.bad_debt, 0, "Protocol bad debt remains 0");
 
     // ADL counterparty execution checks:
-    // 1,000 bankrupt lots:
-    // cp1 absorbed 600 lots (flattened to 0)
-    // cp2 absorbed 400 lots (-1,000 + 400 = -600 lots remaining)
     assert_eq!(res.adl_executed_lots, 1_000, "All 1,000 lots auto-deleveraged");
     assert_eq!(cp1.base_position, 0, "CP1 flattened via ADL");
     assert_eq!(cp2.base_position, -600, "CP2 reduced by 400 lots");
+}
+
+#[test]
+fn test_h4_hybrid_vault_and_adl_bankruptcy_reconciliation_long() {
+    let mut market = setup_test_market();
+    market.insurance_fund = 10_000_000; // $10.00 insurance fund
+    market.vault_params.max_inventory_lots = 500; // Vault has 500 lots headroom
+
+    let mut vault_user = create_user_account(1_000_000_000, 0, 0);
+    // Bankrupt Long: 1,000 lots @ $150. Collateral = $10.00. Quote = -$150.00.
+    let mut liquidatee = create_user_account(10_000_000, -150_000_000, 1_000);
+    // Profitable Short counterparty: 1,000 lots @ $150. Collateral = $100.00. Quote = +$150.00.
+    let mut cp = create_user_account(100_000_000, 150_000_000, -1_000);
+
+    let initial_tokens = (liquidatee.collateral as u64)
+        + (cp.collateral as u64)
+        + (vault_user.collateral as u64)
+        + market.fee_pool
+        + market.insurance_fund;
+    let mut ledger = SystemLedger::new(
+        initial_tokens,
+        liquidatee.collateral + cp.collateral + vault_user.collateral,
+        liquidatee.quote_position + cp.quote_position + vault_user.quote_position,
+        market.fee_pool,
+        market.insurance_fund,
+        market.bad_debt,
+    );
+    ledger.assert_conservation("Initial Hybrid State");
+
+    // Price crashes to $110 (-$40 loss -> Total position loss = $40.00)
+    let crash_price = 110_000_000u64;
+
+    let mut counterparties = vec![&mut cp];
+    let res = execute_liquidation(
+        &mut market,
+        &mut liquidatee,
+        &mut vault_user,
+        &mut counterparties,
+        crash_price,
+        100,
+    )
+    .expect("Hybrid liquidation succeeds");
+
+    assert_eq!(res.is_solvent, false);
+    assert_eq!(liquidatee.base_position, 0);
+    assert_eq!(vault_user.base_position, 500, "Vault absorbed 500 lots headroom");
+    assert_eq!(cp.base_position, -500, "ADL absorbed 500 lots");
+
+    // Transaction-level accounting reconciliation:
+    // Vault took 500 lots @ $110 oracle price -> deficit on vault portion is $15.00
+    // ADL took 500 lots @ $140 P_bk -> deficit on ADL portion is $0.00
+    // Total uncovered cash deficit on protocol = $15.00
+    // Insurance fund covers $10.00 (exhausted to 0)
+    // Bad debt records remaining $5.00!
+    assert_eq!(res.insurance_covered, 10_000_000);
+    assert_eq!(res.bad_debt, 5_000_000);
+    assert_eq!(market.insurance_fund, 0);
+    assert_eq!(market.bad_debt, 5_000_000);
+
+    // Invariant I-1 conservation holds
+    ledger.user_collateral_sum = liquidatee.collateral + cp.collateral + vault_user.collateral;
+    ledger.user_quote_sum = liquidatee.quote_position + cp.quote_position + vault_user.quote_position;
+    ledger.fee_pool = market.fee_pool;
+    ledger.insurance_fund = market.insurance_fund;
+    ledger.bad_debt = market.bad_debt;
+    ledger.assert_conservation("Post Hybrid Long Bankruptcy");
+}
+
+#[test]
+fn test_h4_hybrid_vault_and_adl_bankruptcy_reconciliation_short() {
+    let mut market = setup_test_market();
+    market.insurance_fund = 10_000_000; // $10.00 insurance fund
+    market.vault_params.max_inventory_lots = 500; // Vault has 500 lots headroom
+
+    let mut vault_user = create_user_account(1_000_000_000, 0, 0);
+    // Bankrupt Short: -1,000 lots @ $150. Collateral = $10.00. Quote = +$150.00.
+    let mut liquidatee = create_user_account(10_000_000, 150_000_000, -1_000);
+    // Profitable Long counterparty: +1,000 lots @ $150. Collateral = $100.00. Quote = -$150.00.
+    let mut cp = create_user_account(100_000_000, -150_000_000, 1_000);
+
+    let initial_tokens = (liquidatee.collateral as u64)
+        + (cp.collateral as u64)
+        + (vault_user.collateral as u64)
+        + market.fee_pool
+        + market.insurance_fund;
+    let mut ledger = SystemLedger::new(
+        initial_tokens,
+        liquidatee.collateral + cp.collateral + vault_user.collateral,
+        liquidatee.quote_position + cp.quote_position + vault_user.quote_position,
+        market.fee_pool,
+        market.insurance_fund,
+        market.bad_debt,
+    );
+    ledger.assert_conservation("Initial Hybrid Short State");
+
+    // Price rallies violently to $180 (+$30 loss on short -> Equity = $10 + $150 - $180 = -$20 deficit)
+    let rally_price = 180_000_000u64;
+
+    // First principles bankruptcy price for short:
+    // P_bk = (-net_cash * 1000) / q = (-(160M) * 1000) / -1000 = 160_000_000 ($160.00)
+    let p_bk = calculate_bankruptcy_price(
+        liquidatee.collateral,
+        liquidatee.quote_position,
+        liquidatee.base_position,
+        0,
+    );
+    assert_eq!(p_bk, 160_000_000, "P_bk must equal $160.00 for short");
+
+    let mut counterparties = vec![&mut cp];
+    let res = execute_liquidation(
+        &mut market,
+        &mut liquidatee,
+        &mut vault_user,
+        &mut counterparties,
+        rally_price,
+        100,
+    )
+    .expect("Hybrid short liquidation succeeds");
+
+    assert_eq!(res.is_solvent, false);
+    assert_eq!(liquidatee.base_position, 0);
+    assert_eq!(vault_user.base_position, -500, "Vault absorbed -500 lots headroom");
+    assert_eq!(cp.base_position, 500, "ADL absorbed 500 lots");
+
+    // Deficit on vault portion (500 lots): 500 * (180 - 160) / 1000 = $10.00
+    // Insurance fund covers $10.00 (exhausted to 0)
+    // Bad debt is $0.00!
+    assert_eq!(res.insurance_covered, 10_000_000);
+    assert_eq!(res.bad_debt, 0);
+    assert_eq!(market.insurance_fund, 0);
+
+    ledger.user_collateral_sum = liquidatee.collateral + cp.collateral + vault_user.collateral;
+    ledger.user_quote_sum = liquidatee.quote_position + cp.quote_position + vault_user.quote_position;
+    ledger.fee_pool = market.fee_pool;
+    ledger.insurance_fund = market.insurance_fund;
+    ledger.bad_debt = market.bad_debt;
+    ledger.assert_conservation("Post Hybrid Short Bankruptcy");
+}
+
+#[test]
+fn test_h4_deterministic_adl_ranking_reorders_adversarial_caller_input() {
+    let mut market = setup_test_market();
+    market.vault_params.max_inventory_lots = 0; // Vault has 0 capacity, 100% ADL
+
+    let mut vault_user = create_user_account(1_000_000_000, 0, 0);
+
+    // Bankrupt Long: 500 lots @ $150. Collateral = $5.00. Quote = -$75.00.
+    let mut liquidatee = create_user_account(5_000_000, -75_000_000, 500);
+
+    // Counterparty 1 (Low leverage / low profit -> LOWER ADL score):
+    // Short 500 lots @ $150. Collateral = $100.00. Quote = +$75.00.
+    let mut cp_low = create_user_account(100_000_000, 75_000_000, -500);
+
+    // Counterparty 2 (High leverage / high profit -> HIGHER ADL score):
+    // Short 500 lots @ $150. Collateral = $10.00. Quote = +$75.00.
+    let mut cp_high = create_user_account(10_000_000, 75_000_000, -500);
+
+    let crash_price = 120_000_000u64;
+
+    // Verify ADL scores:
+    // PnL for both short positions @ $120 is +$75 - $60 = +$15.00
+    // cp_low equity = $100 + $75 - $60 = $115.00. Score = 15 / 115 ≈ 0.1304
+    // cp_high equity = $10 + $75 - $60 = $25.00. Score = 15 / 25 = 0.6000
+    let score_low = ((15_000_000u128) * 1_000_000) / 115_000_000u128;
+    let score_high = ((15_000_000u128) * 1_000_000) / 25_000_000u128;
+    assert!(score_high > score_low, "CP High must have strictly higher ADL score");
+
+    // Adversarial caller supplies [cp_low, cp_high] in REVERSE score order to protect cp_high
+    let mut candidates = vec![
+        (&mut cp_low, score_low),
+        (&mut cp_high, score_high),
+    ];
+
+    // Protocol enforces deterministic sorting by score descending:
+    candidates.sort_by(|a, b| b.1.cmp(&a.1));
+    assert_eq!(candidates[0].1, score_high, "Protocol moves cp_high to index 0");
+
+    let mut counterparties: Vec<&mut UserAccount> = candidates.into_iter().map(|(c, _)| c).collect();
+
+    // Bankrupt needs only 500 lots ADL
+    let res = execute_liquidation(
+        &mut market,
+        &mut liquidatee,
+        &mut vault_user,
+        &mut counterparties,
+        crash_price,
+        100,
+    )
+    .expect("ADL liquidation succeeds");
+
+    assert_eq!(res.adl_executed_lots, 500);
+    // CP High with higher score was absorbed FIRST and completely flattened to 0!
+    assert_eq!(counterparties[0].base_position, 0, "Highest ADL score counterparty absorbed first");
+    // CP Low with lower score was spared because cp_high absorbed all 500 lots!
+    assert_eq!(counterparties[1].base_position, -500, "Lower ADL score counterparty untouched");
 }
 

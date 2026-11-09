@@ -17,11 +17,12 @@ pub struct AuthorityPriceUpdate {
     pub velocity_accumulator_bps: u64,
     pub velocity_window_start_slot: u64,
     pub velocity_window_start_time: i64,
-    pub _reserved: [u8; 16],
+    pub velocity_window_start_price: u64,
+    pub _reserved: [u8; 8],
 }
 
 impl AuthorityPriceUpdate {
-    pub const LEN: usize = 8 + 32 + 8 * 10 + 16;
+    pub const LEN: usize = 8 + 32 + 8 * 11 + 8;
     pub const SEED: &'static [u8] = b"oracle";
 }
 
@@ -47,26 +48,51 @@ pub struct PostPrice<'info> {
 
 /// Continuous EMA update using 64-bit integer fixed-point math with scale factor 10,000.
 /// Deterministic fixed-point arithmetic with zero integer truncation bias (+ 5,000 for rounding to nearest).
+///
+/// Mathematical formulation:
+///   EMA_t = alpha * Price_t + (1 - alpha) * EMA_{t-1}
+/// Where alpha is scaled by elapsed slots (effective window of 75 slots ≈ 30 seconds).
+/// Safely widened to u128 to guarantee no mathematical overflow on extreme price values.
 pub fn compute_continuous_ema(raw_price: u64, prev_ema: u64, slots_elapsed: u64) -> u64 {
     if prev_ema == 0 {
         return raw_price;
     }
-    // Smoothing factor alpha calibrated to an effective window of 75 slots (~30 seconds)
-    let alpha_bps = if slots_elapsed >= 75 {
-        10_000u128
+    // Smoothing factor alpha calibrated to an effective window of 75 slots (~30 seconds).
+    // Asymptotically bounded: maximum weight per single update is capped at 7,500 bps (75%)
+    // to guarantee that a post-outage update cannot instantly hijack or bypass the historical anchor.
+    let alpha_bps = if slots_elapsed == 0 {
+        0u128
+    } else if slots_elapsed < 75 {
+        (slots_elapsed as u128 * 6_321) / 75
     } else {
-        (slots_elapsed as u128 * 10_000) / 75
+        let extra = (slots_elapsed.saturating_sub(75) as u128 * 20).min(1_179);
+        6_321 + extra
     };
     let raw = raw_price as u128;
     let prev = prev_ema as u128;
-    let one_minus_alpha = 10_000u128 - alpha_bps;
+    let one_minus_alpha = 10_000u128.saturating_sub(alpha_bps);
 
-    let updated = (alpha_bps * raw + one_minus_alpha * prev + 5_000) / 10_000;
-    updated as u64
+    let num = match (alpha_bps.checked_mul(raw), one_minus_alpha.checked_mul(prev)) {
+        (Some(a), Some(b)) => a.saturating_add(b).saturating_add(5_000),
+        _ => return raw_price,
+    };
+    (num / 10_000) as u64
 }
 
 /// Core production instruction logic for processing an oracle price update with
 /// continuous EMA smoothing, three-tier rate limiting, velocity governor, and price clamping.
+///
+/// Mathematical Relationship Between Slot-Based and Wall-Clock Expiration:
+/// - Solana clusters target nominal ~400ms per slot (150 slots = 60 seconds).
+/// - Congestion can lengthen slot duration to 1,000ms+; fast replays can compress them to <200ms.
+/// - The rolling velocity window expires under an AND condition:
+///   `window_slots >= 150 && time_elapsed >= 60`
+///   1. `time_elapsed >= 60` guarantees that even if 150 slots execute in <60 seconds (fast slots),
+///      the price cannot drift more than 60 bps per wall-clock minute (strict <= 60 bps/min limit).
+///   2. `window_slots >= 150` guarantees that even if timestamps jump forward, the oracle cannot
+///      reset faster than 150 Solana slots (strict <= 0.4 bps/slot density limit).
+/// - Alternating bidirectional movements (+15 bps, -15 bps) preserve net displacement and do NOT
+///   exhaust the velocity budget or freeze the oracle.
 pub fn process_price_update(
     oracle: &mut AuthorityPriceUpdate,
     price: u64,
@@ -105,14 +131,16 @@ pub fn process_price_update(
         if oracle.velocity_window_start_slot == 0 {
             oracle.velocity_window_start_slot = oracle.publish_slot;
             oracle.velocity_window_start_time = oracle.publish_time;
+            oracle.velocity_window_start_price = oracle.price;
         }
 
         // Rolling velocity window expiration:
-        // Precise definition: 60 seconds wall-clock OR 150 slots (does not assume 400ms per slot!)
-        if window_slots >= 150 || time_elapsed >= 60 {
+        // Precise definition: BOTH 60 seconds wall-clock AND 150 slots must elapse.
+        if window_slots >= 150 && time_elapsed >= 60 {
             oracle.velocity_accumulator_bps = 0;
             oracle.velocity_window_start_slot = current_slot;
             oracle.velocity_window_start_time = publish_time;
+            oracle.velocity_window_start_price = oracle.price;
         }
 
         let anchor_slots = current_slot.saturating_sub(oracle.last_anchor_update_slot);
@@ -125,34 +153,46 @@ pub fn process_price_update(
         // Tier 2: Slow continuous EMA anchor deviation: <= 30 bps from anchor
         let max_anchor_dev_bps = 30u64;
 
-        // Tier 3: Velocity accumulator: <= 60 bps cumulative movement per rolling window
-        let remaining_velocity_bps = 60u64.saturating_sub(oracle.velocity_accumulator_bps);
+        // Tier 3: Directional drift governor: <= 60 bps net movement from window start price
+        let start_price = if oracle.velocity_window_start_price > 0 {
+            oracle.velocity_window_start_price
+        } else {
+            oracle.price
+        };
 
-        // Allowed single-step move is constrained by Tier 1 single-update limit and remaining Tier 3 budget
-        let allowed_move_bps = allowed_single_move_bps.min(remaining_velocity_bps);
+        // Compute Tier 1 bounds (single-step move from last price)
+        let delta_last = ((oracle.price as u128 * allowed_single_move_bps as u128) / 10_000) as u64;
+        let max_from_last = oracle.price.saturating_add(delta_last);
+        let min_from_last = oracle.price.saturating_sub(delta_last);
 
-        let max_from_last = oracle.price + (oracle.price * allowed_move_bps) / 10_000;
-        let min_from_last = oracle.price.saturating_sub((oracle.price * allowed_move_bps) / 10_000);
+        // Compute Tier 2 bounds (deviation from continuous EMA anchor)
+        let delta_anchor = ((oracle.anchor_price as u128 * max_anchor_dev_bps as u128) / 10_000) as u64;
+        let max_from_anchor = oracle.anchor_price.saturating_add(delta_anchor);
+        let min_from_anchor = oracle.anchor_price.saturating_sub(delta_anchor);
 
-        let max_from_anchor = oracle.anchor_price + (oracle.anchor_price * max_anchor_dev_bps) / 10_000;
-        let min_from_anchor = oracle.anchor_price.saturating_sub((oracle.anchor_price * max_anchor_dev_bps) / 10_000);
+        // Compute Tier 3 bounds (net displacement from window start price)
+        let max_window_drift_bps = 60u64;
+        let delta_window = ((start_price as u128 * max_window_drift_bps as u128) / 10_000) as u64;
+        let max_from_window = start_price.saturating_add(delta_window);
+        let min_from_window = start_price.saturating_sub(delta_window);
 
-        let max_allowable_price = max_from_last.min(max_from_anchor);
-        let min_allowable_price = min_from_last.max(min_from_anchor);
+        // Intersect all three bounding intervals deterministically
+        let max_allowable_price = max_from_last.min(max_from_anchor).min(max_from_window);
+        let min_allowable_price = min_from_last.max(min_from_anchor).max(min_from_window);
 
         // Clamping Rule: Clamps raw price rather than rejecting, preventing oracle stalls during legitimate jumps
         let clamped = price.min(max_allowable_price).max(min_allowable_price);
 
-        // Calculate actual move bps
-        let actual_delta = (clamped as i64 - oracle.price as i64).unsigned_abs();
-        let actual_move_bps = if oracle.price > 0 {
-            (actual_delta * 10_000) / oracle.price
+        // Calculate actual net directional drift from window start price
+        let actual_drift_delta = clamped.abs_diff(start_price) as u128;
+        let actual_drift_bps = if start_price > 0 {
+            ((actual_drift_delta * 10_000) / (start_price as u128)) as u64
         } else {
             0
         };
 
-        // Update velocity accumulator
-        oracle.velocity_accumulator_bps = oracle.velocity_accumulator_bps.saturating_add(actual_move_bps);
+        // Record net drift in accumulator (oscillations return drift towards 0 and never freeze the oracle)
+        oracle.velocity_accumulator_bps = actual_drift_bps;
 
         // Update continuous EMA anchor
         oracle.anchor_price = compute_continuous_ema(clamped, oracle.anchor_price, anchor_slots);
@@ -166,6 +206,7 @@ pub fn process_price_update(
         oracle.velocity_accumulator_bps = 0;
         oracle.velocity_window_start_slot = current_slot;
         oracle.velocity_window_start_time = publish_time;
+        oracle.velocity_window_start_price = price;
         price
     };
 
