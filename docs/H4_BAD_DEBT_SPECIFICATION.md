@@ -243,7 +243,8 @@ flowchart TD
      - The vault absorbs only up to available headroom: $\Delta q_{\text{avail}} = \max(0, I_{\text{max}} - I_{\text{vault}})$.
      - **Remaining Lots:** If $\Delta q_{\text{avail}} < \Delta q$, the unabsorbed lots remain in the user's account with proportional collateral.
      - **Zero Bad Debt Invariant:** Because $E \ge 0$, no deficit exists. **Protocol `bad_debt` is unchanged ($\Delta \text{bad\_debt} = 0$).**
-     - **Secondary Liquidation Route:** The unabsorbed lots are eligible for liquidation by alternative liquidators or routed directly to the next Frequent Batch Auction (FBA) clearing cycle as a market-on-close order to match against organic opposing liquidity.
+     - **Secondary Liquidation Route:** The unabsorbed lots are placed into the next Frequent Batch Auction (FBA) clearing cycle as a priority market-on-close order to match against organic opposing liquidity.
+     - **Insufficient Organic Liquidity Handling:** If organic bids/asks in the auction are insufficient, the order matches whatever volume is available pro-rata. Residual lots remain in `LIQUIDATION_LOCKED` status until subsequent auctions or until the user deposits collateral to restore $E \ge \text{MMR}$.
      - **Collateral Conservation ($I-1$):** Exactly preserved. All collateral remains in user and vault accounts.
 
 2. **Regime B: Saturated Backstop with Bankrupt User ($E < 0$)**
@@ -254,13 +255,63 @@ flowchart TD
      - User collateral is set to $0$.
    - **Inventory Handling Under Saturation:**
      - The vault takes lots up to $\Delta q_{\text{avail}}$.
-     - For any lots that cannot enter the vault, the protocol invokes **Auto-Deleveraging (ADL)**:
-       - Top-profit positions on the opposing side are identified from the user position registry.
-       - The unabsorbed bankrupt lots are matched and closed against these top-profit positions at the user's bankruptcy price $P_{\text{bk}} = P \pm \frac{C}{|q|}$.
-       - If no opposing positions exist or ADL is deferred, the lots are cancelled from open interest, and the entire loss is backstopped by the insurance fund and bad debt accumulator.
-   - **Conservation Equation:**
-     $$\Delta \text{VaultBalance} = \text{PnL}_{\text{winning\_counterparties}} = -C - D_{\text{ins}} - D_{\text{bad}} = \Delta \text{Liabilities}$$
-     Every micro-USDC is rigorously accounted for. Genuine bad debt is strictly confined to $E < 0$.
+     - For any lots that cannot enter the vault, the protocol invokes **Auto-Deleveraging (ADL)**.
+
+### 5.5 Auto-Deleveraging (ADL) Protocol Specification
+
+When bankrupt lots cannot be absorbed by the backstop vault, the protocol executes Auto-Deleveraging:
+1. **Counterparty Ranking Priority ($S_{\text{adl}}$):**
+   Opposing positions are ranked by effective leverage and unrealized profit percentage:
+   $$S_{\text{adl}}(i) = \text{EffectiveLeverage}(i) \times \text{UnrealizedPnLPercent}(i)$$
+   $$\text{EffectiveLeverage}(i) = \frac{|q_i| \cdot P_{\text{oracle}}}{\text{Equity}_i}$$
+   $$\text{UnrealizedPnLPercent}(i) = \max\left(0, \frac{\text{uPnL}_i}{\text{EntryNotional}_i}\right)$$
+   Only profitable opposing positions ($\text{uPnL}_i > 0$) are eligible for ADL. Highest score positions are deleveraged first.
+2. **Position Reduction & Execution Price:**
+   Bankrupt lots are closed against selected counterparties at the user's **Bankruptcy Price** $P_{\text{bk}} = P_{\text{oracle}} \pm \frac{C_{\text{user}}}{|q_{\text{user}}|}$. At true bankruptcy ($C_{\text{user}} = 0$), $P_{\text{bk}} = P_{\text{oracle}}$.
+3. **PnL & Funding Handling for Deleveraged Counterparty:**
+   Counterparty realizes profit pro-rata for the closed lots $\Delta q_{\text{adl}}$ at $P_{\text{bk}}$. Accrued funding on the closed lots is settled into their collateral. Remaining lots continue running.
+4. **Insufficient Opposing Liquidity:**
+   If total profitable opposing interest is insufficient to absorb the bankrupt lots, remaining lots are closed directly against protocol open interest and socialized via the `bad_debt` accumulator.
+
+### 5.6 100-Lot Minimum Step Justification & Margin Recalculation
+
+1. **Numerical & Economic Justification:**
+   - **Compute Unit Efficiency:** A liquidation transaction consumes $\sim 60,000\text{ CU}$. Liquidating microscopic dust (e.g. 1 lot) wastes transaction fees without reducing risk.
+   - **Notional Alignment:** In `MarketParams`, `base_lot = 1000`. At $P = \$150$, 100 lots represents $\$15.00$ notional. A 100-lot step ensures meaningful risk reduction while bounding computational overhead.
+2. **Post-Liquidation Margin Recalculation:**
+   Immediately following a partial liquidation of $\Delta q$ lots:
+   $$q' = q - \text{sign}(q)\Delta q$$
+   $$C' = C + \Delta q \cdot (P_{\text{oracle}} - P_{\text{entry}}) - \text{Penalty}$$
+   $$\text{MMR}' = \frac{|q'| \cdot P_{\text{oracle}} \cdot \text{mmr\_bps}}{10\,000}$$
+   If $C' \ge \text{MMR}'$, account status is immediately returned to healthy standing.
+
+### 5.7 Transaction-Level Financial Conservation Proof
+
+Let:
+- Liquidatee initial collateral: $C_u$. Position: $q_u$. Entry notional: $N_u$.
+- Oracle price: $P$. Unrealized PnL: $\text{uPnL} = q_u \cdot P - N_u$.
+- Equity: $E = C_u + \text{uPnL}$.
+
+#### Proof 1: Solvent Liquidation ($E \ge 0$, $E < \text{MMR}$)
+- Penalty: $\text{Penalty} = \min(E, \text{liq\_penalty\_bps} \cdot |q_u| \cdot P)$.
+- Liquidator bounty: $R = \lfloor \text{Penalty} / 2 \rfloor$ credited to `liquidator.collateral`.
+- Insurance fund credit: $I = \text{Penalty} - R$ credited to `market.insurance_fund`.
+- Vault absorbs lots: $\Delta C_{\text{vault}} = -\Delta q \cdot P$.
+- Liquidatee collateral: $C_u' = E - \text{Penalty} \ge 0$.
+- **Sum of Liability Changes:**
+  $$\Delta \text{Liabilities} = (E - \text{Penalty} - C_u) + R + (\text{Penalty} - R) + 0 - 0 = E - C_u = \text{uPnL}$$
+- **Sum of Asset Changes:** $\Delta \text{VaultBalance} = \text{uPnL}$ (exact payout to opposing winning positions).
+- **Result:** $\Delta \text{VaultBalance} \equiv \Delta \text{Liabilities}$. Zero micro-USDC error.
+
+#### Proof 2: Bankrupt Liquidation ($E < 0$, Deficit $D = -E > 0$)
+- User collateral is zeroed: $\Delta C_u = -C_u$.
+- Insurance fund absorbs: $D_{\text{ins}} = \min(D, \text{InsuranceFund})$. $\Delta \text{InsuranceFund} = -D_{\text{ins}}$.
+- Bad debt accumulator records shortfall: $D_{\text{bad}} = D - D_{\text{ins}}$. $\Delta \text{BadDebt} = +D_{\text{bad}}$.
+- **Sum of Liability Changes:**
+  $$\Delta \text{Liabilities} = -C_u - D_{\text{ins}} - (D - D_{\text{ins}}) = -C_u - D$$
+  Since $D = -C_u - \text{uPnL}$:
+  $$\Delta \text{Liabilities} = -C_u - (-C_u - \text{uPnL}) = \text{uPnL}$$
+- **Result:** $\Delta \text{VaultBalance} \equiv \Delta \text{Liabilities}$. Invariant $I-1$ and $I-11$ conserved to the exact micro-USDC.
 
 ---
 

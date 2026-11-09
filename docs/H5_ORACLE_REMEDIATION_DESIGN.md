@@ -45,15 +45,52 @@ flowchart LR
     D --> E["Store AuthorityPriceUpdate on-chain"]
 ```
 
+#### Slot Tracking Architecture & Elapsed Time Calculation:
+The `AuthorityPriceUpdate` account maintains explicit separation between update publication and anchor progression:
+```rust
+pub struct AuthorityPriceUpdate {
+    pub market: Pubkey,
+    pub price: u64,
+    pub conf: u64,
+    pub publish_time: i64,
+    pub publish_slot: u64,              // Slot of this individual price update
+    pub last_anchor_update_slot: u64,   // Slot when the continuous EMA anchor was last stepped
+    pub posted_slot: u64,               // Slot when posted to ledger
+    pub anchor_price: u64,              // Continuous EMA anchor price (scaled 6 decimals)
+    pub _reserved: [u8; 16],
+}
+```
+Elapsed slots since previous anchor update:
+$$\Delta s = \text{clock.slot} - \text{oracle.last\_anchor\_update\_slot}$$
+- If $\Delta s == 0$: Multiple updates in the same slot are strictly rejected with `EpochError::OracleStale`.
+- If $\Delta s > 0$: $\Delta s$ drives the continuous exponential weight $\alpha$. Upon update completion:
+  `oracle.last_anchor_update_slot = clock.slot`.
+
 #### Mathematical Formulation:
 Let $\text{EMA}_t$ be the smoothed anchor at slot $t$. When a new price $P_{\text{new}}$ is posted at slot $t$:
 
 $$\text{EMA}_t = \alpha \cdot P_{\text{new}} + (1 - \alpha) \cdot \text{EMA}_{t - \Delta s}$$
 
 Where:
-- $\Delta s = t - t_{\text{last\_update}}$ is the elapsed slots.
+- $\Delta s = t - t_{\text{last\_anchor\_update\_slot}}$ is the elapsed slots.
 - $\alpha \in [0, 1]$ is the smoothing factor calibrated to an effective window of 75 slots (~$30\text{s}$):
   $$\alpha = \min\left(10\,000, \left\lfloor \frac{\Delta s \cdot 10\,000}{75} \right\rfloor \right)$$
+
+#### Mathematical Harmonization: 100-bps Outage Band, 30-bps Cumulative Guard & 60-bps/min Limit:
+The rate-limiting architecture reconciles these three constraints into a unified, non-conflicting multi-tier hierarchy:
+1. **Tier 1 — Per-Update Jump Guard (Normal Cadence $\Delta s \le 2$):**
+   - In steady-state operation (normal 2-slot auction cadence), maximum single-update deviation is bounded to $\le 15\text{ bps}$.
+2. **Tier 2 — Outage Expansion Band (Outage Cadence $\Delta s > 2$):**
+   - When network pauses occur, the single-update cap expands dynamically:
+     $$\text{Band}_{\text{outage}}(\Delta s) = \min(100, 15 + (\Delta s - 2))\text{ bps}$$
+   - This single-update cap reaches its hard ceiling of $100\text{ bps}$ ($1.00\%$) after $\sim 87\text{ slots}$, preventing oracle lock-out.
+3. **Tier 3 — Continuous EMA Anchor Guard (30-bps Window & 60-bps/min Emergent Bound):**
+   - At every update, the price must not deviate by more than $30\text{ bps}$ from the continuous EMA anchor:
+     $$|P_{\text{new}} - P_{\text{anchor}}| \le 30\text{ bps}$$
+   - When an outage occurs ($\Delta s = 75\text{ slots} \approx 30\text{s}$), $\alpha = 10\,000$ ($1.0$). The anchor advances to the previous window's price in a single step, enabling an orderly $+30\text{ bps}$ shift every 30 seconds ($75\text{ slots}$).
+   - **Emergent Cumulative Bound:**
+     $$\text{Max Sustained Rate} = \frac{30\text{ bps}}{30\text{ seconds}} \equiv 60\text{ bps per minute}$$
+   - **Harmonization Summary:** Tier 2 bounds the *single raw update jump* $|P_{\text{new}} - P_{\text{last}}| \le 100\text{ bps}$; Tier 3 bounds the *deviation from smoothed trend* $|P_{\text{new}} - P_{\text{anchor}}| \le 30\text{ bps}$; and the continuous decay with $\tau = 75\text{ slots}$ mathematically guarantees the *cumulative sustained drift* cannot exceed $60\text{ bps/min}$. All three rules are strictly harmonious.
 
 #### Fixed-Point Rounding & Update Rule:
 To prevent directional rounding drift (upward or downward micro-bias):

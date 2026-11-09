@@ -12,13 +12,13 @@
 
 | Role | Worktree Path | Active Branch | Latest Commit Hash | Commit Summary | Current Workstream Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Lead Architect & Engineering Manager** | `.` (Root) | `feat/epoch-multi-agent` | `5cfee910b830d1d643bc88349258284534a7fb8c` | `docs: update multi-agent status with latest commit hashes and 116 regression tests` | **Active** (Tier 3 Specifications Updated; Multi-Agent Coordination Complete) |
-| **Security Auditor** | `../Epoch-security` | `agent/security-audit` | `cf6bcbba533145f8e2f7ebc0bbf18d3218798635` | `docs(audit): commit security audit report, dispute resolution, and regression repro` | **Completed** (Dispute Resolution & Repro Tests Delivered) |
-| **Solana Engineer** | `../Epoch-solana` | `agent/solana-engineer` | `fb60c4db6185995422b466ced854f338cf9f6302` | `test(solana): add regression test for sequential expiration followed by clearance (ADD-2)` | **Completed** (ADD-1, ADD-2 Sequential Expiration & Clearance Proofs, H-1, H-2, H-3, C-2, Events) |
-| **Keeper Engineer** | `../Epoch-keeper` | `agent/keeper-engineer` | `b0cb3de63f73f46e434e9b9883d69a90db07bc92` | `fix(security): expunge hardcoded devnet RPC credentials from scripts (ADD-6)` | **Completed** (ADD-6 Credential Expungement Verified) |
-| **Frontend Engineer** | `../Epoch-frontend` | `agent/frontend-engineer` | `4699903079dab4a96ea0d644672b7a0f064326ce` | `fix(frontend): correct short position PnL percentage and batch countdown label` | **Completed** (Tier 2 UI PnL & Countdown Parity Delivered) |
+| **Lead Architect & Engineering Manager** | `.` (Root) | `feat/epoch-multi-agent` | `fccaab9` | `merge: integrate frontend engineer fixes` | **Active** (H-4/H-5 Revised Specs Finalized; Phase 2 Coordination Complete) |
+| **Security Auditor** | `../Epoch-security` | `agent/security-audit` | `ecbc245e8c84022747bdeeec0bf89f0cc1b24088` | `docs(audit): commit independent Phase 2 security reviews for H-4, H-5, and M-1` | **Completed** (Signed Security Reviews Delivered for H-4, H-5, M-1) |
+| **Solana Engineer** | `../Epoch-solana` | `agent/solana-engineer` | `fb60c4db6185995422b466ced854f338cf9f6302` | `test(solana): add regression test for sequential expiration followed by clearance (ADD-2)` | **Implementation Gated** (Awaiting Principal H-4/H-5 Authorization) |
+| **Keeper Engineer** | `../Epoch-keeper` | `agent/keeper-engineer` | `8cb6016d7d0c8c5284e39505509cc033efbf9282` | `docs(keeper): commit Phase 2 keeper compatibility audit for H-4, H-5, and RPC failover` | **Completed** (Phase 2 Compatibility & RPC Failover Audit Complete) |
+| **Frontend Engineer** | `../Epoch-frontend` | `agent/frontend-engineer` | `7317c75` | `fix(frontend): align gate_g1_budget_targets with cu.json and resolve MarketStats venueCount` | **Completed** (Merged into PR #1) |
 | **Infrastructure Engineer** | `../Epoch-infra` | `agent/infrastructure-engineer` | `633efb0edbf274f64584561341b16b42119e3991` | `feat(infra): implement idempotent event processor, migration history, and replay tests` | **Completed** (Event Processor, DB Schema, Replay Tests Passing; Deployment Gated) |
-| **QA Engineer** | `../Epoch-qa` | `agent/qa-engineer` | `c41f157e5d4085d8cde7ff7bc7fdc3ee486a3204` | `Merge branch 'agent/solana-engineer' into agent/qa-engineer` | **Completed** (Merged Solana fb60c4d; 117/117 Workspace Tests Passing) |
+| **QA Engineer** | `../Epoch-qa` | `agent/qa-engineer` | `c41f157e5d4085d8cde7ff7bc7fdc3ee486a3204` | `Merge branch 'agent/solana-engineer' into agent/qa-engineer` | **Active** (Mock Pyth Harness Architecture Formulated; Raw Test Logs Delivered) |
 
 ---
 
