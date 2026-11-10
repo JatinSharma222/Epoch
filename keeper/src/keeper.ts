@@ -80,6 +80,14 @@ export class EpochKeeper {
 
   /** Locally tracked slot from slotSubscribe — updated by WebSocket, never fetched. */
   private _trackedSlot: number = 0;
+  private _lastSlotUpdateTs: number = 0;
+  private _resubscribePromise: Promise<void> | null = null;
+  /** Tracked signatures for idempotency and lost confirmation recovery */
+  private _trackedSignatures: Map<
+    string,
+    { submitSlot: number; blockhash: Blockhash; lastValidBlockHeight: number; kind?: string }
+  > = new Map();
+  private _confirmedSignatures: Set<string> = new Set();
   /** Set of batch IDs the vault has already quoted into. Cleared when a batch passes close_slot. */
   private _quotedBatches: Set<number> = new Set();
   /** Cached recent blockhash + last-valid-block-height. */
@@ -211,6 +219,128 @@ export class EpochKeeper {
     return this._trackedSlot;
   }
 
+  public get lastSlotUpdateTs(): number {
+    return this._lastSlotUpdateTs;
+  }
+
+  public get confirmedSignatures(): Set<string> {
+    return this._confirmedSignatures;
+  }
+
+  public get trackedSignatures(): Map<
+    string,
+    { submitSlot: number; blockhash: Blockhash; lastValidBlockHeight: number; kind?: string }
+  > {
+    return this._trackedSignatures;
+  }
+
+  /**
+   * Resolves the current slot with a slot freshness watchdog.
+   * If WebSocket updates have lagged > 2500ms, falls back to HTTP getSlot("processed"),
+   * updates tracked state, and triggers an asynchronous WebSocket re-subscription.
+   */
+  public async getCurrentSlot(): Promise<number> {
+    const now = Date.now();
+    const isStale =
+      !this._trackedSlot ||
+      (this._lastSlotUpdateTs > 0 && now - this._lastSlotUpdateTs > 2500);
+
+    if (isStale) {
+      const elapsed = this._lastSlotUpdateTs > 0 ? now - this._lastSlotUpdateTs : Infinity;
+      try {
+        const slot = await this.executeWithBackoff(() =>
+          this.connection.getSlot("processed")
+        );
+        this._trackedSlot = slot;
+        this._lastSlotUpdateTs = Date.now();
+        this.logger.warn(
+          `[keeper] Slot freshness watchdog: WebSocket slot stale (${
+            elapsed === Infinity ? "uninitialized" : `${elapsed}ms`
+          } > 2500ms). Polled slot ${slot} via HTTP processed.`
+        );
+        this.resubscribeWebSocket().catch((err) => {
+          this.logger.warn("[keeper] Async resubscription failed:", err);
+        });
+      } catch (err: any) {
+        this.logger.warn(
+          `[keeper] Failed to poll fallback slot via HTTP: ${err?.message || err}`
+        );
+      }
+    }
+
+    return this._trackedSlot;
+  }
+
+  /**
+   * Executes an asynchronous operation with exponential backoff on HTTP 429 rate limit errors.
+   */
+  public async executeWithBackoff<T>(
+    fn: () => Promise<T>,
+    maxRetries: number = 4,
+    baseDelayMs: number = 500
+  ): Promise<T> {
+    let attempt = 0;
+    while (true) {
+      try {
+        return await fn();
+      } catch (err: any) {
+        attempt++;
+        const errStr = String(err?.message || err);
+        const is429 =
+          errStr.includes("429") ||
+          errStr.includes("Too Many Requests") ||
+          err?.status === 429 ||
+          errStr.includes("rate limit");
+
+        if (is429 && attempt <= maxRetries) {
+          const jitter = Math.floor(Math.random() * 200);
+          const delayMs = Math.min(
+            baseDelayMs * Math.pow(2, attempt - 1) + jitter,
+            8000
+          );
+          this.logger.warn(
+            `[keeper] HTTP 429 rate limit encountered. Backing off ${delayMs}ms (attempt ${attempt}/${maxRetries})...`
+          );
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          continue;
+        }
+        throw err;
+      }
+    }
+  }
+
+  /**
+   * Unsubscribes stale WebSocket subscription and registers a fresh onSlotChange listener.
+   */
+  public async resubscribeWebSocket(): Promise<void> {
+    if (this._resubscribePromise) return this._resubscribePromise;
+    this._resubscribePromise = (async () => {
+      try {
+        if (this.slotSubId !== null) {
+          try {
+            await this.connection.removeSlotChangeListener(this.slotSubId);
+          } catch {}
+          this.slotSubId = null;
+        }
+        this.slotSubId = this.connection.onSlotChange((slotInfo) => {
+          this._trackedSlot = slotInfo.slot;
+          this._lastSlotUpdateTs = Date.now();
+        });
+        this.logger.info(
+          `[keeper] Resubscribed to onSlotChange (new subId=${this.slotSubId}) [MEASURED]`
+        );
+      } catch (err: any) {
+        this.logger.warn(
+          "[keeper] Failed to resubscribe via WebSocket:",
+          err?.message || err
+        );
+      } finally {
+        this._resubscribePromise = null;
+      }
+    })();
+    return this._resubscribePromise;
+  }
+
   /**
    * Fetches on-chain Market configuration account with a 2 s cache.
    */
@@ -220,7 +350,9 @@ export class EpochKeeper {
       return this._cachedMarket;
     }
     try {
-      this._cachedMarket = await (this.program.account as any).market.fetchNullable(this.marketPda);
+      this._cachedMarket = await this.executeWithBackoff(() =>
+        (this.program.account as any).market.fetchNullable(this.marketPda)
+      );
       this._cachedMarketTs = now;
       return this._cachedMarket;
     } catch {
@@ -287,27 +419,154 @@ export class EpochKeeper {
     if (this._cachedBlockhash && now - this._lastBlockhashFetchMs < BLOCKHASH_REFRESH_MS) {
       return this._cachedBlockhash;
     }
-    this._cachedBlockhash = await this.connection.getLatestBlockhash("confirmed");
+    this._cachedBlockhash = await this.executeWithBackoff(() =>
+      this.connection.getLatestBlockhash("confirmed")
+    );
     this._lastBlockhashFetchMs = now;
     return this._cachedBlockhash;
   }
 
   /**
-   * Signs and sends a Transaction using the cached blockhash.
-   * Always uses skipPreflight and a compute-unit price.
+   * Signs and sends a Transaction using cached blockhash and explicit signature tracking.
+   * If confirmation throws a timeout or socket hangup, recovers on-chain status before re-signing.
    */
-  private async sendTx(tx: Transaction): Promise<string> {
-    const { blockhash } = await this.getBlockhash();
+  private async sendTx(tx: Transaction, kind?: string): Promise<string> {
+    const { blockhash, lastValidBlockHeight } = await this.getBlockhash();
     tx.recentBlockhash = blockhash;
     tx.feePayer = this.keypair.publicKey;
 
-    const sig = await sendAndConfirmTransaction(
-      this.connection,
-      tx,
-      [this.keypair],
-      { skipPreflight: true, commitment: "confirmed" }
-    );
-    return sig;
+    // Explicitly sign with keypair to capture deterministic transaction signature
+    tx.sign(this.keypair);
+    const rawTx = tx.serialize();
+    const sig = anchor.utils.bytes.bs58.encode(tx.signature!);
+
+    this._trackedSignatures.set(sig, {
+      submitSlot: this._trackedSlot,
+      blockhash,
+      lastValidBlockHeight,
+      kind,
+    });
+
+    try {
+      await this.executeWithBackoff(async () => {
+        await this.connection.sendRawTransaction(rawTx, {
+          skipPreflight: true,
+          preflightCommitment: "confirmed",
+        });
+      });
+
+      await this.confirmWithStatusRecovery(sig, lastValidBlockHeight);
+      this._confirmedSignatures.add(sig);
+      return sig;
+    } catch (err: any) {
+      // Check if signature landed despite timeout/network error
+      const isLanded = await this.recoverLostConfirmation(sig, lastValidBlockHeight);
+      if (isLanded) {
+        this.logger.info(
+          `[recovery] Recovered unconfirmed transaction ${sig} — confirmed on-chain [MEASURED]`
+        );
+        this._confirmedSignatures.add(sig);
+        return sig;
+      }
+      throw err;
+    }
+  }
+
+  public async confirmWithStatusRecovery(
+    signature: string,
+    lastValidBlockHeight: number,
+    timeoutMs: number = 30_000
+  ): Promise<boolean> {
+    const startMs = Date.now();
+    while (Date.now() - startMs < timeoutMs) {
+      try {
+        const statuses = await this.executeWithBackoff(async () => {
+          return await this.connection.getSignatureStatuses([signature]);
+        });
+        const status = statuses?.value?.[0];
+        if (status) {
+          if (status.err) {
+            throw new Error(
+              `Transaction ${signature} failed on-chain: ${JSON.stringify(status.err)}`
+            );
+          }
+          if (
+            status.confirmationStatus === "confirmed" ||
+            status.confirmationStatus === "finalized"
+          ) {
+            return true;
+          }
+        }
+      } catch (err: any) {
+        if (err.message && err.message.includes("failed on-chain")) {
+          throw err;
+        }
+      }
+
+      // Check block height expiration
+      try {
+        const currentBlockHeight = await this.executeWithBackoff(() =>
+          this.connection.getBlockHeight("confirmed")
+        );
+        if (currentBlockHeight > lastValidBlockHeight) {
+          throw new Error(
+            `Transaction ${signature} expired: current block height ${currentBlockHeight} > ${lastValidBlockHeight}`
+          );
+        }
+      } catch (bhErr: any) {
+        if (bhErr.message && bhErr.message.includes("expired")) throw bhErr;
+      }
+
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    throw new Error(`Transaction ${signature} confirmation timeout after ${timeoutMs}ms`);
+  }
+
+  public async recoverLostConfirmation(
+    signature: string,
+    lastValidBlockHeight: number
+  ): Promise<boolean> {
+    try {
+      const statuses = await this.executeWithBackoff(async () => {
+        return await this.connection.getSignatureStatuses([signature]);
+      });
+      const status = statuses?.value?.[0];
+      if (status && !status.err) {
+        if (
+          status.confirmationStatus === "confirmed" ||
+          status.confirmationStatus === "finalized"
+        ) {
+          return true;
+        }
+      }
+
+      // If status is not yet available, poll while block height remains valid
+      let currentHeight = await this.executeWithBackoff(() =>
+        this.connection.getBlockHeight("confirmed")
+      );
+      let attempts = 0;
+      while (currentHeight <= lastValidBlockHeight && attempts < 5) {
+        await new Promise((r) => setTimeout(r, 1000));
+        attempts++;
+        const check = await this.executeWithBackoff(async () => {
+          return await this.connection.getSignatureStatuses([signature]);
+        });
+        const st = check?.value?.[0];
+        if (
+          st &&
+          !st.err &&
+          (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized")
+        ) {
+          return true;
+        }
+        currentHeight = await this.executeWithBackoff(() =>
+          this.connection.getBlockHeight("confirmed")
+        );
+      }
+    } catch {
+      // Fallback
+    }
+    return false;
   }
 
   // ─── Balance Guard ───────────────────────────────────────────────────────
@@ -321,7 +580,9 @@ export class EpochKeeper {
       return this._lastBalanceSol >= LOW_BALANCE_STOP_SOL;
     }
     try {
-      const lamports = await this.connection.getBalance(this.keypair.publicKey);
+      const lamports = await this.executeWithBackoff(() =>
+        this.connection.getBalance(this.keypair.publicKey)
+      );
       this._lastBalanceSol = lamports / LAMPORTS_PER_SOL;
       this._lastBalanceCheckMs = now;
 
@@ -392,7 +653,9 @@ export class EpochKeeper {
     const batchPdas = Array.from({ length: RING_SIZE }, (_, r) => this.getBatchPda(r));
 
     try {
-      const batches = await (this.program.account as any).batch.fetchMultiple(batchPdas);
+      const batches = await this.executeWithBackoff(() =>
+        (this.program.account as any).batch.fetchMultiple(batchPdas)
+      );
       for (let r = 0; r < RING_SIZE; r++) {
         const batch = batches[r];
         if (!batch) continue;
@@ -415,6 +678,60 @@ export class EpochKeeper {
       // Transient RPC error
     }
     return summaries;
+  }
+
+  /**
+   * On keeper boot, inspects on-chain market (`next_batch_to_clear`) and 8 ring batch states
+   * directly from RPC to reconcile state before issuing transactions.
+   */
+  public async reconcileBootState(): Promise<{
+    nextBatchToClear: number;
+    openBatches: number[];
+    staleBatches: number[];
+    clearedBatches: number[];
+  }> {
+    this.logger.info("[boot] Reconciling on-chain market & ring batch states directly from RPC...");
+    const market = await this.executeWithBackoff(() => (this.program.account as any).market.fetch(this.marketPda));
+    const nextBatchToClear = market.nextBatchToClear.toNumber();
+    const startSlot = market.startSlot.toNumber();
+    const batchSlots = market.params.batchSlots;
+    const currentSlot = await this.getCurrentSlot();
+
+    const batchPdas = Array.from({ length: RING_SIZE }, (_, r) => this.getBatchPda(r));
+    const batches = await this.executeWithBackoff(() => (this.program.account as any).batch.fetchMultiple(batchPdas));
+
+    const openBatches: number[] = [];
+    const staleBatches: number[] = [];
+    const clearedBatches: number[] = [];
+
+    for (let r = 0; r < RING_SIZE; r++) {
+      const b = batches[r];
+      if (!b) continue;
+      const bId = b.batchId.toNumber();
+      const closeSlot = startSlot + (bId + 1) * batchSlots;
+      const maxClearDelay = market.params.maxClearDelaySlots || 20;
+
+      if (b.status === 1) { // OPEN
+        if (currentSlot > closeSlot + maxClearDelay) {
+          staleBatches.push(bId);
+        } else {
+          openBatches.push(bId);
+        }
+      } else if (b.status === 2) { // CLEARED
+        clearedBatches.push(bId);
+      }
+
+      // Reconcile quoted batches cache: if batch already has orders or passed close slot
+      if (b.status !== 0 && bId <= Math.floor((currentSlot - startSlot) / batchSlots)) {
+        this._quotedBatches.add(bId);
+      }
+    }
+
+    this.logger.info(
+      `[boot] On-chain state reconciled: nextBatchToClear=${nextBatchToClear}, open=[${openBatches}], stale=[${staleBatches}], cleared=[${clearedBatches}], currentSlot=${currentSlot} [MEASURED]`
+    );
+
+    return { nextBatchToClear, openBatches, staleBatches, clearedBatches };
   }
 
   // ─── Utility: is error "expected" (counted, not warned) ──────────────────
@@ -527,6 +844,7 @@ export class EpochKeeper {
         settleIx
       );
 
+      const submitSlot = this._trackedSlot;
       const txSig = await this.sendTx(tx);
 
       const txInfo = await this.connection.getTransaction(txSig, {
@@ -534,7 +852,7 @@ export class EpochKeeper {
         maxSupportedTransactionVersion: 0,
       });
 
-      const landedSlot = txInfo?.slot || this._trackedSlot;
+      const landedSlot = Math.max(txInfo?.slot || this._trackedSlot, submitSlot);
       const cuConsumed = txInfo?.meta?.computeUnitsConsumed || 0;
 
       this._stats.clearSuccess++;
@@ -546,7 +864,7 @@ export class EpochKeeper {
         kind: "clear_and_settle",
         source: "keeper",
         network: this.config.network || "devnet",
-        submit_slot: this._trackedSlot,
+        submit_slot: submitSlot,
         landed_slot: landedSlot,
         cu_consumed: cuConsumed,
         success: true,
@@ -614,6 +932,7 @@ export class EpochKeeper {
         ix
       );
 
+      const submitSlot = this._trackedSlot;
       const txSig = await this.sendTx(tx);
 
       const txInfo = await this.connection.getTransaction(txSig, {
@@ -621,7 +940,7 @@ export class EpochKeeper {
         maxSupportedTransactionVersion: 0,
       });
 
-      const landedSlot = txInfo?.slot || this._trackedSlot;
+      const landedSlot = Math.max(txInfo?.slot || this._trackedSlot, submitSlot);
       const cuConsumed = txInfo?.meta?.computeUnitsConsumed || 0;
 
       this._stats.clearSuccess++;
@@ -631,7 +950,7 @@ export class EpochKeeper {
         kind: "clear_batch",
         source: "keeper",
         network: this.config.network || "devnet",
-        submit_slot: this._trackedSlot,
+        submit_slot: submitSlot,
         landed_slot: landedSlot,
         cu_consumed: cuConsumed,
         success: true,
@@ -727,6 +1046,7 @@ export class EpochKeeper {
           ix
         );
 
+        const submitSlot = this._trackedSlot;
         const txSig = await this.sendTx(tx);
 
         const txInfo = await this.connection.getTransaction(txSig, {
@@ -734,6 +1054,7 @@ export class EpochKeeper {
           maxSupportedTransactionVersion: 0,
         });
 
+        const landedSlot = Math.max(txInfo?.slot || this._trackedSlot, submitSlot);
         const cuConsumed = txInfo?.meta?.computeUnitsConsumed || 0;
         totalCu += cuConsumed;
         settledPages++;
@@ -744,8 +1065,8 @@ export class EpochKeeper {
           kind: "settle_users",
           source: "keeper",
           network: this.config.network || "devnet",
-          submit_slot: this._trackedSlot,
-          landed_slot: txInfo?.slot || this._trackedSlot,
+          submit_slot: submitSlot,
+          landed_slot: landedSlot,
           cu_consumed: cuConsumed,
           success: true,
           error: null,
@@ -841,12 +1162,14 @@ export class EpochKeeper {
           ix
         );
 
+        const submitSlot = this._trackedSlot;
         const txSig = await this.sendTx(tx);
 
         const txInfo = await this.connection.getTransaction(txSig, {
           commitment: "confirmed",
           maxSupportedTransactionVersion: 0,
         });
+        const landedSlot = Math.max(txInfo?.slot || this._trackedSlot, submitSlot);
         const cuConsumed = txInfo?.meta?.computeUnitsConsumed || 0;
         totalCu += cuConsumed;
         releasedPages++;
@@ -856,8 +1179,8 @@ export class EpochKeeper {
           kind: "expire_and_release" as any,
           source: "keeper",
           network: this.config.network || "devnet",
-          submit_slot: this._trackedSlot,
-          landed_slot: txInfo?.slot || this._trackedSlot,
+          submit_slot: submitSlot,
+          landed_slot: landedSlot,
           cu_consumed: cuConsumed,
           success: true,
           error: null,
@@ -891,7 +1214,7 @@ export class EpochKeeper {
    * Skips if this batch has already been quoted (tracked in _quotedBatches).
    */
   public async vaultQuote(): Promise<{ success: boolean; signature?: string; cu?: number; error?: string }> {
-    const currentSlot = this._trackedSlot || await this.connection.getSlot("processed");
+    const currentSlot = await this.getCurrentSlot();
     const market = await this.getMarket();
     if (!market) {
       return { success: false, error: "Market uninitialized" };
@@ -943,6 +1266,7 @@ export class EpochKeeper {
         ix
       );
 
+      const submitSlot = this._trackedSlot;
       const txSig = await this.sendTx(tx);
 
       const txInfo = await this.connection.getTransaction(txSig, {
@@ -950,7 +1274,7 @@ export class EpochKeeper {
         maxSupportedTransactionVersion: 0,
       });
 
-      const landedSlot = txInfo?.slot || currentSlot;
+      const landedSlot = Math.max(txInfo?.slot || this._trackedSlot, submitSlot);
       const cuConsumed = txInfo?.meta?.computeUnitsConsumed || 0;
 
       this._stats.vaultQuoteSuccess++;
@@ -961,7 +1285,7 @@ export class EpochKeeper {
         kind: "vault_quote",
         source: "keeper",
         network: this.config.network || "devnet",
-        submit_slot: currentSlot,
+        submit_slot: submitSlot,
         landed_slot: landedSlot,
         cu_consumed: cuConsumed,
         success: true,
@@ -995,6 +1319,217 @@ export class EpochKeeper {
   // ─── Liquidation ─────────────────────────────────────────────────────────
 
   /**
+   * Liquidates an undercollateralized or bankrupt user with generalized ADL chunking
+   * and MTU wire size guard (T-G2-04).
+   *
+   * 1. Dynamically discovers opposing candidate counterparties from on-chain accounts.
+   * 2. Filters out flat positions, same-direction positions, self/vault, and unpromising accounts.
+   * 3. Ranks candidates by Score = Leverage * UPnL%.
+   * 4. Chunks candidates into batches of K <= 16 counterparties.
+   * 5. Pre-broadcast wire guard: serializes transaction and verifies wire size <= 1232 bytes.
+   * 6. Loops over chunks until position is flattened or residual lots cured.
+   */
+  public async liquidateUserWithAdl(
+    userPda: PublicKey,
+    liquidateeOwner: PublicKey,
+    candidateAccounts?: any[]
+  ): Promise<{
+    success: boolean;
+    signatures: string[];
+    chunksExecuted: number;
+    remainingLots: number;
+    error?: string;
+  }> {
+    let userAcc: any;
+    try {
+      userAcc = await this.executeWithBackoff(() => (this.program.account as any).userAccount.fetch(userPda));
+      if (userAcc.basePosition.toNumber() === 0) {
+        return { success: true, signatures: [], chunksExecuted: 0, remainingLots: 0 };
+      }
+    } catch {
+      return { success: false, signatures: [], chunksExecuted: 0, remainingLots: 0, error: "User account not found" };
+    }
+
+    const market = await this.getMarket();
+    if (!market) {
+      return { success: false, signatures: [], chunksExecuted: 0, remainingLots: 0, error: "Market uninitialized" };
+    }
+
+    const oracleData = await this.oracle.getLatestPrice(
+      market.lastOraclePrice.toNumber() || 150_000_000
+    );
+    const oraclePrice = oracleData.price.toNumber();
+    const fundingIndex = Number(market.fundingIndex.toString());
+
+    // 1. Discover opposing counterparties dynamically from on-chain accounts
+    let users = candidateAccounts;
+    if (!users) {
+      try {
+        users = await this.executeWithBackoff(() => (this.program.account as any).userAccount.all());
+      } catch (err: any) {
+        this.logger.warn("[keeper] Failed to fetch user accounts for ADL:", err?.message || err);
+        users = [];
+      }
+    }
+
+    const liquidateeBase = userAcc.basePosition.toNumber();
+    const isLiquidateeLong = liquidateeBase > 0;
+
+    interface AdlCandidate {
+      publicKey: PublicKey;
+      score: number;
+      lots: number;
+    }
+
+    const seenPubkeys = new Set<string>();
+    seenPubkeys.add(userPda.toBase58());
+    seenPubkeys.add(this.vaultUser.toBase58());
+
+    const candidates: AdlCandidate[] = [];
+
+    for (const u of users) {
+      const pubkeyStr = u.publicKey.toBase58();
+      if (seenPubkeys.has(pubkeyStr)) continue;
+
+      const basePos = u.account.basePosition.toNumber();
+      if (basePos === 0) continue;
+
+      // Opposing positions required
+      if (isLiquidateeLong && basePos > 0) continue;
+      if (!isLiquidateeLong && basePos < 0) continue;
+
+      // Pending funding & equity
+      const delta = fundingIndex - Number(u.account.fundingSnapshot.toString());
+      const pendingFunding = Math.floor((basePos * delta) / 1_000_000_000);
+      const posVal = Math.floor((basePos * oraclePrice) / 1000);
+      const quotePos = Number(u.account.quotePosition.toString());
+      const collateral = u.account.collateral.toNumber();
+      const equity = collateral + quotePos + posVal - pendingFunding;
+      const upnl = quotePos + posVal;
+
+      // Only profitable positions with positive equity are eligible for ADL
+      if (equity <= 0 || upnl <= 0) continue;
+
+      // Deterministic ranking score: Leverage * UPnL% = ((upnl * 1_000_000) / equity)
+      const score = Math.floor((upnl * 1_000_000) / equity);
+
+      seenPubkeys.add(pubkeyStr);
+      candidates.push({
+        publicKey: u.publicKey,
+        score,
+        lots: Math.abs(basePos),
+      });
+    }
+
+    // Rank candidates descending by score (tie-breaker: pubkey string)
+    candidates.sort((a, b) => b.score - a.score || b.publicKey.toBase58().localeCompare(a.publicKey.toBase58()));
+
+    // Chunk remaining accounts into batches of K <= 16 counterparties
+    const CHUNK_SIZE = 16;
+    const chunks: PublicKey[][] = [];
+    if (candidates.length === 0) {
+      chunks.push([]);
+    } else {
+      for (let i = 0; i < candidates.length; i += CHUNK_SIZE) {
+        chunks.push(candidates.slice(i, i + CHUNK_SIZE).map((c) => c.publicKey));
+      }
+    }
+
+    const signatures: string[] = [];
+    let chunksExecuted = 0;
+    let currentLots = Math.abs(liquidateeBase);
+
+    const priceFeedAccount = await this.oracle.getPriceFeedAccount();
+
+    for (const chunk of chunks) {
+      try {
+        const ix = await this.program.methods
+          .liquidate()
+          .accounts({
+            market: this.marketPda,
+            vaultAuthority: this.vaultAuthority,
+            vaultUser: this.vaultUser,
+            user: userPda,
+            liquidatee: liquidateeOwner,
+            priceUpdate: priceFeedAccount,
+            liquidator: this.wallet.publicKey,
+          })
+          .remainingAccounts(
+            chunk.map((pubkey) => ({
+              pubkey,
+              isWritable: true,
+              isSigner: false,
+            }))
+          )
+          .instruction();
+
+        const cuLimit = chunk.length > 0 ? 200_000 : CU_LIMIT_LIQUIDATE;
+        const tx = new Transaction().add(
+          ComputeBudgetProgram.setComputeUnitPrice({ microLamports: this.priorityFeeMicroLamports }),
+          ComputeBudgetProgram.setComputeUnitLimit({ units: cuLimit }),
+          ix
+        );
+
+        // Pre-broadcast wire guard: serialize and assert length <= 1232
+        const { blockhash } = await this.getBlockhash();
+        tx.recentBlockhash = blockhash;
+        tx.feePayer = this.keypair.publicKey;
+        tx.sign(this.keypair);
+
+        const serialized = tx.serialize();
+        if (serialized.length > 1232) {
+          throw new Error(
+            `Wire guard violation: serialized liquidation tx size ${serialized.length} > 1232 bytes (K=${chunk.length})`
+          );
+        }
+
+        const txSig = await this.sendTx(tx, "liquidate");
+        signatures.push(txSig);
+        chunksExecuted++;
+
+        this.logger.info(
+          `[keeper] Liquidated user ${userPda.toBase58()} chunk ${chunksExecuted} (K=${chunk.length}, wire=${serialized.length}B, sig=${txSig}) [MEASURED]`
+        );
+
+        // Re-query liquidatee after each chunk
+        let freshAcc: any = null;
+        try {
+          freshAcc = await this.executeWithBackoff(() => (this.program.account as any).userAccount.fetch(userPda));
+        } catch {
+          break;
+        }
+
+        if (!freshAcc) break;
+        currentLots = Math.abs(freshAcc.basePosition.toNumber());
+
+        // If position is flat, liquidation is complete!
+        if (currentLots === 0) {
+          break;
+        }
+
+        // If residual lots remain and user is quarantined under LIQUIDATING (flag 1), loop continues
+        const isQuarantined = (freshAcc.flags & 1) !== 0;
+        if (!isQuarantined) {
+          break;
+        }
+      } catch (err: any) {
+        const errStr = this.extractErrStr(err);
+        if (
+          errStr.includes("NotLiquidatable") ||
+          errStr.includes("PositionFlat") ||
+          errStr.includes("Position is flat")
+        ) {
+          return { success: true, signatures, chunksExecuted, remainingLots: 0 };
+        }
+        this.logger.warn(`[keeper] liquidateUserWithAdl error on chunk ${chunksExecuted + 1}:`, errStr);
+        return { success: false, signatures, chunksExecuted, remainingLots: currentLots, error: errStr };
+      }
+    }
+
+    return { success: true, signatures, chunksExecuted, remainingLots: currentLots };
+  }
+
+  /**
    * Liquidates an undercollateralized user position directly against the Backstop Vault.
    */
   public async liquidateUser(
@@ -1006,87 +1541,12 @@ export class EpochKeeper {
     cu?: number;
     error?: string;
   }> {
-    try {
-      const userAcc = await (this.program.account as any).userAccount.fetch(userPda);
-      if (userAcc.basePosition.toNumber() === 0) {
-        return { success: true };
-      }
-    } catch {
-      return { success: false, error: "User account not found" };
-    }
-
-    const market = await this.getMarket();
-    const oraclePrice = await this.oracle.getLatestPrice(
-      market.lastOraclePrice.toNumber() || 150_000_000
-    );
-
-    try {
-      const priceFeedAccount = await this.oracle.getPriceFeedAccount();
-
-      const ix = await this.program.methods
-        .liquidate()
-        .accounts({
-          market: this.marketPda,
-          vaultAuthority: this.vaultAuthority,
-          vaultUser: this.vaultUser,
-          user: userPda,
-          liquidatee: liquidateeOwner,
-          priceUpdate: priceFeedAccount,
-          liquidator: this.wallet.publicKey,
-        })
-        .instruction();
-
-      const tx = new Transaction().add(
-        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: this.priorityFeeMicroLamports }),
-        ComputeBudgetProgram.setComputeUnitLimit({ units: CU_LIMIT_LIQUIDATE }),
-        ix
-      );
-
-      const txSig = await this.sendTx(tx);
-
-      const txInfo = await this.connection.getTransaction(txSig, {
-        commitment: "confirmed",
-        maxSupportedTransactionVersion: 0,
-      });
-
-      const landedSlot = txInfo?.slot || this._trackedSlot;
-      const cuConsumed = txInfo?.meta?.computeUnitsConsumed || 0;
-
-      this.logger.logTx({
-        signature: txSig,
-        kind: "liquidate",
-        source: "keeper",
-        network: this.config.network || "devnet",
-        submit_slot: this._trackedSlot,
-        landed_slot: landedSlot,
-        cu_consumed: cuConsumed,
-        success: true,
-        error: null,
-        created_at: new Date().toISOString(),
-      });
-
-      this.logger.info(
-        `[keeper] Liquidated user ${userPda.toBase58()} (${cuConsumed} CU) [MEASURED]`
-      );
-
-      return { success: true, signature: txSig, cu: cuConsumed };
-    } catch (err: any) {
-      const errStr = this.extractErrStr(err);
-
-      if (
-        errStr.includes("NotLiquidatable") ||
-        errStr.includes("PositionFlat") ||
-        errStr.includes("Position is flat")
-      ) {
-        return { success: true };
-      }
-
-      this.logger.warn(
-        `[keeper] liquidate error for user ${userPda.toBase58()}:`,
-        errStr
-      );
-      return { success: false, error: errStr };
-    }
+    const res = await this.liquidateUserWithAdl(userPda, liquidateeOwner);
+    return {
+      success: res.success,
+      signature: res.signatures[0],
+      error: res.error,
+    };
   }
 
   /**
@@ -1133,7 +1593,7 @@ export class EpochKeeper {
         );
 
         if (equity < mmrReq) {
-          const res = await this.liquidateUser(u.publicKey, u.account.owner);
+          const res = await this.liquidateUserWithAdl(u.publicKey, u.account.owner, users);
           if (res.success) {
             liquidatedCount++;
           }
@@ -1156,7 +1616,7 @@ export class EpochKeeper {
     liquidatedCount: number;
     currentSlot: number;
   }> {
-    const currentSlot = this._trackedSlot || await this.connection.getSlot();
+    const currentSlot = await this.getCurrentSlot();
     const market = await this.getMarket();
     if (!market) {
       const now = Date.now();
@@ -1221,7 +1681,7 @@ export class EpochKeeper {
    * One vault quoting tick: places Backstop Vault quotes into the target batch.
    */
   public async vaultQuoteTick(): Promise<{ vaultQuotesCount: number; currentSlot: number }> {
-    const currentSlot = this._trackedSlot || await this.connection.getSlot();
+    const currentSlot = await this.getCurrentSlot();
     let vaultQuotesCount = 0;
 
     // Balance guard
@@ -1262,8 +1722,11 @@ export class EpochKeeper {
     liquidatedCount: number;
     currentSlot: number;
   }> {
-    if (slotOverride) this._trackedSlot = slotOverride;
-    if (!this._trackedSlot) this._trackedSlot = await this.connection.getSlot();
+    if (slotOverride) {
+      this._trackedSlot = slotOverride;
+      this._lastSlotUpdateTs = Date.now();
+    }
+    const currentSlot = await this.getCurrentSlot();
 
     const cs = await this.clearSettleTick();
     const vq = await this.vaultQuoteTick();
@@ -1312,8 +1775,12 @@ export class EpochKeeper {
     if (this.isRunning) return;
     this.isRunning = true;
 
-    // Seed initial slot
-    this._trackedSlot = await this.connection.getSlot();
+    // 0. Reconcile on-chain market & ring batch states directly from RPC
+    await this.reconcileBootState();
+
+    // Seed initial slot and timestamp
+    this._trackedSlot = await this.executeWithBackoff(() => this.connection.getSlot());
+    this._lastSlotUpdateTs = Date.now();
 
     // Check initial balance
     await this.checkBalance();
@@ -1333,10 +1800,11 @@ export class EpochKeeper {
       `Epoch Keeper started on ${this.config.network || "devnet"} (mode=WebSocket slotSubscribe, dual-loop, priorityFee=${this.priorityFeeMicroLamports}uL)`
     );
 
-    // 1. Subscribe to slot changes over WebSocket — updates _trackedSlot only
+    // 1. Subscribe to slot changes over WebSocket — updates _trackedSlot and _lastSlotUpdateTs
     try {
       this.slotSubId = this.connection.onSlotChange((slotInfo) => {
         this._trackedSlot = slotInfo.slot;
+        this._lastSlotUpdateTs = Date.now();
       });
       this.logger.info(`Subscribed to onSlotChange (subId=${this.slotSubId}) [MEASURED]`);
     } catch (err) {

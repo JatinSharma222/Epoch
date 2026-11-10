@@ -3,6 +3,7 @@ pub mod clear_batch;
 pub mod create_user;
 pub mod deposit;
 pub mod expire_and_release;
+#[cfg(feature = "devnet-faucet")]
 pub mod faucet;
 pub mod fund_vault;
 pub mod initialize_batch;
@@ -22,6 +23,7 @@ pub use clear_batch::*;
 pub use create_user::*;
 pub use deposit::*;
 pub use expire_and_release::*;
+#[cfg(feature = "devnet-faucet")]
 pub use faucet::*;
 pub use fund_vault::*;
 pub use initialize_batch::*;

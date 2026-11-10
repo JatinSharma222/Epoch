@@ -82,7 +82,8 @@ fn create_test_market(admin: Pubkey, fee_pool: u64) -> Market {
         },
         bump: 254,
         _pad_bump: [0; 7],
-        _reserved: [0; 24],
+        last_oracle_timestamp: 1_000_000,
+        _reserved: [0; 16],
     }
 }
 

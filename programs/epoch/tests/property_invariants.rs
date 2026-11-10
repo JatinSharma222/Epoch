@@ -69,6 +69,81 @@ impl ProtocolState {
             step_label, total_base
         );
     }
+
+    /// Invariant I-1 (Strict):
+    /// sum(C + Q) + FeePool + InsuranceFund - BadDebt == VaultTokenBalance
+    fn assert_invariant_i1_strict(&self, users: &[UserLedger], step_label: &str) {
+        let total_collateral_plus_quote: i128 = users
+            .iter()
+            .map(|u| u.collateral as i128 + u.quote_position)
+            .sum();
+        let system_total = total_collateral_plus_quote
+            + self.fee_pool as i128
+            + self.insurance_fund as i128
+            - self.bad_debt as i128;
+
+        assert_eq!(
+            system_total, self.vault_balance as i128,
+            "[{}] Invariant I-1 (Strict) VIOLATED: sum(C + Q) + fee_pool + insurance - bad_debt ({}) != vault_balance ({})",
+            step_label, system_total, self.vault_balance
+        );
+    }
+
+    /// Invariant I-4:
+    /// sum(base_position) == 0
+    fn assert_invariant_i4(&self, users: &[UserLedger], step_label: &str) {
+        let total_base: i64 = users.iter().map(|u| u.base_position).sum();
+        assert_eq!(
+            total_base, 0,
+            "[{}] Invariant I-4 Base Conservation VIOLATED: sum(base_position) ({}) != 0",
+            step_label, total_base
+        );
+    }
+
+    /// Invariant I-11A:
+    /// sum(delta_Q) == 0 for all active trades prior to cash folding
+    fn assert_invariant_i11a(delta_q_trades: &[i128], step_label: &str) {
+        let sum_delta: i128 = delta_q_trades.iter().sum();
+        assert_eq!(
+            sum_delta, 0,
+            "[{}] Invariant I-11A VIOLATED: sum(delta_Q) ({}) != 0",
+            step_label, sum_delta
+        );
+    }
+
+    /// Invariant I-11B:
+    /// Post-folding realized PnL conservation: sum(Q_open) + sum(Delta_C_folded) == 0
+    fn assert_invariant_i11b(
+        users: &[UserLedger],
+        delta_c_folded: i128,
+        step_label: &str,
+    ) {
+        let sum_q_open: i128 = users.iter().map(|u| u.quote_position).sum();
+        let total = sum_q_open + delta_c_folded;
+        assert_eq!(
+            total, 0,
+            "[{}] Invariant I-11B VIOLATED: sum(Q_open) ({}) + sum(Delta_C_folded) ({}) != 0",
+            step_label, sum_q_open, delta_c_folded
+        );
+    }
+
+    /// Assert all 4 invariants simultaneously:
+    /// - I-1: sum(C + Q) + FeePool + InsuranceFund - BadDebt == VaultTokenBalance
+    /// - I-4: sum(base_position) == 0
+    /// - I-11A: sum(delta_Q) == 0
+    /// - I-11B: sum(Q_open) + sum(Delta_C_folded) == 0
+    fn assert_all_4_invariants(
+        &self,
+        users: &[UserLedger],
+        trade_deltas: &[i128],
+        delta_c_folded: i128,
+        step_label: &str,
+    ) {
+        self.assert_invariant_i1_strict(users, step_label);
+        self.assert_invariant_i4(users, step_label);
+        Self::assert_invariant_i11a(trade_deltas, step_label);
+        Self::assert_invariant_i11b(users, delta_c_folded, step_label);
+    }
 }
 
 #[test]
@@ -242,6 +317,301 @@ fn test_worked_ledger_i1_conservation() {
     state.assert_invariant_i1(&users, "Step 7: Post-Underwater Liquidation & Bad Debt");
 
     println!("Worked Ledger Conservation Test PASSED: I-1 strictly holds across all operations.");
+
+    // --- STEP 8: Multi-Step Intermediate Invariants Verification (T-G2-09) ---
+    run_multi_step_intermediate_invariants_s0_to_s4();
+}
+
+#[test]
+fn test_multi_step_intermediate_invariants_s0_to_s4() {
+    run_multi_step_intermediate_invariants_s0_to_s4();
+}
+
+fn run_multi_step_intermediate_invariants_s0_to_s4() {
+    // -------------------------------------------------------------------------
+    // Setup for S0..S4 (T-G2-09):
+    // - User B (index 0): Bankrupt Trader, Long 10,000 lots
+    // - Vault (index 1): Backstop Vault with limited headroom (2,000 lots)
+    // - Counterparties (indices 2..21): 20 profitable opposing traders (Short 400 lots each)
+    //   * Chunk 1: 16 counterparties (indices 2..17)
+    //   * Chunk 2: 4 counterparties (indices 18..21)
+    // - Exact integer scaling:
+    //   1 lot = 0.001 SOL
+    //   notional = (lots * price) / 1000 in micro-USDC
+    // -------------------------------------------------------------------------
+    let mut state = ProtocolState::default();
+    let num_counterparties = 20;
+    let mut users = vec![UserLedger::default(); 2 + num_counterparties];
+    let mut delta_c_folded: i128 = 0;
+
+    // Initial Capitalization
+    let dep_user_b = 600_000_000u64; // $600 USDC collateral
+    let dep_vault = 10_000_000_000u64; // $10,000 USDC backstop collateral
+    let dep_cp = 2_000_000_000u64; // $2,000 USDC per counterparty
+    let init_insurance = 500_000_000u64; // $500 USDC insurance fund
+    let init_fee_pool = 50_000_000u64; // $50 USDC fee pool
+
+    users[0].collateral = dep_user_b as i64;
+    users[1].collateral = dep_vault as i64;
+    for i in 0..num_counterparties {
+        users[2 + i].collateral = dep_cp as i64;
+    }
+
+    state.vault_balance = dep_user_b
+        + dep_vault
+        + (num_counterparties as u64 * dep_cp)
+        + init_insurance
+        + init_fee_pool;
+    state.insurance_fund = init_insurance;
+    state.fee_pool = init_fee_pool;
+    state.bad_debt = 0;
+
+    // Verify initial balance
+    state.assert_all_4_invariants(&users, &[0], delta_c_folded, "Pre-Trade Init");
+
+    // Establish Positions at P_entry = $150.00 (150_000_000 micro-USDC)
+    let p_entry = 150_000_000u64;
+    let total_lots = 10_000i64;
+    let vault_lots = 2_000i64; // Vault capacity headroom
+    let cp_lots = 400i64; // 20 * 400 = 8,000 lots
+
+    // User B buys 10,000 lots
+    let notional_b = (total_lots as i128 * p_entry as i128) / 1000; // 1,500,000,000
+    users[0].base_position += total_lots;
+    users[0].quote_position -= notional_b;
+
+    // Vault sells 2,000 lots
+    let notional_v = (vault_lots as i128 * p_entry as i128) / 1000; // 300,000,000
+    users[1].base_position -= vault_lots;
+    users[1].quote_position += notional_v;
+
+    // 20 CPs each sell 400 lots
+    let notional_cp = (cp_lots as i128 * p_entry as i128) / 1000; // 60,000,000
+    for i in 0..num_counterparties {
+        users[2 + i].base_position -= cp_lots;
+        users[2 + i].quote_position += notional_cp;
+    }
+
+    // Trade delta Q verification (I-11A)
+    let mut initial_trade_deltas = vec![-notional_b, notional_v];
+    for _ in 0..num_counterparties {
+        initial_trade_deltas.push(notional_cp);
+    }
+    ProtocolState::assert_invariant_i11a(&initial_trade_deltas, "Initial Trade Execution");
+
+    // =========================================================================
+    // STATE S0: Pre-Liquidation State
+    // Oracle price crashes to $20.00 (20_000_000 micro-USDC).
+    // User B is bankrupt: Equity = 600M + (10,000 * 20M / 1000) - 1,500M = -700M < 0.
+    // Exact Bankruptcy Price: P_bk = 1000 * (1,500M - 600M) / 10,000 = $90.00 (90_000_000).
+    // =========================================================================
+    let p_bk = 90_000_000u64;
+    let p_oracle_crash = 20_000_000u64;
+
+    state.assert_all_4_invariants(&users, &[0], delta_c_folded, "State S0: Pre-Liquidation");
+
+    // =========================================================================
+    // STATE S1: Vault Headroom Absorption with Deficit Absorption
+    // Backstop vault absorbs available headroom of 2,000 lots at bankruptcy price P_bk ($90.00).
+    // Trade notional: User B sells 2,000 lots, Vault buys 2,000 lots @ P_bk ($90.00).
+    // Notional = (2,000 * 90M) / 1000 = 180,000,000 micro-USDC.
+    // Deficit on vault chunk vs oracle mark ($20.00):
+    // Deficit = (2,000 * (90M - 20M)) / 1000 = 140,000,000 micro-USDC.
+    // Insurance fund absorbs 140,000,000 micro-USDC and credits the vault headroom deficit.
+    // Vault is flat and folds realized PnL into collateral.
+    // =========================================================================
+    let vault_absorb_lots = 2_000i64;
+    let s1_notional = (vault_absorb_lots as i128 * p_bk as i128) / 1000; // 180,000,000
+    let s1_deficit = ((vault_absorb_lots as i128 * (p_bk - p_oracle_crash) as i128) / 1000) as u64; // 140,000,000
+
+    // Vault buys 2,000 lots @ P_bk
+    users[1].base_position += vault_absorb_lots;
+    users[1].quote_position -= s1_notional;
+
+    // User B sells 2,000 lots @ P_bk
+    users[0].base_position -= vault_absorb_lots;
+    users[0].quote_position += s1_notional;
+
+    // I-11A trade cashflow: User B (+180M), Vault (-180M)
+    ProtocolState::assert_invariant_i11a(
+        &[s1_notional, -s1_notional],
+        "State S1: Vault Headroom Absorption Trade Balance",
+    );
+
+    // Vault is flat: fold quote into collateral
+    assert_eq!(users[1].base_position, 0, "Vault must be flat after headroom absorption");
+    let vault_fold = users[1].quote_position; // +120,000,000
+    users[1].collateral += vault_fold as i64;
+    users[1].quote_position = 0;
+    delta_c_folded += vault_fold;
+
+    // Insurance fund absorbs the headroom deficit, crediting vault collateral
+    state.insurance_fund -= s1_deficit;
+    users[1].collateral += s1_deficit as i64;
+
+    state.assert_all_4_invariants(&users, &[0], delta_c_folded, "State S1: Post-Vault Absorption");
+
+    // =========================================================================
+    // STATE S2: ADL Chunk 1 with 16 Counterparties and Residual Lots
+    // Solana account limits cap transaction remaining accounts at 16 counterparties.
+    // Chunk 1 deleverages Counterparties 0..15 (16 counterparties) at P_bk ($90.00).
+    // Each counterparty closes 400 lots: notional = (400 * 90M) / 1000 = 36,000,000.
+    // Total lots deleveraged in Chunk 1 = 16 * 400 = 6,400 lots.
+    // User B sells 6,400 lots at P_bk: notional = 576,000,000.
+    // User B retains 1,600 residual lots (8,000 - 6,400 = 1,600).
+    // Counterparties 0..15 become flat and fold realized profit into collateral.
+    // =========================================================================
+    let chunk1_cps = 16;
+    let lots_per_cp = 400i64;
+    let notional_per_cp = (lots_per_cp as i128 * p_bk as i128) / 1000; // 36,000,000
+    let chunk1_total_lots = chunk1_cps as i64 * lots_per_cp; // 6,400
+    let chunk1_user_notional = (chunk1_total_lots as i128 * p_bk as i128) / 1000; // 576,000,000
+
+    let mut chunk1_deltas = vec![chunk1_user_notional];
+
+    // User B executes Chunk 1
+    users[0].base_position -= chunk1_total_lots;
+    users[0].quote_position += chunk1_user_notional;
+
+    for i in 0..chunk1_cps {
+        let cp_idx = 2 + i;
+        users[cp_idx].base_position += lots_per_cp;
+        users[cp_idx].quote_position -= notional_per_cp;
+        chunk1_deltas.push(-notional_per_cp);
+
+        // Counterparty is flat: fold quote into collateral
+        assert_eq!(users[cp_idx].base_position, 0, "Chunk 1 counterparty must be flat");
+        let cp_fold = users[cp_idx].quote_position; // +24,000,000 profit
+        users[cp_idx].collateral += cp_fold as i64;
+        users[cp_idx].quote_position = 0;
+        delta_c_folded += cp_fold;
+    }
+
+    // Verify I-11A trade balance for Chunk 1
+    ProtocolState::assert_invariant_i11a(&chunk1_deltas, "State S2: ADL Chunk 1 Trade Balance");
+
+    // Verify User B retains residual lots
+    assert_eq!(users[0].base_position, 1_600, "User B must retain 1,600 residual lots after Chunk 1");
+
+    state.assert_all_4_invariants(&users, &[0], delta_c_folded, "State S2: Post-ADL Chunk 1");
+
+    // =========================================================================
+    // STATE S3: ADL Chunk 2 with Remaining Counterparties and Position Flattening / Cash Folding
+    // Chunk 2 processes remaining Counterparties 16..19 (4 counterparties) at P_bk ($90.00).
+    // Each counterparty closes 400 lots (total 1,600 lots).
+    // User B sells remaining 1,600 lots at P_bk: notional = (1,600 * 90M) / 1000 = 144,000,000.
+    // User B's base position is now flattened to 0!
+    // Counterparties 16..19 fold realized profit (+24M each).
+    // User B folds realized loss (-600M) into collateral (collateral reaches exactly 0).
+    // =========================================================================
+    let chunk2_cps = 4;
+    let chunk2_total_lots = chunk2_cps as i64 * lots_per_cp; // 1,600
+    let chunk2_user_notional = (chunk2_total_lots as i128 * p_bk as i128) / 1000; // 144,000,000
+
+    let mut chunk2_deltas = vec![chunk2_user_notional];
+
+    // User B executes Chunk 2
+    users[0].base_position -= chunk2_total_lots;
+    users[0].quote_position += chunk2_user_notional;
+
+    for i in 0..chunk2_cps {
+        let cp_idx = 2 + chunk1_cps + i;
+        users[cp_idx].base_position += lots_per_cp;
+        users[cp_idx].quote_position -= notional_per_cp;
+        chunk2_deltas.push(-notional_per_cp);
+
+        // Counterparty is flat: fold quote into collateral
+        assert_eq!(users[cp_idx].base_position, 0, "Chunk 2 counterparty must be flat");
+        let cp_fold = users[cp_idx].quote_position; // +24,000,000 profit
+        users[cp_idx].collateral += cp_fold as i64;
+        users[cp_idx].quote_position = 0;
+        delta_c_folded += cp_fold;
+    }
+
+    // Verify I-11A trade balance for Chunk 2
+    ProtocolState::assert_invariant_i11a(&chunk2_deltas, "State S3: ADL Chunk 2 Trade Balance");
+
+    // Verify User B is completely flattened
+    assert_eq!(users[0].base_position, 0, "User B must be completely flattened after Chunk 2");
+
+    // User B folds quote into collateral (cash folding)
+    let user_b_fold = users[0].quote_position; // -600,000,000
+    users[0].collateral += user_b_fold as i64; // 600M + (-600M) = 0
+    users[0].quote_position = 0;
+    delta_c_folded += user_b_fold;
+
+    assert_eq!(users[0].collateral, 0, "User B collateral must be exact 0 at P_bk");
+
+    state.assert_all_4_invariants(&users, &[0], delta_c_folded, "State S3: Post-ADL Chunk 2 & Flattening");
+
+    // =========================================================================
+    // STATE S4: Insurance Fund Exhaustion with Bad Debt Tracking
+    // A second trader (User C) with $100 USDC collateral suffers a severe deficit of $500 USDC.
+    // Available insurance fund is $360 USDC.
+    // Insurance fund covers $360 USDC (reducing insurance fund to exactly 0 - exhaustion).
+    // Remaining shortfall of $140 USDC is recorded as bad_debt.
+    // User C's collateral is zeroed (per on-chain liquidate.rs:580).
+    // All 4 invariants are verified holding at exact 0 error.
+    // =========================================================================
+    let dep_user_c = 100_000_000u64; // $100 USDC
+    let mut user_c = UserLedger {
+        collateral: dep_user_c as i64,
+        quote_position: 0,
+        base_position: 0,
+        funding_snapshot: 0,
+    };
+    state.vault_balance += dep_user_c;
+
+    // User C enters Long 5,000 lots @ $150.00 against Vault (Short 5,000 lots)
+    let c_lots = 5_000i64;
+    let c_notional = (c_lots as i128 * p_entry as i128) / 1000; // 750,000,000
+    user_c.base_position += c_lots;
+    user_c.quote_position -= c_notional;
+    users[1].base_position -= c_lots;
+    users[1].quote_position += c_notional;
+
+    // Price crashes to $30.00 (30_000_000 micro-USDC)
+    let p_crash_c = 30_000_000u64;
+    let c_close_notional = (c_lots as i128 * p_crash_c as i128) / 1000; // 150,000,000
+
+    // User C liquidated against Vault at $30.00
+    user_c.base_position -= c_lots;
+    user_c.quote_position += c_close_notional;
+    users[1].base_position += c_lots;
+    users[1].quote_position -= c_close_notional;
+
+    // Both flat: fold realized PnL
+    let c_fold = user_c.quote_position; // -600,000,000
+    user_c.collateral += c_fold as i64; // 100M - 600M = -500,000,000 deficit
+    user_c.quote_position = 0;
+    delta_c_folded += c_fold;
+
+    let v_fold = users[1].quote_position; // +600,000,000
+    users[1].collateral += v_fold as i64;
+    users[1].quote_position = 0;
+    delta_c_folded += v_fold;
+
+    // Deficit resolution
+    assert!(user_c.collateral < 0, "User C must be in deficit");
+    let c_deficit = (-user_c.collateral) as u64; // 500,000,000
+    let if_available = state.insurance_fund; // 360,000,000
+    assert!(c_deficit > if_available, "Deficit must exceed available insurance fund to prove exhaustion");
+
+    let covered = if_available;
+    state.insurance_fund = 0; // Insurance Fund completely exhausted!
+
+    let rem_deficit = c_deficit - covered; // 140,000,000
+    state.bad_debt += rem_deficit; // Bad debt recorded!
+
+    // Wiping User C negative collateral to 0 per protocol rule (liquidate.rs:580)
+    user_c.collateral = 0;
+
+    // Append User C to user list for invariant check
+    users.push(user_c);
+
+    state.assert_all_4_invariants(&users, &[0], delta_c_folded, "State S4: Insurance Exhaustion & Bad Debt");
+
+    println!("T-G2-09: Multi-Step Intermediate Invariant Tests (S0, S1, S2, S3, S4) PASSED with 100% precision!");
 }
 
 #[test]

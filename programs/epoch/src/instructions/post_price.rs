@@ -290,6 +290,7 @@ pub fn handle_post_price(
     // Update market cached oracle state
     market.last_oracle_price = final_price;
     market.last_oracle_slot = clock.slot;
+    market.last_oracle_timestamp = clock.unix_timestamp;
 
     Ok(())
 }

@@ -34,6 +34,7 @@ pub mod epoch {
     }
 
     /// Mint mock USDC to caller for testing on devnet / localnet (capped per call).
+    #[cfg(feature = "devnet-faucet")]
     pub fn faucet(ctx: Context<Faucet>, amount: u64) -> Result<()> {
         handle_faucet(ctx, amount)
     }

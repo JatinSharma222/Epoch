@@ -1,6 +1,6 @@
 {
   "description": "Gate G1 Compute Unit Spike Measurements",
-  "timestamp": "2026-11-09T09:02:27.368Z",
+  "timestamp": "2026-11-10T11:21:23.943Z",
   "network": "localnet",
   "toolchain": {
     "solana": "3.0.15",
@@ -15,8 +15,64 @@
     {
       "instruction": "place_order",
       "condition": "empty_batch",
-      "cu_consumed": 13921,
+      "cu_consumed": 19892,
       "target_max_cu": 60000,
+      "passed": true,
+      "label": "MEASURED"
+    },
+    {
+      "instruction": "clear_batch",
+      "load_orders": 10,
+      "k_ticks": 101,
+      "matched_lots": 60,
+      "clearing_tick": 50,
+      "clearing_price": 84419000,
+      "cu_consumed": 21283,
+      "target_max_cu": 600000,
+      "passed": true,
+      "label": "MEASURED"
+    },
+    {
+      "instruction": "clear_batch",
+      "load_orders": 32,
+      "k_ticks": 101,
+      "matched_lots": 190,
+      "clearing_tick": 50,
+      "clearing_price": 84419000,
+      "cu_consumed": 20813,
+      "target_max_cu": 600000,
+      "passed": true,
+      "label": "MEASURED"
+    },
+    {
+      "instruction": "clear_batch",
+      "load_orders": 64,
+      "k_ticks": 101,
+      "matched_lots": 382,
+      "clearing_tick": 50,
+      "clearing_price": 84419000,
+      "cu_consumed": 24602,
+      "target_max_cu": 600000,
+      "passed": true,
+      "label": "MEASURED"
+    },
+    {
+      "instruction": "place_order",
+      "condition": "near_full_batch_128",
+      "cu_consumed": 15437,
+      "target_max_cu": 60000,
+      "passed": true,
+      "label": "MEASURED"
+    },
+    {
+      "instruction": "clear_batch",
+      "load_orders": 128,
+      "k_ticks": 101,
+      "matched_lots": 766,
+      "clearing_tick": 50,
+      "clearing_price": 84419000,
+      "cu_consumed": 37851,
+      "target_max_cu": 600000,
       "passed": true,
       "label": "MEASURED"
     }

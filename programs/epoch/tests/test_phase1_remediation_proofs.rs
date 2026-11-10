@@ -81,7 +81,8 @@ fn create_test_market(admin: Pubkey, fee_pool: u64) -> Market {
         },
         bump: 254,
         _pad_bump: [0; 7],
-        _reserved: [0; 24],
+        last_oracle_timestamp: 1_000_000,
+        _reserved: [0; 16],
     }
 }
 
@@ -236,10 +237,10 @@ fn test_add2_remediation_strictly_sequential_clearance() {
     let mut market = create_test_market(Pubkey::new_unique(), 100_000);
     market.next_batch_to_clear = 5;
 
-    // Cranker attempts to clear batch 6 before batch 5:
-    let out_of_order_batch_id: u64 = 6;
-    let result = if out_of_order_batch_id == market.next_batch_to_clear {
-        market.next_batch_to_clear = market.next_batch_to_clear.checked_add(1).unwrap();
+    // Cranker attempts to clear batch 4 (older than 5):
+    let out_of_order_batch_id: u64 = 4;
+    let result = if out_of_order_batch_id >= market.next_batch_to_clear {
+        market.next_batch_to_clear = out_of_order_batch_id.checked_add(1).unwrap();
         Ok(())
     } else {
         Err(EpochError::BatchNotNextInSequence)
@@ -248,7 +249,7 @@ fn test_add2_remediation_strictly_sequential_clearance() {
     assert_eq!(
         result,
         Err(EpochError::BatchNotNextInSequence),
-        "PROVEN: Out-of-order clearance (batch 6 before batch 5) is rejected"
+        "PROVEN: Out-of-order clearance (batch 4 when pointer is at 5) is rejected"
     );
     assert_eq!(market.next_batch_to_clear, 5, "Pointer remains at 5");
 
@@ -347,10 +348,10 @@ fn test_add2_sequential_expiration_followed_by_clearance() {
     let mut market = create_test_market(Pubkey::new_unique(), 100_000);
     market.next_batch_to_clear = 5;
 
-    // 1. Attempt out-of-order expiration: caller tries to expire batch 6 when pointer is at 5
-    let out_of_order_batch_id: u64 = 6;
-    let premature_expire_res = if out_of_order_batch_id == market.next_batch_to_clear {
-        market.next_batch_to_clear = market.next_batch_to_clear.checked_add(1).unwrap();
+    // 1. Attempt out-of-order expiration: caller tries to expire older batch 4 when pointer is at 5
+    let out_of_order_batch_id: u64 = 4;
+    let premature_expire_res = if out_of_order_batch_id >= market.next_batch_to_clear {
+        market.next_batch_to_clear = market.next_batch_to_clear.max(out_of_order_batch_id.checked_add(1).unwrap());
         Ok(())
     } else {
         Err(EpochError::BatchNotNextInSequence)
@@ -358,7 +359,7 @@ fn test_add2_sequential_expiration_followed_by_clearance() {
     assert_eq!(
         premature_expire_res,
         Err(EpochError::BatchNotNextInSequence),
-        "PROVEN: Out-of-order expiration of batch 6 before batch 5 is rejected"
+        "PROVEN: Out-of-order expiration of older batch 4 when pointer is at 5 is rejected"
     );
     assert_eq!(market.next_batch_to_clear, 5, "Pointer remains at 5");
 

@@ -124,6 +124,7 @@ pub fn handle_initialize_market(
     market.funding_index = 0;
     market.last_oracle_price = INITIAL_ORACLE_PRICE;
     market.last_oracle_slot = clock.slot;
+    market.last_oracle_timestamp = clock.unix_timestamp;
     market.open_interest_lots = 0;
     market.fee_pool = 0;
     market.insurance_fund = 0;
