@@ -211,8 +211,10 @@ pub struct Market {
     pub bump: u8,
     /// Padding to align to 8-byte boundary.
     pub _pad_bump: [u8; 7],
+    /// Wall-clock Unix timestamp (seconds) of the last oracle update.
+    pub last_oracle_timestamp: i64,
     /// Reserved space for future fields without reallocation.
-    pub _reserved: [u8; 24],
+    pub _reserved: [u8; 16],
 }
 
 const _: () = {

@@ -268,7 +268,7 @@ fn test_h5_oracle_window_boundary_stacking_and_outage_lockout() {
     }
 
     // Layer A allows outage catch-up:
-    let elapsed_outage = post_outage_slot - 0;
+    let elapsed_outage = post_outage_slot;
     let allowed_layer_a = (15u128 + (elapsed_outage.saturating_sub(2) as u128)).min(100);
     assert_eq!(allowed_layer_a, 93); // Layer A allows 93 bps!
 

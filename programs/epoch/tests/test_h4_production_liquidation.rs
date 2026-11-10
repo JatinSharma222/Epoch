@@ -80,7 +80,8 @@ fn setup_test_market() -> Market {
         },
         bump: 254,
         _pad_bump: [0; 7],
-        _reserved: [0; 24],
+        last_oracle_timestamp: 1_700_000_000,
+        _reserved: [0; 16],
     }
 }
 
@@ -198,7 +199,7 @@ fn test_h4_partial_liquidation_and_deposit_curing_flow() {
     market.last_oracle_price = oracle_price;
     market.last_oracle_slot = 100;
 
-    apply_deposit_curing(&mut user, &market, 100);
+    apply_deposit_curing(&mut user, &market, 100, market.last_oracle_timestamp);
     assert_eq!(
         user.flags & UserFlags::LIQUIDATING,
         0,
@@ -997,7 +998,7 @@ fn test_h4_multi_transaction_partial_vault_then_adl_then_deposit_then_full_settl
     ledger.total_collateral_vault_tokens += 5_000_000; // Physical tokens transferred to vault
     market.last_oracle_price = crash_price;
     market.last_oracle_slot = 100;
-    apply_deposit_curing(&mut user, &market, 100);
+    apply_deposit_curing(&mut user, &market, 100, market.last_oracle_timestamp);
     // Equity is still deeply negative -> quarantine MUST NOT be cleared!
     assert_ne!(user.flags & UserFlags::LIQUIDATING, 0, "Insufficient deposit does not clear quarantine");
 
@@ -1135,7 +1136,7 @@ fn test_h4_multi_transaction_repeated_liquidation_lifecycle() {
 
     // Apply deposit curing check
     market.last_oracle_slot = 100;
-    apply_deposit_curing(&mut liquidatee, &market, 100);
+    apply_deposit_curing(&mut liquidatee, &market, 100, market.last_oracle_timestamp);
     assert_eq!(liquidatee.flags & UserFlags::LIQUIDATING, 0, "Quarantine cleared once equity >= MMR post-deposit");
 
     ledger.user_collateral_sum = liquidatee.collateral + vault_user.collateral + adl_cp1.collateral + adl_cp2.collateral;
@@ -1585,7 +1586,7 @@ fn test_h4_3_deposit_curing_rejects_stale_or_unverified_oracle() {
 
     // ── CASE A: Stale Oracle (Slot 500 >> 100 + 30) ──
     // Deposit curing MUST NOT clear quarantine flags!
-    apply_deposit_curing(&mut user, &market, 500);
+    apply_deposit_curing(&mut user, &market, 500, market.last_oracle_timestamp);
     assert_ne!(
         user.flags & UserFlags::LIQUIDATING,
         0,
@@ -1594,7 +1595,7 @@ fn test_h4_3_deposit_curing_rejects_stale_or_unverified_oracle() {
 
     // ── CASE B: Fresh Oracle (Slot 110 <= 100 + 30) ──
     // Deposit curing SUCCEEDS and clears quarantine!
-    apply_deposit_curing(&mut user, &market, 110);
+    apply_deposit_curing(&mut user, &market, 110, market.last_oracle_timestamp + 4);
     assert_eq!(
         user.flags & UserFlags::LIQUIDATING,
         0,

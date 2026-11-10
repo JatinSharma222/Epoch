@@ -108,7 +108,10 @@ pub fn handle_vault_quote(ctx: Context<VaultQuote>, params: VaultQuoteParams) ->
     };
 
     let age = clock.unix_timestamp.saturating_sub(pyth_data.publish_time);
-    if pyth_data.publish_time > clock.unix_timestamp || age > market.params.max_oracle_age_secs as i64 {
+    if pyth_data.publish_time <= 0
+        || pyth_data.publish_time > clock.unix_timestamp
+        || age > market.params.max_oracle_age_secs as i64
+    {
         emit!(VaultQuoteSkipped {
             target_batch,
             ring_index,

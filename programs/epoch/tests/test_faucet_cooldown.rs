@@ -1,3 +1,5 @@
+#![cfg(feature = "devnet-faucet")]
+
 use epoch::errors::EpochError;
 use epoch::instructions::faucet::validate_faucet_cooldown;
 use epoch::state::constants::FAUCET_COOLDOWN_SECONDS;

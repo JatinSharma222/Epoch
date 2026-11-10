@@ -1,0 +1,144 @@
+{
+  "title": "ADL Multi-Counterparty Transaction Size & MTU Analysis",
+  "timestamp": "2026-11-10T12:33:29.949Z",
+  "mtu_limit_bytes": 1232,
+  "chunk_limit_k": 16,
+  "hard_limit_k": 24,
+  "measurements": [
+    {
+      "counterparties_k": 0,
+      "format": "Legacy (without ALTs)",
+      "signature_count": 1,
+      "unique_account_count": 9,
+      "wire_bytes": 428,
+      "mtu_limit_bytes": 1232,
+      "fits_mtu": true,
+      "serialized_status": "SUCCESS",
+      "serialization_error": null,
+      "breakdown": {
+        "signatures_bytes": 65,
+        "message_header_bytes": 3,
+        "account_keys_bytes": 289,
+        "recent_blockhash_bytes": 32,
+        "instructions_bytes": 39
+      }
+    },
+    {
+      "counterparties_k": 10,
+      "format": "Legacy (without ALTs)",
+      "signature_count": 1,
+      "unique_account_count": 19,
+      "wire_bytes": 758,
+      "mtu_limit_bytes": 1232,
+      "fits_mtu": true,
+      "serialized_status": "SUCCESS",
+      "serialization_error": null,
+      "breakdown": {
+        "signatures_bytes": 65,
+        "message_header_bytes": 3,
+        "account_keys_bytes": 609,
+        "recent_blockhash_bytes": 32,
+        "instructions_bytes": 49
+      }
+    },
+    {
+      "counterparties_k": 16,
+      "format": "Legacy (without ALTs)",
+      "signature_count": 1,
+      "unique_account_count": 25,
+      "wire_bytes": 956,
+      "mtu_limit_bytes": 1232,
+      "fits_mtu": true,
+      "serialized_status": "SUCCESS",
+      "serialization_error": null,
+      "breakdown": {
+        "signatures_bytes": 65,
+        "message_header_bytes": 3,
+        "account_keys_bytes": 801,
+        "recent_blockhash_bytes": 32,
+        "instructions_bytes": 55
+      }
+    },
+    {
+      "counterparties_k": 20,
+      "format": "Legacy (without ALTs)",
+      "signature_count": 1,
+      "unique_account_count": 29,
+      "wire_bytes": 1088,
+      "mtu_limit_bytes": 1232,
+      "fits_mtu": true,
+      "serialized_status": "SUCCESS",
+      "serialization_error": null,
+      "breakdown": {
+        "signatures_bytes": 65,
+        "message_header_bytes": 3,
+        "account_keys_bytes": 929,
+        "recent_blockhash_bytes": 32,
+        "instructions_bytes": 59
+      }
+    },
+    {
+      "counterparties_k": 23,
+      "format": "Legacy (without ALTs)",
+      "signature_count": 1,
+      "unique_account_count": 32,
+      "wire_bytes": 1187,
+      "mtu_limit_bytes": 1232,
+      "fits_mtu": true,
+      "serialized_status": "SUCCESS",
+      "serialization_error": null,
+      "breakdown": {
+        "signatures_bytes": 65,
+        "message_header_bytes": 3,
+        "account_keys_bytes": 1025,
+        "recent_blockhash_bytes": 32,
+        "instructions_bytes": 62
+      }
+    },
+    {
+      "counterparties_k": 24,
+      "format": "Legacy (without ALTs)",
+      "signature_count": 1,
+      "unique_account_count": 33,
+      "wire_bytes": 1220,
+      "mtu_limit_bytes": 1232,
+      "fits_mtu": true,
+      "serialized_status": "SUCCESS",
+      "serialization_error": null,
+      "breakdown": {
+        "signatures_bytes": 65,
+        "message_header_bytes": 3,
+        "account_keys_bytes": 1057,
+        "recent_blockhash_bytes": 32,
+        "instructions_bytes": 63
+      }
+    },
+    {
+      "counterparties_k": 32,
+      "format": "Legacy (without ALTs)",
+      "signature_count": 1,
+      "unique_account_count": 41,
+      "wire_bytes": 1484,
+      "mtu_limit_bytes": 1232,
+      "fits_mtu": false,
+      "serialized_status": "EXCEEDS_MTU_REJECTED",
+      "serialization_error": "Transaction too large: 1484 > 1232",
+      "breakdown": {
+        "signatures_bytes": 65,
+        "message_header_bytes": 3,
+        "account_keys_bytes": 1313,
+        "recent_blockhash_bytes": 32,
+        "instructions_bytes": 71
+      }
+    }
+  ],
+  "summary": {
+    "formula": "wire_bytes = 428 + 33 * K",
+    "safe_chunk_size": 16,
+    "safe_chunk_bytes": 956,
+    "hard_limit_max_k": 24,
+    "hard_limit_max_bytes": 1220,
+    "k_32_wire_bytes": 1484,
+    "verdict": "K=16 chunking safely guarantees transaction size (956 bytes) well below the 1232 MTU boundary."
+  }
+}

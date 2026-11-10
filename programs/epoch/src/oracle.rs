@@ -218,7 +218,9 @@ pub fn verify_price_update_strict_with_market(
     // Staleness check
     let age = current_timestamp.saturating_sub(parsed.publish_time);
     require!(
-        parsed.publish_time <= current_timestamp && age <= max_oracle_age_secs as i64,
+        parsed.publish_time > 0
+            && parsed.publish_time <= current_timestamp
+            && age <= max_oracle_age_secs as i64,
         EpochError::OracleStale
     );
 

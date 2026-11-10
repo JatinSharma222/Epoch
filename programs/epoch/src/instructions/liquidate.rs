@@ -843,7 +843,8 @@ mod tests {
             },
             bump: 255,
             _pad_bump: [0; 7],
-            _reserved: [0; 24],
+            last_oracle_timestamp: 1_000_000,
+            _reserved: [0; 16],
         }
     }
 
