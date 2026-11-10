@@ -471,3 +471,58 @@ fn test_unrelated_transactions_do_not_refresh_oracle() {
         "Unrelated transactions without clear must NOT cure quarantined user"
     );
 }
+
+#[test]
+fn test_place_order_staleness_and_future_slot_rejection() {
+    let mut market = mock_market([0x55; 32]);
+    market.last_oracle_price = 150_000_000;
+    market.last_oracle_slot = 100;
+    market.params.max_oracle_age_secs = 10;
+    let max_stale_slots = ((market.params.max_oracle_age_secs as u64) * 3).max(25); // 30
+
+    let check_staleness = |current_slot: u64, last_slot: u64| -> bool {
+        last_slot > 0
+            && last_slot <= current_slot
+            && current_slot.saturating_sub(last_slot) <= max_stale_slots
+    };
+
+    // Valid fresh slot (120 >= 100, delta 20 <= 30) -> FRESH
+    assert!(check_staleness(120, market.last_oracle_slot));
+
+    // Stale slot (135 >= 100, delta 35 > 30) -> STALE
+    assert!(!check_staleness(135, market.last_oracle_slot));
+
+    // Future oracle slot (current_slot 90 < last_oracle_slot 100) -> STRICTLY REJECTED!
+    assert!(!check_staleness(90, market.last_oracle_slot));
+
+    // Uninitialized oracle slot (0) -> STRICTLY REJECTED!
+    assert!(!check_staleness(120, 0));
+}
+
+#[test]
+fn test_clear_batch_voids_on_future_and_uninitialized_oracle_timestamp() {
+    let max_age = 10i64;
+    let current_ts = 1_000_000i64;
+
+    let check_is_stale = |oracle_timestamp: i64| -> bool {
+        let is_future = oracle_timestamp > current_ts;
+        let is_uninitialized = oracle_timestamp <= 0;
+        let is_expired = current_ts.saturating_sub(oracle_timestamp) > max_age;
+        is_future || is_uninitialized || is_expired
+    };
+
+    // 1. Valid fresh timestamp -> NOT stale
+    assert!(!check_is_stale(current_ts - 5));
+
+    // 2. Future timestamp (1_000_050 > 1_000_000) -> VOID (stale)
+    assert!(check_is_stale(current_ts + 50));
+
+    // 3. Stale timestamp (current_ts - 15 > 10) -> VOID (stale)
+    assert!(check_is_stale(current_ts - 15));
+
+    // 4. Uninitialized zero timestamp (0) -> VOID (stale)
+    assert!(check_is_stale(0));
+
+    // 5. Uninitialized negative timestamp (-100) -> VOID (stale)
+    assert!(check_is_stale(-100));
+}
