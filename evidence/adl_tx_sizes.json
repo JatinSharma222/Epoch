@@ -1,6 +1,6 @@
 {
   "title": "ADL Multi-Counterparty Transaction Size & MTU Analysis",
-  "timestamp": "2026-11-10T05:53:42.065Z",
+  "timestamp": "2026-11-10T12:33:29.949Z",
   "mtu_limit_bytes": 1232,
   "chunk_limit_k": 16,
   "hard_limit_k": 24,
