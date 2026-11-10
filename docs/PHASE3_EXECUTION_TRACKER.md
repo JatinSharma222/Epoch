@@ -55,7 +55,7 @@
 
 | Category | Suite / Target | Tests Passed | Status |
 |---|---|---|---|
-| Rust Unit & Integration | `cargo test --features devnet-faucet` | 74 / 74 (core) / 193 (all) | **PASSED** (100%) |
+| Rust Unit & Integration | `cargo test --features devnet-faucet` | 196 / 196 (with faucet) / 193 (default) | **PASSED** (100%) |
 | Differential Testing | `differential.rs` (10,000 batches) | 2 / 2 | **PASSED** (100%) |
 | Property Invariants S0..S4 | `property_invariants.rs` (I-1, I-4, I-11) | 5 / 5 | **PASSED** (100%) |
 | Oracle Freshness & Window Suite | `test_oracle_selection_and_staleness.rs` | 13 / 13 | **PASSED** (100%) |
@@ -63,5 +63,5 @@
 | Anchor Lifecycle Suite | `tests/epoch.ts` | 52 / 52 | **PASSED** (100%) |
 | Localnet Adversarial Exploits | `tests/exploits.ts` | 10 / 10 | **PASSED** (100%) |
 | Clippy Lints | `cargo clippy --workspace --all-targets -D warnings` | 0 warnings | **PASSED** (100%) |
-| Compute Unit Spike | 128 orders clearing | 37,203 CU | **PASSED** (< 600,000 CU) |
-| Total Tests Verified | Localnet test suite | **155 / 155** (core) | **100% CLEAN PASS** |
+| Compute Unit Spike | 128 orders clearing | 37,851 CU (peak) / 37,203 CU | **PASSED** (< 600,000 CU) |
+| Total Tests Verified | Localnet test suite | **155 / 155** (core Anchor+Keeper) | **100% CLEAN PASS** |
