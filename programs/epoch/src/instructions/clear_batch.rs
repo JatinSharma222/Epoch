@@ -143,9 +143,12 @@ pub fn handle_clear_batch(
     let conf_bps = (oracle_conf as u128 * 10_000) / oracle_price as u128;
     let is_wide_conf = conf_bps > max_conf_bps;
 
-    // c. Oracle stale: (current_time - oracle_timestamp) > max_oracle_age_secs
+    // c. Oracle stale or invalid: future timestamp, uninitialized timestamp, or age > max_oracle_age_secs
     let max_age = market.params.max_oracle_age_secs as i64;
-    let is_stale = current_ts > oracle_timestamp && (current_ts - oracle_timestamp) > max_age;
+    let is_future = oracle_timestamp > current_ts;
+    let is_uninitialized = oracle_timestamp <= 0;
+    let is_expired = current_ts.saturating_sub(oracle_timestamp) > max_age;
+    let is_stale = is_future || is_uninitialized || is_expired;
 
     if is_late || is_wide_conf || is_stale {
         batch.status = BatchStatus::VOID;

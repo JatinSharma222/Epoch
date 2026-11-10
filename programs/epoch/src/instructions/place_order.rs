@@ -159,6 +159,7 @@ pub fn handle_place_order(ctx: Context<PlaceOrder>, args: PlaceOrderArgs) -> Res
     let max_stale_slots = ((market.params.max_oracle_age_secs as u64) * 3).max(25);
     require!(
         market.last_oracle_slot > 0
+            && market.last_oracle_slot <= current_slot
             && current_slot.saturating_sub(market.last_oracle_slot) <= max_stale_slots,
         EpochError::OracleStale
     );

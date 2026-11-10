@@ -385,3 +385,89 @@ fn test_oracle_selection_dual_window_w20_and_w30() {
         "Posted at close + 35 must expire to VOID under W=30"
     );
 }
+
+#[test]
+#[cfg(not(feature = "authority-oracle"))]
+fn test_oracle_future_timestamp_strict_rejection() {
+    let feed_id = [0x55; 32];
+    let future_publish_time = 1_000_100; // 100 seconds in the future
+    let current_timestamp = 1_000_000;
+    let mut data = serialize_price_update(feed_id, 150_0000_0000, 1000, future_publish_time, 105, VerificationLevel::Full);
+    let mut lamports = 1_000_000;
+    let account_key = Pubkey::new_unique();
+
+    let account_info = AccountInfo::new(
+        &account_key,
+        false,
+        false,
+        &mut lamports,
+        &mut data,
+        &PYTH_RECEIVER_PROGRAM_ID,
+        false,
+        0,
+    );
+
+    // Strict verification must reject future publish_time
+    let res = verify_price_update_strict(&account_info, &feed_id, 10, 20, current_timestamp);
+    assert_eq!(res.unwrap_err(), error!(EpochError::OracleStale));
+}
+
+#[test]
+#[cfg(not(feature = "authority-oracle"))]
+fn test_oracle_uninitialized_zero_timestamp_rejection() {
+    let feed_id = [0x55; 32];
+    let zero_publish_time = 0; // Uninitialized
+    let current_timestamp = 1_000_000;
+    let mut data = serialize_price_update(feed_id, 150_0000_0000, 1000, zero_publish_time, 105, VerificationLevel::Full);
+    let mut lamports = 1_000_000;
+    let account_key = Pubkey::new_unique();
+
+    let account_info = AccountInfo::new(
+        &account_key,
+        false,
+        false,
+        &mut lamports,
+        &mut data,
+        &PYTH_RECEIVER_PROGRAM_ID,
+        false,
+        0,
+    );
+
+    // Strict verification must reject uninitialized publish_time (0)
+    let res = verify_price_update_strict(&account_info, &feed_id, 10, 20, current_timestamp);
+    assert_eq!(res.unwrap_err(), error!(EpochError::OracleStale));
+}
+
+#[test]
+fn test_unrelated_transactions_do_not_refresh_oracle() {
+    let mut market = mock_market([0x55; 32]);
+    let initial_slot = 100;
+    let initial_ts = 1_000_000;
+    market.last_oracle_slot = initial_slot;
+    market.last_oracle_timestamp = initial_ts;
+    market.last_oracle_price = 150_000_000;
+    market.params.max_oracle_age_secs = 10;
+
+    let max_stale_slots = ((market.params.max_oracle_age_secs as u64) * 3).max(25); // 30 slots
+
+    // Simulate 50 slots and 20 seconds passing with unrelated transactions (e.g. deposits, cancels)
+    let elapsed_slot = initial_slot + 50;
+    let elapsed_ts = initial_ts + 20;
+
+    // Verify market oracle cached fields remain unrefreshed
+    assert_eq!(market.last_oracle_slot, initial_slot);
+    assert_eq!(market.last_oracle_timestamp, initial_ts);
+
+    // 1. New order placement staleness check fails because slots elapsed without clearing
+    let is_slot_stale = elapsed_slot.saturating_sub(market.last_oracle_slot) > max_stale_slots;
+    assert!(is_slot_stale, "Elapsed slots without clearing must mark cached oracle stale");
+
+    // 2. Deposit curing check fails because both time and slots elapsed
+    let mut user = create_quarantined_user(15_000_000, 100);
+    apply_deposit_curing(&mut user, &market, elapsed_slot, elapsed_ts);
+    assert_ne!(
+        user.flags & UserFlags::LIQUIDATING,
+        0,
+        "Unrelated transactions without clear must NOT cure quarantined user"
+    );
+}
