@@ -278,27 +278,16 @@ export const OrderBook: React.FC<OrderBookProps> = ({
           </div>
 
           {/* Overlapping Batch Ladder */}
-          {totalBatchLots === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-content-muted space-y-2">
-              <div className="w-9 h-9 rounded-full bg-surface-card border border-line-default flex items-center justify-center text-trade-cyan">
-                <Layers className="w-4 h-4" />
+          <div className="flex-1 overflow-y-auto min-h-0 divide-y divide-white/[0.02]">
+            {totalBatchLots === 0 && (
+              <div className="py-1.5 px-3 text-center text-[10px] text-content-muted font-mono bg-surface-card/50 border-b border-line-subtle">
+                No orders in Batch #{currentBatchId} · Click price to trade
               </div>
-              <div className="text-content-primary font-semibold text-xs">
-                No orders in current batch
-              </div>
-              <p className="text-2xs text-content-muted max-w-[200px] leading-relaxed">
-                Batch #{currentBatchId} has no active orders. Place an order on the ticket to participate in the discrete clearing auction.
-              </p>
-              <span className="text-[9px] text-content-muted font-mono bg-surface-card px-2 py-0.5 rounded border border-line-subtle">
-                2-slot clearing window
-              </span>
-            </div>
-          ) : (
-            <div className="flex-1 overflow-y-auto min-h-0 divide-y divide-white/[0.02]">
-              {filteredTicks.map((row) => {
-                const isClearing = row.highlight.isClearingLine;
-                const bidStatus = row.highlight.bidStatus;
-                const askStatus = row.highlight.askStatus;
+            )}
+            {filteredTicks.map((row) => {
+              const isClearing = row.highlight.isClearingLine;
+              const bidStatus = row.highlight.bidStatus;
+              const askStatus = row.highlight.askStatus;
 
                 // Cumulative depth bar percentage
                 const bidPct = Math.min(100, Math.round((row.bidLots / maxDepthLots) * 100));
@@ -427,7 +416,6 @@ export const OrderBook: React.FC<OrderBookProps> = ({
                 );
               })}
             </div>
-          )}
 
           {/* Footer note: Clearing notation */}
           <div className="px-3 py-1.5 bg-surface-header border-t border-line-default text-[10px] text-content-muted flex items-center justify-between shrink-0">

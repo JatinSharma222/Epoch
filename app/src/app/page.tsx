@@ -760,54 +760,6 @@ export default function Home() {
         vaultInventoryNotice={vaultInventoryNotice}
       />
 
-      {/* 1.5 Mobile Sub-Header Route Switcher (< 768px) */}
-      <div className="md:hidden flex items-center justify-around bg-surface-header border-b border-line-default px-2 py-1 shrink-0 font-sans text-xs select-none">
-        <button
-          type="button"
-          onClick={() => setActiveTab("trade")}
-          className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-            activeTab === "trade"
-              ? "bg-surface-elevated text-trade-cyan font-semibold border border-trade-cyan/30 shadow-xs"
-              : "text-content-secondary hover:text-content-primary"
-          }`}
-        >
-          Trade
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab("batches")}
-          className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-            activeTab === "batches"
-              ? "bg-surface-elevated text-trade-cyan font-semibold border border-trade-cyan/30 shadow-xs"
-              : "text-content-secondary hover:text-content-primary"
-          }`}
-        >
-          Batches
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab("evidence")}
-          className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-            activeTab === "evidence"
-              ? "bg-surface-elevated text-trade-cyan font-semibold border border-trade-cyan/30 shadow-xs"
-              : "text-content-secondary hover:text-content-primary"
-          }`}
-        >
-          Evidence
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab("compare")}
-          className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-            activeTab === "compare"
-              ? "bg-surface-elevated text-trade-cyan font-semibold border border-trade-cyan/30 shadow-xs"
-              : "text-content-secondary hover:text-content-primary"
-          }`}
-        >
-          Compare
-        </button>
-      </div>
-
       {/* 2. Main Workspace Layout (Frozen if RPC outage per Guardrail G-09) */}
       <div
         className={`flex-1 flex overflow-hidden ${

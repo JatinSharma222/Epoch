@@ -91,60 +91,75 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Top Navigation Tabs */}
         {onSelectTab && (
-          <nav className="hidden md:flex items-center gap-0.5 sm:gap-1 shrink-0" aria-label="Main Navigation">
-            <button
-              type="button"
-              onClick={() => onSelectTab("trade")}
-              className={`px-2 sm:px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-                activeTab === "trade"
-                  ? "bg-surface-elevated text-trade-cyan font-semibold border border-trade-cyan/30 shadow-xs"
-                  : "text-content-secondary hover:text-content-primary hover:bg-surface-hover"
-              }`}
-            >
-              Trade
-            </button>
-            <button
-              type="button"
-              onClick={() => onSelectTab("batches")}
-              className={`px-2 sm:px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-                activeTab === "batches"
-                  ? "bg-surface-elevated text-trade-cyan font-semibold border border-trade-cyan/30 shadow-xs"
-                  : "text-content-secondary hover:text-content-primary hover:bg-surface-hover"
-              }`}
-            >
-              Batches
-            </button>
-            <button
-              type="button"
-              onClick={() => onSelectTab("evidence")}
-              className={`px-2 sm:px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-                activeTab === "evidence"
-                  ? "bg-surface-elevated text-trade-cyan font-semibold border border-trade-cyan/30 shadow-xs"
-                  : "text-content-secondary hover:text-content-primary hover:bg-surface-hover"
-              }`}
-            >
-              Evidence
-            </button>
-            <button
-              type="button"
-              onClick={() => onSelectTab("compare")}
-              className={`px-2 sm:px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-                activeTab === "compare"
-                  ? "bg-surface-elevated text-trade-cyan font-semibold border border-trade-cyan/30 shadow-xs"
-                  : "text-content-secondary hover:text-content-primary hover:bg-surface-hover"
-              }`}
-            >
-              Compare
-            </button>
-            <Link
-              href="/design-system"
-              target="_blank"
-              className="hidden 2xl:inline-block px-2 py-1 rounded text-xs text-content-muted hover:text-content-secondary transition-colors"
-              title="Open Design System Primitives Catalog"
-            >
-              Design
-            </Link>
-          </nav>
+          <>
+            <div className="md:hidden shrink-0">
+              <select
+                value={activeTab}
+                onChange={(e) => onSelectTab(e.target.value as any)}
+                className="bg-surface-card border border-line-default rounded px-1.5 py-0.5 text-xs font-semibold text-trade-cyan outline-none cursor-pointer"
+                aria-label="Navigate route"
+              >
+                <option value="trade">Trade</option>
+                <option value="batches">Batches</option>
+                <option value="evidence">Evidence</option>
+                <option value="compare">Compare</option>
+              </select>
+            </div>
+            <nav className="hidden md:flex items-center gap-0.5 sm:gap-1 shrink-0" aria-label="Main Navigation">
+              <button
+                type="button"
+                onClick={() => onSelectTab("trade")}
+                className={`px-2 sm:px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                  activeTab === "trade"
+                    ? "bg-surface-elevated text-trade-cyan font-semibold border border-trade-cyan/30 shadow-xs"
+                    : "text-content-secondary hover:text-content-primary hover:bg-surface-hover"
+                }`}
+              >
+                Trade
+              </button>
+              <button
+                type="button"
+                onClick={() => onSelectTab("batches")}
+                className={`px-2 sm:px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                  activeTab === "batches"
+                    ? "bg-surface-elevated text-trade-cyan font-semibold border border-trade-cyan/30 shadow-xs"
+                    : "text-content-secondary hover:text-content-primary hover:bg-surface-hover"
+                }`}
+              >
+                Batches
+              </button>
+              <button
+                type="button"
+                onClick={() => onSelectTab("evidence")}
+                className={`px-2 sm:px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                  activeTab === "evidence"
+                    ? "bg-surface-elevated text-trade-cyan font-semibold border border-trade-cyan/30 shadow-xs"
+                    : "text-content-secondary hover:text-content-primary hover:bg-surface-hover"
+                }`}
+              >
+                Evidence
+              </button>
+              <button
+                type="button"
+                onClick={() => onSelectTab("compare")}
+                className={`px-2 sm:px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                  activeTab === "compare"
+                    ? "bg-surface-elevated text-trade-cyan font-semibold border border-trade-cyan/30 shadow-xs"
+                    : "text-content-secondary hover:text-content-primary hover:bg-surface-hover"
+                }`}
+              >
+                Compare
+              </button>
+              <Link
+                href="/design-system"
+                target="_blank"
+                className="hidden 2xl:inline-block px-2 py-1 rounded text-xs text-content-muted hover:text-content-secondary transition-colors"
+                title="Open Design System Primitives Catalog"
+              >
+                Design
+              </Link>
+            </nav>
+          </>
         )}
 
         <div className="hidden lg:block w-px h-4 bg-line-default shrink-0" />

@@ -238,115 +238,120 @@ export const TradingChart: React.FC<TradingChartProps> = ({
 
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-surface-header border-r border-line-default overflow-hidden select-none font-sans">
-      {/* 1. Header Tabs & Price Reference Switcher */}
-      <div className="h-[36px] border-b border-line-default bg-surface-header flex items-center justify-between px-3 shrink-0">
-        <div className="flex items-center gap-1 text-xs">
-          <button
-            onClick={() => setChartMode("price")}
-            className={`px-2.5 py-1 rounded transition-colors ${
-              chartMode === "price"
-                ? "bg-surface-elevated font-semibold text-content-primary shadow-xs border border-line-subtle"
-                : "font-medium text-content-secondary hover:text-content-primary hover:bg-surface-hover"
-            }`}
-          >
-            Price
-          </button>
-          <button
-            onClick={() => setChartMode("batch_curve")}
-            className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1.5 ${
-              chartMode === "batch_curve"
-                ? "bg-surface-elevated font-semibold text-content-primary shadow-xs border border-line-subtle"
-                : "font-medium text-content-secondary hover:text-content-primary hover:bg-surface-hover"
-            }`}
-          >
-            <Zap className="w-3 h-3 text-trade-cyan" />
-            <span>Batch Curve</span>
-          </button>
-          <button
-            onClick={() => setChartMode("market_info")}
-            className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1.5 ${
-              chartMode === "market_info"
-                ? "bg-surface-elevated font-semibold text-content-primary shadow-xs border border-line-subtle"
-                : "font-medium text-content-secondary hover:text-content-primary hover:bg-surface-hover"
-            }`}
-          >
-            <Info className="w-3 h-3 text-trade-amber" />
-            <span>Market Info</span>
-          </button>
-        </div>
-
-        {/* Reference Switcher */}
-        <div className="flex items-center p-0.5 rounded bg-surface-card border border-line-default text-2xs font-mono">
-          <button
-            onClick={() => setPriceRef("last")}
-            className={`px-2 py-0.5 rounded transition-all ${
-              priceRef === "last"
-                ? "bg-surface-elevated font-semibold text-content-primary shadow-xs"
-                : "text-content-muted hover:text-content-primary"
-            }`}
-          >
-            Last Batch
-          </button>
-          <button
-            onClick={() => setPriceRef("oracle")}
-            className={`px-2 py-0.5 rounded transition-all ${
-              priceRef === "oracle"
-                ? "bg-surface-elevated font-semibold text-content-primary shadow-xs"
-                : "text-content-muted hover:text-content-primary"
-            }`}
-          >
-            Oracle
-          </button>
-        </div>
-      </div>
-
-      {/* 2. TradingView Toolbar Strip: Timeframes, SMA, Fullscreen */}
-      <div className="h-[30px] border-b border-line-default bg-surface-header flex items-center justify-between px-3 shrink-0 text-2xs text-content-secondary font-mono">
-        <div className="flex items-center gap-2">
-          {(["1m", "5m", "15m", "1h", "4h", "1D"] as const).map((tf) => (
+      {/* 1. Unified 36px TradingView Toolbar */}
+      <div className="h-[36px] border-b border-line-default bg-surface-header flex items-center justify-between px-3 shrink-0 text-xs">
+        {/* Left: Mode Tabs & Timeframes */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Mode Switcher */}
+          <div className="flex items-center p-0.5 rounded bg-surface-card border border-line-default text-2xs font-sans">
             <button
-              key={tf}
               type="button"
-              onClick={() => setTimeframe(tf)}
-              className={`px-1.5 py-0.5 rounded transition-colors ${
-                timeframe === tf
-                  ? "font-semibold text-content-primary bg-surface-elevated border border-line-subtle shadow-xs"
-                  : "text-content-muted hover:text-content-primary hover:bg-surface-hover"
+              onClick={() => setChartMode("price")}
+              className={`px-2 py-0.5 rounded transition-colors ${
+                chartMode === "price"
+                  ? "bg-surface-elevated font-semibold text-content-primary shadow-xs"
+                  : "text-content-muted hover:text-content-primary"
               }`}
             >
-              {tf}
+              Price
             </button>
-          ))}
+            <button
+              type="button"
+              onClick={() => setChartMode("batch_curve")}
+              className={`px-2 py-0.5 rounded transition-colors flex items-center gap-1 ${
+                chartMode === "batch_curve"
+                  ? "bg-surface-elevated font-semibold text-trade-cyan shadow-xs"
+                  : "text-content-muted hover:text-content-primary"
+              }`}
+              title="FBA Batch Crossing Curve"
+            >
+              <Zap className="w-3 h-3 text-trade-cyan" />
+              <span className="hidden sm:inline">Batch Curve</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setChartMode("market_info")}
+              className={`px-2 py-0.5 rounded transition-colors flex items-center gap-1 ${
+                chartMode === "market_info"
+                  ? "bg-surface-elevated font-semibold text-trade-amber shadow-xs"
+                  : "text-content-muted hover:text-content-primary"
+              }`}
+              title="Market Specifications & Parameters"
+            >
+              <Info className="w-3 h-3 text-trade-amber" />
+              <span className="hidden sm:inline">Info</span>
+            </button>
+          </div>
 
-          <div className="w-px h-3 bg-line-default mx-0.5" />
+          <div className="w-px h-3.5 bg-line-default mx-0.5 hidden xs:block" />
+
+          {/* Timeframes */}
+          <div className="hidden xs:flex items-center gap-1 text-2xs font-mono">
+            {(["1m", "5m", "15m", "1h", "4h", "1D"] as const).map((tf) => (
+              <button
+                key={tf}
+                type="button"
+                onClick={() => setTimeframe(tf)}
+                className={`px-1.5 py-0.5 rounded transition-colors ${
+                  timeframe === tf
+                    ? "font-semibold text-content-primary bg-surface-elevated border border-line-subtle shadow-xs"
+                    : "text-content-muted hover:text-content-primary hover:bg-surface-hover"
+                }`}
+              >
+                {tf}
+              </button>
+            ))}
+          </div>
 
           {/* SMA Toggle */}
           <button
             type="button"
             onClick={() => setShowSma(!showSma)}
-            className={`flex items-center gap-1 transition-colors px-1.5 py-0.5 rounded ${
+            className={`hidden sm:flex items-center gap-1 transition-colors px-1.5 py-0.5 rounded text-2xs font-mono ${
               showSma
                 ? "text-trade-cyan bg-trade-cyan/10 border border-trade-cyan/20"
                 : "text-content-muted hover:text-content-primary"
             }`}
-            title="Toggle SMA(10) indicator"
+            title="Toggle SMA(10) volume indicator"
           >
             <span className="italic font-bold text-xs">fx</span>
-            <span>SMA (10)</span>
+            <span>SMA</span>
           </button>
         </div>
 
-        {/* Live Status Indicators */}
-        <div className="flex items-center gap-3">
-          <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded bg-surface-card border border-line-default text-content-secondary tabular-nums font-mono text-2xs">
-            <Clock className="w-3 h-3 text-trade-cyan" />
-            <span>{utcTime || "00:00:00 UTC"}</span>
+        {/* Right: Reference pill, Status & Fullscreen */}
+        <div className="flex items-center gap-2 font-mono text-2xs">
+          {/* Reference Switcher */}
+          <div className="hidden sm:flex items-center p-0.5 rounded bg-surface-card border border-line-default text-[10px]">
+            <button
+              type="button"
+              onClick={() => setPriceRef("last")}
+              className={`px-1.5 py-0.5 rounded transition-all ${
+                priceRef === "last"
+                  ? "bg-surface-elevated font-semibold text-content-primary shadow-xs"
+                  : "text-content-muted hover:text-content-primary"
+              }`}
+            >
+              Last Batch
+            </button>
+            <button
+              type="button"
+              onClick={() => setPriceRef("oracle")}
+              className={`px-1.5 py-0.5 rounded transition-all ${
+                priceRef === "oracle"
+                  ? "bg-surface-elevated font-semibold text-content-primary shadow-xs"
+                  : "text-content-muted hover:text-content-primary"
+              }`}
+            >
+              Oracle
+            </button>
           </div>
 
           <span className="text-trade-emerald font-semibold flex items-center gap-1 text-2xs">
             <span className="w-1.5 h-1.5 rounded-full bg-trade-emerald animate-pulse" />
-            Pyth Live
+            <span className="hidden sm:inline">Pyth Live</span>
           </span>
+
           <button
             type="button"
             className="hover:text-content-primary transition-colors text-content-muted"
@@ -369,16 +374,16 @@ export const TradingChart: React.FC<TradingChartProps> = ({
         </div>
       </div>
 
-      {/* 3. Main Chart Canvas Area */}
+      {/* 2. Main Chart Canvas Area */}
       <div className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden bg-surface-header">
         {chartMode === "price" ? (
           <div className="w-full h-full flex flex-col min-h-0 relative select-none">
-            {/* Floating Candle Stats Strip */}
-            <div className="absolute top-2 left-3 z-10 flex flex-wrap items-center gap-x-3 text-2xs font-mono pointer-events-none">
+            {/* Floating Candle Stats Overlay (TradingView style) */}
+            <div className="absolute top-2 left-3 z-10 flex flex-wrap items-center gap-x-2.5 px-2 py-0.5 rounded bg-surface-header/80 backdrop-blur-xs border border-line-subtle text-2xs font-mono pointer-events-none">
               <span className="text-content-primary font-bold">
-                SOL-PERP · {timeframe} · Reference (Binance)
+                SOL-PERP · {timeframe}
               </span>
-              <span className="w-1.5 h-1.5 rounded-full bg-trade-emerald" />
+              <span className="w-1 h-1 rounded-full bg-trade-emerald" />
               <span className="text-content-muted">
                 O{" "}
                 <span className={activeCandle?.isGreen ? "text-trade-emerald" : "text-trade-coral"}>
@@ -413,17 +418,12 @@ export const TradingChart: React.FC<TradingChartProps> = ({
                 {activeCandle && activeCandle.close >= activeCandle.open ? "+" : ""}
                 {(activeCandle ? activeCandle.close - activeCandle.open : 0).toFixed(2)}
               </span>
-            </div>
-
-            {/* Volume SMA Label */}
-            {showSma && (
-              <div className="absolute top-7 left-3 z-10 flex items-center gap-1.5 font-mono text-2xs text-content-muted pointer-events-none">
-                <span>Volume SMA(10):</span>
-                <span className="text-trade-amber tabular-nums font-medium">
-                  {formatNumber(volumeSma, 2)}
+              {showSma && (
+                <span className="text-content-muted border-l border-line-subtle pl-2">
+                  SMA: <span className="text-trade-amber font-medium">{formatNumber(volumeSma, 2)}</span>
                 </span>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* SVG Candlestick & Volume Canvas */}
             <div className="flex-1 w-full h-full relative">
@@ -673,21 +673,6 @@ export const TradingChart: React.FC<TradingChartProps> = ({
                   </g>
                 )}
               </svg>
-            </div>
-
-            {/* Bottom Clean Status Strip */}
-            <div className="h-[26px] border-t border-line-default flex items-center justify-between px-3 text-2xs font-mono text-content-muted shrink-0 bg-surface-header">
-              <div className="flex items-center gap-2">
-                <span className="text-trade-cyan font-medium">K=101 Ticks</span>
-                <span className="text-line-strong">·</span>
-                <span>±50 bps around Pyth Oracle</span>
-                <span className="text-line-strong">·</span>
-                <span>1 bp Tick Spacing</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-trade-emerald animate-pulse" />
-                <span className="text-content-primary font-medium">Pyth Oracle Reference</span>
-              </div>
             </div>
           </div>
         ) : chartMode === "batch_curve" ? (

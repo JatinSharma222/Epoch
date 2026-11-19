@@ -225,11 +225,11 @@ describe("Milestone 2: Main Trading Terminal Architecture & Financial Invariants
     expect(asks.every((r) => r.askLots > 0 || r.offsetBps >= 0)).toBe(true);
   });
 
-  it("Milestone 3: Persists resizable ledger height preference in localStorage (clamped 160-450px)", () => {
-    const clampHeight = (val: number) => Math.min(450, Math.max(160, val));
+  it("Milestone 3: Persists resizable ledger height preference in localStorage (clamped 120-450px, default 160px)", () => {
+    const clampHeight = (val: number) => Math.min(450, Math.max(120, val));
 
     // Clamp boundary checks
-    expect(clampHeight(100)).toBe(160);
+    expect(clampHeight(100)).toBe(120);
     expect(clampHeight(500)).toBe(450);
     expect(clampHeight(280)).toBe(280);
 
@@ -240,16 +240,16 @@ describe("Milestone 2: Main Trading Terminal Architecture & Financial Invariants
     };
     const readHeight = () => {
       const saved = mockStorage["epoch_ledger_height"];
-      if (!saved) return 220;
+      if (!saved) return 160;
       const parsed = parseInt(saved, 10);
-      return isNaN(parsed) ? 220 : clampHeight(parsed);
+      return isNaN(parsed) ? 160 : clampHeight(parsed);
     };
 
-    expect(readHeight()).toBe(220); // Default
+    expect(readHeight()).toBe(160); // Default
     saveHeight(320);
     expect(readHeight()).toBe(320); // Saved
     saveHeight(80);
-    expect(readHeight()).toBe(160); // Clamped minimum
+    expect(readHeight()).toBe(120); // Clamped minimum
   });
 
   it("Milestone 3: Mobile order entry drawer supports preselected Buy/Long and Sell/Short while preserving all G-01..G-10 validations", () => {

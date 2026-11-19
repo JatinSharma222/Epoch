@@ -428,8 +428,8 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
       </div>
 
       {/* 2. Order Form */}
-      <form onSubmit={handleFormAction} className="p-3 space-y-3 flex-1 flex flex-col justify-between">
-        <div className="space-y-3">
+      <form onSubmit={handleFormAction} className="p-2.5 sm:p-3 space-y-2 flex-1 flex flex-col overflow-y-auto">
+        <div className="space-y-2">
           {/* Order Type Tabs (Limit vs Market) & Reduce-Only Toggle */}
           <div className="flex items-center justify-between">
             <div className="flex gap-2">
@@ -510,7 +510,7 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
               </div>
               {/* Crossing Warning & One-Click Fill Now */}
               {indicativePreview && !indicativePreview.isCrossing && (
-                <div className="p-2 rounded bg-trade-amber/10 border border-trade-amber/30 text-2xs text-trade-amber flex items-center justify-between gap-1.5">
+                <div className="p-1.5 rounded bg-trade-amber/10 border border-trade-amber/30 text-2xs text-trade-amber flex items-center justify-between gap-1.5">
                   <div className="flex items-start gap-1 flex-1">
                     <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                     <span>No crossing liquidity; will expire unfilled</span>
@@ -527,7 +527,7 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
             </div>
           ) : (
             /* Market Order Slippage & Clearing Label */
-            <div className="p-2.5 rounded bg-surface-card border border-line-default text-2xs space-y-1">
+            <div className="p-2 rounded bg-surface-card/60 text-2xs space-y-0.5">
               <div className="flex items-center justify-between">
                 <span className="text-content-primary font-semibold">
                   {indicativePreview.isPartial ? "Partial Fill Preview" : "Market Order"}
@@ -540,15 +540,14 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
                   {indicativePreview.indicativeText}
                 </span>
               </div>
-              <p className="text-[10px] text-content-muted leading-relaxed">
-                Uniform clearing price: all matched lots trade at single P* ($
-                {indicativePreview.price.toFixed(3)}), plus 5 bps fee.
+              <p className="text-[10px] text-content-muted leading-tight">
+                Uniform clearing price at P* (${indicativePreview.price.toFixed(3)}) + 5 bps fee.
               </p>
             </div>
           )}
 
           {/* Size Input in SOL */}
-          <div className="space-y-1">
+          <div className="space-y-0.5">
             <div className="flex justify-between text-2xs text-content-secondary">
               <span>Size (SOL)</span>
               <span className="text-content-primary tabular-nums font-mono">{lots} lots</span>
@@ -567,7 +566,7 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
           </div>
 
           {/* Slider */}
-          <div className="space-y-1 pt-0.5">
+          <div className="space-y-0.5 pt-0.5">
             <input
               type="range"
               min="1"
@@ -586,7 +585,7 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
           </div>
 
           {/* Lifetime Selector (1 to 4 batches) */}
-          <div className="space-y-1 pt-0.5">
+          <div className="space-y-0.5 pt-0.5">
             <div className="flex justify-between text-2xs text-content-secondary">
               <span className="flex items-center gap-1">
                 <Clock className="w-3 h-3 text-trade-cyan" />
@@ -604,7 +603,7 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
                   key={`life-${n}`}
                   type="button"
                   onClick={() => setLifetimeBatches(n)}
-                  className={`py-1 rounded text-2xs font-mono font-medium border transition-colors ${
+                  className={`py-0.5 rounded text-2xs font-mono font-medium border transition-colors ${
                     lifetimeBatches === n
                       ? "bg-trade-cyan/15 border-trade-cyan text-trade-cyan shadow-xs"
                       : "bg-surface-card border-line-default text-content-secondary hover:text-content-primary hover:border-line-strong"
@@ -629,7 +628,7 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
 
           {/* Validation Alert */}
           {validationError && (
-            <div className="p-2 rounded bg-trade-coral/10 border border-trade-coral/30 text-2xs text-trade-coral flex items-start gap-1.5">
+            <div className="p-1.5 rounded bg-trade-coral/10 border border-trade-coral/30 text-2xs text-trade-coral flex items-start gap-1.5">
               <ShieldAlert className="w-3.5 h-3.5 shrink-0 mt-0.5" />
               <span>{validationError}</span>
             </div>
@@ -637,7 +636,7 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
 
           {/* On-Chain Execution Failure Alert */}
           {orderError && (
-            <div className="p-2.5 rounded bg-trade-coral/15 border border-trade-coral/40 text-2xs text-trade-coral flex items-start justify-between gap-1.5 animate-scale-in">
+            <div className="p-2 rounded bg-trade-coral/15 border border-trade-coral/40 text-2xs text-trade-coral flex items-start justify-between gap-1.5 animate-scale-in">
               <div className="flex items-start gap-1.5">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-trade-coral" />
                 <span className="font-semibold leading-tight">{orderError}</span>
@@ -656,7 +655,7 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
           )}
 
           {/* Order Preview Card */}
-          <div className="p-2.5 rounded bg-surface-card border border-line-default space-y-1.5 text-2xs">
+          <div className="p-2 rounded bg-surface-card/60 space-y-1 text-2xs">
             <div className="flex justify-between text-content-secondary">
               <span>Estimated Notional</span>
               <span className="text-content-primary font-mono tabular-nums font-medium">
@@ -664,60 +663,36 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
               </span>
             </div>
             <div className="flex justify-between text-content-secondary">
-              <span>Estimated Fee (5 bps)</span>
+              <span>Req. Margin + Fee</span>
               <span className="text-content-primary font-mono tabular-nums font-medium">
-                ${estimatedFee.toFixed(3)}
+                ${(marginRequired + estimatedFee).toFixed(2)}
               </span>
             </div>
             <div className="flex justify-between text-content-secondary">
-              <span>Req. Margin + Slip</span>
-              <span className="text-content-primary font-mono tabular-nums font-medium">
-                ${marginRequired.toFixed(2)}
+              <span className="text-content-muted">Indicative Fill (Batch #{currentBatchId + 1})</span>
+              <span
+                className={`font-mono font-medium ${
+                  indicativePreview?.isCrossing ? "text-trade-cyan" : "text-trade-amber"
+                }`}
+              >
+                {indicativePreview?.willFill
+                  ? `${indicativePreview.fillPct}% (${((indicativePreview.fillLots ?? 0) * 0.001).toFixed(2)} SOL)`
+                  : "0% (unfilled)"}
               </span>
             </div>
-
-            {/* Est. Liquidation Price */}
-            <div className="flex justify-between text-content-secondary">
-              <span className="flex items-center gap-1">
-                Est. Liq Price
-                <Tooltip content="Estimated bankruptcy liquidation threshold (5% MMR)">
-                  <HelpCircle className="w-3 h-3 text-content-muted" />
-                </Tooltip>
-              </span>
-              {userPositionLots === 0 ? (
-                <span
-                  className="text-content-muted font-mono tabular-nums cursor-help"
-                  title="No open position. Liquidation price is established after a position is filled."
-                >
-                  —
-                </span>
-              ) : (
+            {userPositionLots !== 0 && (
+              <div className="flex justify-between text-content-secondary pt-0.5 border-t border-line-subtle">
+                <span>Est. Liq Price</span>
                 <span className="text-trade-amber font-mono tabular-nums font-semibold">
                   {estimatedLiqPrice !== "—" ? `$${estimatedLiqPrice}` : "—"}
                 </span>
-              )}
-            </div>
-
-            {/* Indicative Fill Preview */}
-            <div className="pt-1.5 mt-1 border-t border-line-default text-[10px] flex items-center justify-between">
-              <span className="text-content-muted">Indicative Fill (Batch #{currentBatchId + 1})</span>
-              <div className="flex items-center gap-1.5">
-                <span
-                  className={`font-mono font-medium ${
-                    indicativePreview?.isCrossing ? "text-trade-cyan" : "text-trade-amber"
-                  }`}
-                >
-                  {indicativePreview?.willFill
-                    ? `${indicativePreview.fillPct}% (${((indicativePreview.fillLots ?? 0) * 0.001).toFixed(2)} SOL)`
-                    : "0% (unfilled)"}
-                </span>
               </div>
-            </div>
+            )}
           </div>
         </div>
 
         {/* Primary Action Button */}
-        <div className="pt-2">
+        <div className="pt-1.5 shrink-0">
           <Button
             type="submit"
             variant={buttonConfig.variant}
@@ -728,7 +703,7 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
           >
             {buttonConfig.text}
           </Button>
-          <p className="text-center text-[10px] text-content-muted mt-1.5">
+          <p className="text-center text-[10px] text-content-muted mt-1">
             Executes at the next batch close (~0.48 s)
           </p>
         </div>
