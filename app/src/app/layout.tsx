@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { WalletContextProvider } from "../components/WalletContextProvider";
+import { ToastProvider } from "../components/ui/Toast";
 import "./globals.css";
 
 const inter = Inter({
@@ -30,8 +31,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`dark ${inter.variable} ${jetbrainsMono.variable}`}>
-      <body className="bg-[#0B0E11] text-[#B7BDC6] font-sans antialiased">
-        <WalletContextProvider>{children}</WalletContextProvider>
+      <body className="bg-surface-canvas text-content-secondary font-sans antialiased">
+        <WalletContextProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </WalletContextProvider>
       </body>
     </html>
   );

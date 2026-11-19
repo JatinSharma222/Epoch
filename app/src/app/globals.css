@@ -4,59 +4,97 @@
 
 @layer base {
   :root {
-    /* Surface layers (darkest to lightest) */
-    --bg-base: #0B0E11;
-    --bg-panel: #0E1217;
-    --bg-surface: #12161C;
-    --bg-elevated: #181D24;
-    --bg-hover: #1F2633;
-    --bg-overlay: #272A2E;
+    /* === Canonical Epoch Design System Tokens === */
     
-    /* Borders */
-    --border-default: rgba(255, 255, 255, 0.06);
+    /* Surfaces: Charcoal & Deep Navy */
+    --surface-canvas: #07090E;
+    --surface-panel: #0B0F17;
+    --surface-card: #111622;
+    --surface-elevated: #161D2B;
+    --surface-hover: #1D2638;
+    --surface-active: #243046;
+    
+    /* Borders: Layered micro-borders */
     --border-subtle: rgba(255, 255, 255, 0.04);
-    --border-strong: rgba(255, 255, 255, 0.12);
+    --border-default: #1A2232;
+    --border-strong: #2A374E;
+    --border-focus: #00D8F6;
     
-    /* Text */
-    --text-primary: #FFFFFF;
-    --text-secondary: #B7BDC6;
-    --text-muted: #848E9C;
-    --text-disabled: #4B5563;
+    /* Typography */
+    --text-primary: #F8FAFC;
+    --text-secondary: #94A3B8;
+    --text-muted: #64748B;
+    --text-disabled: #334155;
     
-    /* Semantic: Trading */
-    --green: #00C087;
-    --green-hover: #00A372;
-    --green-bg: rgba(0, 192, 135, 0.12);
-    --green-text: #0ECB81;
-    --red: #F23645;
-    --red-hover: #D92D3B;
-    --red-bg: rgba(242, 54, 69, 0.12);
-    --red-text: #F6465D;
+    /* Semantic Trading Colors */
+    --color-emerald: #10B981;
+    --color-emerald-hover: #059669;
+    --color-emerald-bg: rgba(16, 185, 129, 0.08);
+    --color-emerald-border: rgba(16, 185, 129, 0.25);
     
-    /* Brand */
-    --brand: #E54040;
-    --brand-hover: #D03838;
-    --accent: #00F0FF;
-    --amber: #EAB308;
-    --sol: #9945FF;
+    --color-coral: #F43F5E;
+    --color-coral-hover: #E11D48;
+    --color-coral-bg: rgba(244, 63, 94, 0.08);
+    --color-coral-border: rgba(244, 63, 94, 0.25);
     
-    /* Shadows */
-    --shadow-popup: 0 8px 24px rgba(0, 0, 0, 0.60);
+    --color-cyan: #00D8F6;
+    --color-cyan-hover: #00B4D8;
+    --color-cyan-bg: rgba(0, 216, 246, 0.10);
+    --color-cyan-border: rgba(0, 216, 246, 0.25);
+    
+    --color-amber: #F59E0B;
+    --color-amber-hover: #D97706;
+    --color-amber-bg: rgba(245, 158, 11, 0.10);
+    --color-amber-border: rgba(245, 158, 11, 0.25);
     
     /* Radii */
-    --radius-sm: 2px;
-    --radius-default: 4px;
+    --radius-xs: 2px;
+    --radius-sm: 4px;
     --radius-md: 6px;
     --radius-lg: 8px;
     --radius-pill: 9999px;
+    
+    /* Shadows */
+    --shadow-dropdown: 0 4px 20px rgba(0, 0, 0, 0.45);
+    --shadow-modal: 0 16px 48px rgba(0, 0, 0, 0.65);
+    --shadow-glow-cyan: 0 0 12px rgba(0, 216, 246, 0.25);
+    --shadow-glow-emerald: 0 0 12px rgba(16, 185, 129, 0.25);
+    --shadow-glow-coral: 0 0 12px rgba(244, 63, 94, 0.25);
+
+    /* === Backward Compatibility Aliases for Existing Components === */
+    --bg-base: var(--surface-canvas);
+    --bg-panel: var(--surface-panel);
+    --bg-surface: var(--surface-card);
+    --bg-elevated: var(--surface-elevated);
+    --bg-hover: var(--surface-hover);
+    --bg-overlay: var(--surface-active);
+    
+    --green: var(--color-emerald);
+    --green-hover: var(--color-emerald-hover);
+    --green-bg: var(--color-emerald-bg);
+    --green-text: var(--color-emerald);
+    
+    --red: var(--color-coral);
+    --red-hover: var(--color-coral-hover);
+    --red-bg: var(--color-coral-bg);
+    --red-text: var(--color-coral);
+    
+    --brand: var(--color-coral);
+    --brand-hover: var(--color-coral-hover);
+    --accent: var(--color-cyan);
+    --amber: var(--color-amber);
+    --sol: #9945FF;
+    
+    --shadow-popup: var(--shadow-dropdown);
+    --radius-default: var(--radius-sm);
   }
 
   html, body {
     margin: 0;
     padding: 0;
-    background-color: var(--bg-base);
+    background-color: var(--surface-canvas);
     color: var(--text-secondary);
-    font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: var(--font-inter), 'Inter', 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     overflow: hidden;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -97,7 +135,7 @@
   }
   input[type='range']::-webkit-slider-runnable-track {
     height: 3px;
-    background: var(--bg-elevated);
+    background: var(--surface-elevated);
     border-radius: 2px;
   }
   input[type='range']::-webkit-slider-thumb {
@@ -106,7 +144,7 @@
     height: 12px;
     border-radius: 50%;
     background: var(--text-primary);
-    border: 2px solid var(--bg-panel);
+    border: 2px solid var(--surface-panel);
     margin-top: -4.5px;
     transition: transform 0.1s ease;
   }
@@ -115,7 +153,7 @@
   }
   input[type='range']::-moz-range-track {
     height: 3px;
-    background: var(--bg-elevated);
+    background: var(--surface-elevated);
     border-radius: 2px;
     border: none;
   }
@@ -124,7 +162,7 @@
     height: 12px;
     border-radius: 50%;
     background: var(--text-primary);
-    border: 2px solid var(--bg-panel);
+    border: 2px solid var(--surface-panel);
     cursor: pointer;
   }
 
@@ -135,8 +173,8 @@
     width: 13px;
     height: 13px;
     border: 1px solid var(--border-default);
-    border-radius: var(--radius-sm);
-    background: var(--bg-surface);
+    border-radius: var(--radius-xs);
+    background: var(--surface-card);
     cursor: pointer;
     position: relative;
     flex-shrink: 0;
@@ -152,17 +190,17 @@
     top: 1px;
     width: 5px;
     height: 8px;
-    border: solid var(--bg-base);
+    border: solid var(--surface-canvas);
     border-width: 0 1.5px 1.5px 0;
     transform: rotate(45deg);
   }
   input[type='checkbox']:focus-visible {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--color-cyan);
     outline-offset: 1px;
   }
 }
 
-/* Utility classes for borders */
+/* Institutional Border Utility Classes */
 .bp-border {
   border-color: var(--border-default);
 }
@@ -173,46 +211,52 @@
   border-color: var(--border-strong);
 }
 
-/* Tabular numbers for financial data */
+/* Tabular numbers for financial precision */
 .tabular-nums {
   font-variant-numeric: tabular-nums;
 }
 
-/* Focus ring utility */
+/* Institutional Focus Ring Utility */
 .focus-ring:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--color-cyan);
   outline-offset: 1px;
 }
 
-/* Wallet adapter overrides to match dark theme */
+/* Wallet adapter overrides to match deep navy/charcoal dark theme */
 .wallet-adapter-button {
-  background-color: #ffffff !important;
-  color: #000000 !important;
+  background-color: var(--text-primary) !important;
+  color: #07090E !important;
   font-family: inherit !important;
   font-size: 12px !important;
   font-weight: 600 !important;
   height: 30px !important;
   padding: 0 12px !important;
-  border-radius: var(--radius-default) !important;
+  border-radius: var(--radius-sm) !important;
   transition: all 0.15s ease !important;
 }
 .wallet-adapter-button:hover {
-  background-color: #e1e4ea !important;
+  background-color: #E2E8F0 !important;
 }
 .wallet-adapter-button-trigger {
-  background-color: #ffffff !important;
+  background-color: var(--text-primary) !important;
 }
 .wallet-adapter-modal-wrapper {
-  background-color: var(--bg-panel) !important;
+  background-color: var(--surface-panel) !important;
   border: 1px solid var(--border-strong) !important;
-  box-shadow: var(--shadow-popup) !important;
+  box-shadow: var(--shadow-modal) !important;
+  border-radius: var(--radius-lg) !important;
 }
 .wallet-adapter-modal-title {
   color: var(--text-primary) !important;
+  font-family: var(--font-inter), sans-serif !important;
+  font-weight: 600 !important;
 }
 .wallet-adapter-modal-list li {
-  background-color: var(--bg-surface) !important;
+  background-color: var(--surface-card) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: var(--radius-md) !important;
 }
 .wallet-adapter-modal-list li:hover {
-  background-color: var(--bg-elevated) !important;
+  background-color: var(--surface-hover) !important;
+  border-color: var(--border-default) !important;
 }
