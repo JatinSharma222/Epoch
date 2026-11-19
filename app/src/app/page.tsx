@@ -28,6 +28,7 @@ import { DepositWithdrawModal } from "../components/DepositWithdrawModal";
 import { ReferencePriceStrip } from "../components/ReferencePriceStrip";
 import { fetchSolStats, fetchLiveDepth, MarketStats, BookRow } from "../lib/marketData";
 import { parseOrderError } from "../lib/errors";
+import { computeLiquidationPrice } from "../lib/clearingEngine";
 
 export default function Home() {
   const { connection } = useConnection();
@@ -362,14 +363,22 @@ export default function Home() {
             setQuotePosition(userAcc.quotePosition.toNumber() / 1_000_000);
             const basePos = userAcc.basePosition.toNumber();
             if (basePos !== 0) {
+              const collateralMicro = userAcc.collateral.toNumber();
+              const quotePosMicro = userAcc.quotePosition.toNumber();
+              const liqPriceMicro = computeLiquidationPrice(collateralMicro, quotePosMicro, basePos, 0, 500);
+              const currentMark = markPrice || 119.80;
+              const notionalUsd = (Math.abs(basePos) * 0.001) * currentMark;
+              const equityUsd = (collateralMicro + quotePosMicro) / 1_000_000;
+              const marginRatio = notionalUsd > 0 ? equityUsd / notionalUsd : 0;
+
               setPosition({
                 market: "SOL-PERP",
                 sizeLots: basePos,
-                entryPrice: markPrice || 119.80,
-                markPrice: markPrice || 119.80,
+                entryPrice: currentMark,
+                markPrice: currentMark,
                 unrealizedPnl: 0,
-                marginRatio: 10.0,
-                liqPrice: (markPrice || 119.80) * 0.8,
+                marginRatio,
+                liqPrice: liqPriceMicro > 0 ? liqPriceMicro / 1_000_000 : 0,
               });
             } else {
               setPosition(null);
@@ -448,7 +457,7 @@ export default function Home() {
     }
   };
 
-  // Disconnect handler to purge all account state (UX-18)
+  // Disconnect handler to purge all account state (UX-18 & Guardrail G-10)
   const handleDisconnectPurge = () => {
     setSolBalance(null);
     setCollateral(0);
@@ -457,7 +466,14 @@ export default function Home() {
     setActiveOrders([]);
   };
 
-  // Order Placement Handler (09-UX_SPEC.md §4 & §5)
+  // Guardrail G-10: Reactively purge private account state when wallet disconnects
+  useEffect(() => {
+    if (!connected || !publicKey) {
+      handleDisconnectPurge();
+    }
+  }, [connected, publicKey]);
+
+  // Order Placement Handler (09-UX_SPEC.md §4 & §5 & Guardrails G-01..G-06)
   const handlePlaceOrder = async ({
     side,
     price,
@@ -478,6 +494,19 @@ export default function Home() {
     const numBatches = Math.max(1, Math.min(4, lifetimeBatches || 1));
     const tick = Math.max(0, Math.min(100, 50 + offsetBps));
 
+    // Guardrail G-03: Dynamic user slot allocation (0..7, never hardcode slotId: 0)
+    const usedSlots = new Set(activeOrders.map((o) => o.slotId));
+    const allocatedSlots: number[] = [];
+    for (let s = 0; s < 8; s++) {
+      if (!usedSlots.has(s)) {
+        allocatedSlots.push(s);
+        if (allocatedSlots.length === numBatches) break;
+      }
+    }
+    while (allocatedSlots.length < numBatches) {
+      allocatedSlots.push((activeOrders.length + allocatedSlots.length) % 8);
+    }
+
     // 1. Attempt on-chain transactions across targeted batches if wallet connected
     const program = getAnchorProgram();
     if (program && publicKey) {
@@ -489,12 +518,13 @@ export default function Home() {
           const targetBatch = currentBatchId + i;
           const ringIndex = targetBatch % 8;
           const [batchPda] = getBatchPda(ringIndex);
+          const userSlotId = allocatedSlots[i];
 
           await program.methods
             .placeOrder({
               targetBatch: new BN(targetBatch),
               ringIndex,
-              slotId: 0,
+              slotId: userSlotId,
               side: side === "BUY" ? 0 : 1,
               tick,
               lots: new BN(lots),
@@ -513,6 +543,7 @@ export default function Home() {
         console.warn("On-chain place_order failed:", friendlyMsg, err);
         setOrderError(friendlyMsg);
         setIsPlacingOrder(false);
+        // Guardrail G-01: Return early on on-chain failure; zero simulated balance mutation
         return;
       }
     } else {
@@ -547,7 +578,7 @@ export default function Home() {
     for (let i = 0; i < numBatches; i++) {
       newOrders.push({
         batchId: currentBatchId + i,
-        slotId: activeOrders.length + i,
+        slotId: allocatedSlots[i],
         side,
         tickOffset: offsetBps,
         lots,
@@ -591,7 +622,7 @@ export default function Home() {
     );
   };
 
-  // Faucet Request Handler
+  // Faucet Request Handler (Guardrail G-01 compliant)
   const handleRequestFaucet = async (amountUsd: number) => {
     const program = getAnchorProgram();
     if (program && publicKey) {
@@ -607,16 +638,19 @@ export default function Home() {
             user: publicKey,
           })
           .rpc();
+        setCollateral((prev) => prev + amountUsd);
       } catch (err) {
-        console.warn("On-chain faucet fell back to simulated local state:", err);
+        console.warn("On-chain faucet failed:", err);
+        // Guardrail G-01: No simulated balance mutation on failure!
+        return;
       }
     } else {
       await new Promise((res) => setTimeout(res, 600));
+      setCollateral((prev) => prev + amountUsd);
     }
-    setCollateral((prev) => prev + amountUsd);
   };
 
-  // Deposit Handler
+  // Deposit Handler (Guardrail G-01 compliant)
   const handleDeposit = async (amountUsd: number) => {
     const program = getAnchorProgram();
     if (program && publicKey) {
@@ -634,16 +668,19 @@ export default function Home() {
             vault: vaultPda,
           })
           .rpc();
+        setCollateral((prev) => prev + amountUsd);
       } catch (err) {
-        console.warn("On-chain deposit fell back to simulated local state:", err);
+        console.warn("On-chain deposit failed:", err);
+        // Guardrail G-01: No simulated balance mutation on failure!
+        return;
       }
     } else {
       await new Promise((res) => setTimeout(res, 500));
+      setCollateral((prev) => prev + amountUsd);
     }
-    setCollateral((prev) => prev + amountUsd);
   };
 
-  // Withdraw Handler
+  // Withdraw Handler (Guardrail G-01 compliant)
   const handleWithdraw = async (amountUsd: number) => {
     const program = getAnchorProgram();
     if (program && publicKey) {
@@ -663,13 +700,16 @@ export default function Home() {
             vaultAuthority: vaultAuthorityPda,
           })
           .rpc();
+        setCollateral((prev) => Math.max(0, prev - amountUsd));
       } catch (err) {
-        console.warn("On-chain withdraw fell back to simulated local state:", err);
+        console.warn("On-chain withdraw failed:", err);
+        // Guardrail G-01: No simulated balance mutation on failure!
+        return;
       }
     } else {
       await new Promise((res) => setTimeout(res, 500));
+      setCollateral((prev) => Math.max(0, prev - amountUsd));
     }
-    setCollateral((prev) => Math.max(0, prev - amountUsd));
   };
 
   // 09 §3.5 rule 6: Header stats are Epoch's own on-chain data
@@ -680,11 +720,11 @@ export default function Home() {
   const epochOpenInterestSol = position ? Math.abs(position.sizeLots * 0.001) : 0;
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-[#0b0e11] text-[#f0f3f6]">
-      {/* 0. Top Scrolling Reference Prices Strip (09 §3.4 & B.1) */}
+    <div className="h-screen flex flex-col overflow-hidden bg-surface-canvas text-content-primary">
+      {/* 0. Top Scrolling Reference Prices Strip */}
       <ReferencePriceStrip />
 
-      {/* 1. Top Header Navigation (09 §3.5: One line, single status pill, no search bar, Epoch stats) */}
+      {/* 1. Institutional Top Header Navigation with System Status Center */}
       <Header
         currentSlot={currentSlot}
         currentBatchId={currentBatchId}
@@ -699,57 +739,24 @@ export default function Home() {
         onDisconnect={handleDisconnectPurge}
         isKeeperOffline={isKeeperOffline}
         lastClearedAgeSec={lastClearedAgeSec}
+        activeTab={activeTab}
+        onSelectTab={setActiveTab}
+        isDevnetOutage={isDevnetOutage}
+        vaultInventoryNotice={vaultInventoryNotice}
       />
 
-      {/* Keeper Offline Emergency Warning Banner (Item 7: age > 15s) */}
-      {isKeeperOffline && (
-        <div className="bg-[#F23645]/15 border-b border-[#F23645]/40 text-[#F6465D] px-4 py-1.5 text-xs flex items-center justify-between font-mono shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[#F6465D] animate-ping shrink-0" />
-            <span className="font-semibold uppercase tracking-wider">Keeper Offline:</span>
-            <span>Last batch cleared {lastClearedAgeSec}s ago (&gt;15s threshold). Automated clearing and user settlements are delayed.</span>
-          </div>
-          <span className="hidden sm:inline text-[11px] text-[#848E9C]">Target batch duration: 2 slots (~477ms [MEASURED: 239ms/slot])</span>
-        </div>
-      )}
-
-      {/* Devnet Outage Warning Banner (09 §3.5 rule 14: No simulated data on RPC failure) */}
-      {isDevnetOutage && (
-        <div className="bg-[#EAB308]/15 border-b border-[#EAB308]/40 text-[#EAB308] px-4 py-1.5 text-xs flex items-center justify-between font-mono shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[#EAB308] animate-ping shrink-0" />
-            <span className="font-semibold uppercase tracking-wider">DEVNET RPC OUTAGE:</span>
-            <span>Solana Devnet RPC cluster is unreachable. Live widgets are frozen.</span>
-          </div>
-          <span className="hidden sm:inline text-[11px] text-[#848E9C]">Reconnecting...</span>
-        </div>
-      )}
-
-      {/* Vault Inventory Alert Banner (Round 11 Requirement 2) */}
-      {vaultInventoryNotice && (
-        <div className="bg-[#EAB308]/15 border-b border-[#EAB308]/40 text-[#EAB308] px-4 py-1.5 text-xs flex items-center justify-between font-mono shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[#EAB308] animate-ping shrink-0" />
-            <span className="font-semibold uppercase tracking-wider">Vault Inventory Warning:</span>
-            <span>{vaultInventoryNotice}</span>
-          </div>
-          <span className="hidden sm:inline text-[11px] text-[#848E9C]">Run bun run scripts/rebalance_vault.ts</span>
-        </div>
-      )}
-
-      {/* 2. Main Workspace Layout (Frozen/greyed if RPC outage) */}
-      <div className={`flex-1 flex overflow-hidden ${isDevnetOutage ? "opacity-60 pointer-events-none filter grayscale-[30%]" : ""}`}>
-        {/* Left Sidebar (09 §3.5 rule 8: Home removed, icon-only default below 1440px) */}
-        <Sidebar
-          activeTab={activeTab}
-          onSelectTab={setActiveTab}
-        />
-
+      {/* 2. Main Workspace Layout (Frozen if RPC outage per Guardrail G-09) */}
+      <div
+        className={`flex-1 flex overflow-hidden ${
+          isDevnetOutage ? "opacity-60 pointer-events-none filter grayscale-[30%]" : ""
+        }`}
+      >
         {/* Dynamic Center Viewport */}
         {activeTab === "trade" && (
-          <div className="flex-1 flex flex-col min-w-0 bg-[#0b0e11] overflow-hidden">
+          <div className="flex-1 flex flex-col min-w-0 bg-surface-canvas overflow-hidden">
+            {/* Top Workspace: Chart + Order Book + Order Ticket */}
             <div className="flex-1 flex min-h-0 overflow-hidden">
-              {/* Candlestick TradingView Chart with Price, Batch curve, and Market info tabs */}
+              {/* Candlestick TradingView Chart */}
               <TradingChart
                 markPrice={markPrice}
                 batchId={currentBatchId}
@@ -757,9 +764,10 @@ export default function Home() {
                 askQty={askQty}
                 stats={marketStats}
                 onSelectPrice={setSelectedPrice}
+                recentClearingPrice={recentBatches[0]?.clearingPrice}
               />
 
-              {/* Order Book Micro-Ladder & Trades with live depth */}
+              {/* Order Book Micro-Ladder & Depth */}
               <OrderBook
                 currentBatchId={currentBatchId}
                 oraclePrice={markPrice}
@@ -790,7 +798,7 @@ export default function Home() {
               />
             </div>
 
-            {/* Bottom Docking Ledger (Balances, Positions, Open Orders, FBA Log) */}
+            {/* Bottom Docking Ledger (Positions, Open Orders, Balances, Clearance) */}
             <BottomLedger
               collateral={collateral}
               quotePosition={quotePosition}
@@ -801,6 +809,17 @@ export default function Home() {
               onOpenWithdraw={() => setDepositWithdrawModal({ isOpen: true, mode: "withdraw" })}
               onOpenFaucet={() => setIsFaucetOpen(true)}
               onCancelOrder={handleCancelOrder}
+              onMarketClosePosition={() => {
+                if (!position || position.sizeLots === 0) return;
+                handlePlaceOrder({
+                  side: position.sizeLots > 0 ? "SELL" : "BUY",
+                  price: markPrice,
+                  lots: Math.abs(position.sizeLots),
+                  offsetBps: position.sizeLots > 0 ? -50 : 50,
+                  lifetimeBatches: 1,
+                  reduceOnly: true,
+                });
+              }}
             />
           </div>
         )}

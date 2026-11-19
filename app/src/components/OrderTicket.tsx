@@ -3,15 +3,19 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
-import { Loader2, AlertCircle, ShieldAlert, Clock } from "lucide-react";
+import { AlertCircle, ShieldAlert, Clock, HelpCircle, X } from "lucide-react";
 import {
   clear,
   clearingPrice,
   priceToOffset,
   computeLiquidationPrice,
 } from "../lib/clearingEngine";
+import { Button } from "./ui/Button";
+import { Input } from "./ui/Input";
+import { Tooltip } from "./ui/Tooltip";
+import { Badge } from "./ui/Badge";
 
-interface OrderTicketProps {
+export interface OrderTicketProps {
   currentBatchId: number;
   oraclePrice: number;
   availableEquity: number;
@@ -55,7 +59,7 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
   const [orderType, setOrderType] = useState<"market" | "limit">("market");
   const [userEditedPrice, setUserEditedPrice] = useState<boolean>(false);
 
-  // 09 §3.5 rule 10: limit price defaults to current oracle price (rounded to price tick) with no error on load
+  // Limit price defaults to current oracle price with 2 decimal places
   const [priceStr, setPriceStr] = useState<string>(
     selectedPrice ? selectedPrice.toFixed(2) : oraclePrice ? oraclePrice.toFixed(2) : "119.60"
   );
@@ -71,7 +75,7 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
     }
   }, [oraclePrice, userEditedPrice]);
 
-  // Sync selected price when clicked from ladder
+  // Sync selected price when clicked from book or chart
   useEffect(() => {
     if (selectedPrice && selectedPrice > 0) {
       setPriceStr(selectedPrice.toFixed(2));
@@ -81,10 +85,11 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
 
   const numPrice = orderType === "market" ? oraclePrice : parseFloat(priceStr) || oraclePrice;
   const numQty = parseFloat(qtySol) || 0;
+  // Guardrail G-05: 1 lot = 0.001 SOL
   const lots = Math.max(1, Math.round(numQty * 1000));
   const notionalUsd = numPrice * numQty;
 
-  // 09 §4.2 & D.1: Price-to-offset conversion
+  // Price-to-offset conversion
   const offsetInfo = useMemo(() => {
     if (orderType === "market") {
       const edge = side === "BUY" ? 50 : -50;
@@ -94,8 +99,7 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
     return priceToOffset(numPrice, oraclePrice, 1, 50);
   }, [numPrice, oraclePrice, orderType, side]);
 
-  // Client-side indicative clearing preview (09 §4.1 & Round 10 Item 1)
-  // Uses shared clearing algorithm to calculate single uniform clearing price P* for entered size
+  // Client-side indicative clearing preview
   const indicativePreview = useMemo(() => {
     const simBids = [...(bidQty.length === 101 ? bidQty : new Array(101).fill(0))];
     const simAsks = [...(askQty.length === 101 ? askQty : new Array(101).fill(0))];
@@ -138,8 +142,9 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
         price: oraclePrice,
         offsetBps: 0,
         indicativeText: "No crossing liquidity",
-        reason: "No crossing liquidity at this price, your order will expire unfilled",
+        reason: "No crossing liquidity at this price, order will expire unfilled",
         isCrossing: false,
+        isPartial: false,
       };
     }
 
@@ -158,9 +163,9 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
     const filledSol = (res.matched * 0.001).toFixed(1);
     const requestedSol = numQty.toFixed(1);
     const partialText = `fills ${filledSol} of ${requestedSol} SOL`;
-    const fullText = `Indicative price: oracle ${offsetStr} bps for ${numQty.toFixed(2)} SOL`;
+    const fullText = `Indicative: oracle ${offsetStr} bps for ${numQty.toFixed(2)} SOL`;
     const indicativeText = isPartial
-      ? `Indicative price: oracle ${offsetStr} bps (${partialText})`
+      ? `Indicative: oracle ${offsetStr} bps (${partialText})`
       : fullText;
     const fillLots = Math.min(lots, res.matched);
     const fillPct = Math.round((fillLots / lots) * 100);
@@ -181,46 +186,22 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
       };
     }
 
-    // For limit orders: check if order crosses clearing price
+    // Limit orders: check if order crosses clearing price
     if (side === "BUY") {
       if (orderTick >= res.ask.tick) {
-        if (orderTick > res.bid.tick) {
-          return {
-            willFill: true,
-            fillLots,
-            fillPct,
-            price: clPriceUsd,
-            offsetBps,
-            indicativeText,
-            reason: isPartial
-              ? `Depth insufficient: ${partialText} at oracle ${offsetStr} bps`
-              : indicativeText,
-            isCrossing: true,
-            isPartial,
-          };
-        } else if (orderTick === res.bid.tick) {
-          const allocLots = Math.floor((lots * res.bid.alloc) / res.bid.total);
-          const actualFill = Math.min(fillLots, allocLots);
-          const actualPct = Math.round((actualFill / lots) * 100);
-          const actualFilledSol = (actualFill * 0.001).toFixed(1);
-          const isActPartial = actualFill < lots;
-          const actText = isActPartial
-            ? `Indicative price: oracle ${offsetStr} bps (fills ${actualFilledSol} of ${requestedSol} SOL)`
-            : fullText;
-          return {
-            willFill: true,
-            fillLots: actualFill,
-            fillPct: actualPct,
-            price: clPriceUsd,
-            offsetBps,
-            indicativeText: actText,
-            reason: isActPartial
-              ? `Depth insufficient: fills ${actualFilledSol} of ${requestedSol} SOL at oracle ${offsetStr} bps`
-              : indicativeText,
-            isCrossing: true,
-            isPartial: isActPartial,
-          };
-        }
+        return {
+          willFill: true,
+          fillLots,
+          fillPct,
+          price: clPriceUsd,
+          offsetBps,
+          indicativeText,
+          reason: isPartial
+            ? `Depth insufficient: ${partialText} at oracle ${offsetStr} bps`
+            : indicativeText,
+          isCrossing: true,
+          isPartial,
+        };
       }
       return {
         willFill: false,
@@ -229,49 +210,25 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
         price: clPriceUsd,
         offsetBps,
         indicativeText: "No crossing liquidity",
-        reason: "No crossing liquidity at this price, your order will expire unfilled",
+        reason: "No crossing liquidity at this price, order will expire unfilled",
         isCrossing: false,
         isPartial: false,
       };
     } else {
       if (orderTick <= res.bid.tick) {
-        if (orderTick < res.ask.tick) {
-          return {
-            willFill: true,
-            fillLots,
-            fillPct,
-            price: clPriceUsd,
-            offsetBps,
-            indicativeText,
-            reason: isPartial
-              ? `Depth insufficient: ${partialText} at oracle ${offsetStr} bps`
-              : indicativeText,
-            isCrossing: true,
-            isPartial,
-          };
-        } else if (orderTick === res.ask.tick) {
-          const allocLots = Math.floor((lots * res.ask.alloc) / res.ask.total);
-          const actualFill = Math.min(fillLots, allocLots);
-          const actualPct = Math.round((actualFill / lots) * 100);
-          const actualFilledSol = (actualFill * 0.001).toFixed(1);
-          const isActPartial = actualFill < lots;
-          const actText = isActPartial
-            ? `Indicative price: oracle ${offsetStr} bps (fills ${actualFilledSol} of ${requestedSol} SOL)`
-            : fullText;
-          return {
-            willFill: true,
-            fillLots: actualFill,
-            fillPct: actualPct,
-            price: clPriceUsd,
-            offsetBps,
-            indicativeText: actText,
-            reason: isActPartial
-              ? `Depth insufficient: fills ${actualFilledSol} of ${requestedSol} SOL at oracle ${offsetStr} bps`
-              : indicativeText,
-            isCrossing: true,
-            isPartial: isActPartial,
-          };
-        }
+        return {
+          willFill: true,
+          fillLots,
+          fillPct,
+          price: clPriceUsd,
+          offsetBps,
+          indicativeText,
+          reason: isPartial
+            ? `Depth insufficient: ${partialText} at oracle ${offsetStr} bps`
+            : indicativeText,
+          isCrossing: true,
+          isPartial,
+        };
       }
       return {
         willFill: false,
@@ -280,23 +237,23 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
         price: clPriceUsd,
         offsetBps,
         indicativeText: "No crossing liquidity",
-        reason: "No crossing liquidity at this price, your order will expire unfilled",
+        reason: "No crossing liquidity at this price, order will expire unfilled",
         isCrossing: false,
         isPartial: false,
       };
     }
   }, [bidQty, askQty, offsetInfo, side, lots, numQty, orderType, oraclePrice]);
 
-  // Margin calculation (spec §9 with slip reserve)
+  // Margin calculation (10% IMR + 50 bps slip reserve)
   const marginRequired = useMemo(() => {
-    const imr = notionalUsd * 0.1; // 10% IMR
-    const slipReserve = notionalUsd * 0.005; // 50 bps band reserve
+    const imr = notionalUsd * 0.1;
+    const slipReserve = notionalUsd * 0.005;
     return imr + slipReserve;
   }, [notionalUsd]);
 
   const estimatedFee = notionalUsd * 0.0005; // 5 bps
 
-  // Estimated liquidation price (09 §7.5 formula)
+  // Guardrail G-02: Exact estimated liquidation price (no heuristics)
   const estimatedLiqPrice = useMemo(() => {
     if (userPositionLots === 0) return "—";
     const resultingLots = side === "BUY" ? userPositionLots + lots : userPositionLots - lots;
@@ -310,8 +267,9 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
     return pLiqMicro > 0 ? (pLiqMicro / 1_000_000).toFixed(2) : "—";
   }, [availableEquity, userPositionLots, lots, side]);
 
-  // Validations per 09 §4.2 & §3.5 rule 10: Validation errors appear once, inline under the field
+  // Validations: Guardrails G-04, G-05, G-06
   const validationError = useMemo(() => {
+    // Guardrail G-04: Collar check
     if (orderType === "limit" && offsetInfo.clamped) {
       const sign = offsetInfo.rawOffsetBps > 0 ? "+" : "";
       return `Exceeds ±50 bps collar (${sign}${offsetInfo.rawOffsetBps} bps). Limit orders must be within ±0.50% of oracle.`;
@@ -319,6 +277,7 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
     if (numQty <= 0) {
       return "Size must be greater than 0.";
     }
+    // Guardrail G-05: $10 minimum notional floor
     if (notionalUsd < 10) {
       return "Order notional below minimum ($10.00).";
     }
@@ -326,6 +285,7 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
       const shortfall = (marginRequired - availableEquity).toFixed(2);
       return `Insufficient margin (shortfall $${shortfall}).`;
     }
+    // Guardrail G-06: Reduce-only safety
     if (reduceOnly) {
       if (side === "BUY" && userPositionLots >= 0) {
         return "Reduce-only Buy requires an open short position.";
@@ -370,75 +330,76 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
     });
   };
 
-  // 09 §3.5 rule 10: Button states
-  const buttonState = useMemo(() => {
+  // Button state mapping
+  const buttonConfig = useMemo(() => {
     if (!connected) {
-      return { text: "Connect wallet", disabled: false, type: "connect" };
+      return { text: "Connect Wallet", disabled: false, variant: "primary" as const, isLoading: false };
     }
     if (availableEquity <= 0) {
-      return { text: "Deposit to trade", disabled: false, type: "deposit" };
+      return { text: "Deposit to Trade", disabled: false, variant: "secondary" as const, isLoading: false };
     }
     if (marginRequired > availableEquity) {
-      return { text: "Insufficient margin", disabled: true, type: "disabled" };
+      return { text: "Insufficient Margin", disabled: true, variant: "secondary" as const, isLoading: false };
     }
     if (validationError) {
-      return { text: "Invalid order", disabled: true, type: "disabled" };
+      return { text: "Invalid Order", disabled: true, variant: "secondary" as const, isLoading: false };
     }
     if (isPlacingOrder) {
-      return { text: "Submitting...", disabled: true, type: "loading" };
+      return { text: "Submitting...", disabled: true, variant: side === "BUY" ? ("buy" as const) : ("sell" as const), isLoading: true };
     }
     return {
       text: `${side === "BUY" ? "Buy / Long" : "Sell / Short"} ${numQty.toFixed(2)} SOL`,
       disabled: false,
-      type: "ready",
+      variant: side === "BUY" ? ("buy" as const) : ("sell" as const),
+      isLoading: false,
     };
   }, [connected, availableEquity, marginRequired, validationError, isPlacingOrder, side, numQty]);
 
   return (
-    <div className="w-[300px] xl:w-[320px] flex flex-col min-h-0 bg-[#0e1217] select-none text-[12px] overflow-y-auto border-l bp-border">
-      {/* 1. Side Selector (09 §4.1: Buy / Sell) */}
-      <div className="p-3 pb-2 border-b bp-border">
-        <div className="grid grid-cols-2 gap-1.5 p-1 bg-[#12161c] rounded-md">
+    <div className="w-[280px] xl:w-[310px] flex flex-col min-h-0 bg-surface-header select-none text-xs overflow-y-auto border-l border-line-default font-sans">
+      {/* 1. Side Selector: Buy/Long (Emerald) vs Sell/Short (Coral) */}
+      <div className="p-2.5 pb-2 border-b border-line-default">
+        <div className="grid grid-cols-2 gap-1.5 p-1 bg-surface-panel rounded-lg border border-line-subtle">
           <button
             type="button"
             onClick={() => setSide("BUY")}
-            className={`py-2 rounded font-semibold text-[13px] transition-all flex items-center justify-center gap-1.5 ${
+            className={`py-1.5 rounded font-semibold text-xs transition-all flex items-center justify-center gap-1.5 ${
               side === "BUY"
-                ? "bg-[#162720] text-[#0ecb81] border border-[#0ecb81]/40 shadow-sm"
-                : "text-[#848e9c] hover:text-white"
+                ? "bg-trade-emerald/15 text-trade-emerald border border-trade-emerald/40 shadow-xs"
+                : "text-content-secondary hover:text-content-primary hover:bg-surface-hover"
             }`}
           >
-            <span className="w-2 h-2 rounded-full bg-[#0ecb81]" />
+            <span className="w-2 h-2 rounded-full bg-trade-emerald" />
             <span>Buy / Long</span>
           </button>
           <button
             type="button"
             onClick={() => setSide("SELL")}
-            className={`py-2 rounded font-semibold text-[13px] transition-all flex items-center justify-center gap-1.5 ${
+            className={`py-1.5 rounded font-semibold text-xs transition-all flex items-center justify-center gap-1.5 ${
               side === "SELL"
-                ? "bg-[#29171a] text-[#f6465d] border border-[#f6465d]/40 shadow-sm"
-                : "text-[#848e9c] hover:text-white"
+                ? "bg-trade-coral/15 text-trade-coral border border-trade-coral/40 shadow-xs"
+                : "text-content-secondary hover:text-content-primary hover:bg-surface-hover"
             }`}
           >
-            <span className="w-2 h-2 rounded-full bg-[#f6465d]" />
+            <span className="w-2 h-2 rounded-full bg-trade-coral" />
             <span>Sell / Short</span>
           </button>
         </div>
       </div>
 
       {/* 2. Order Form */}
-      <form onSubmit={handleFormAction} className="p-3 space-y-3.5 flex-1 flex flex-col justify-between">
+      <form onSubmit={handleFormAction} className="p-3 space-y-3 flex-1 flex flex-col justify-between">
         <div className="space-y-3">
-          {/* Order Type Tabs */}
+          {/* Order Type Tabs (Limit vs Market) & Reduce-Only Toggle */}
           <div className="flex items-center justify-between">
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => setOrderType("limit")}
-                className={`text-[12px] pb-1 font-semibold transition-colors ${
+                className={`text-xs pb-1 font-semibold transition-colors ${
                   orderType === "limit"
-                    ? "text-white border-b-2 border-[#00f0ff]"
-                    : "text-[#848e9c] hover:text-white"
+                    ? "text-content-primary border-b-2 border-trade-cyan"
+                    : "text-content-secondary hover:text-content-primary"
                 }`}
               >
                 Limit
@@ -446,140 +407,127 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
               <button
                 type="button"
                 onClick={() => setOrderType("market")}
-                className={`text-[12px] pb-1 font-semibold transition-colors ${
+                className={`text-xs pb-1 font-semibold transition-colors ${
                   orderType === "market"
-                    ? "text-white border-b-2 border-[#00f0ff]"
-                    : "text-[#848e9c] hover:text-white"
+                    ? "text-content-primary border-b-2 border-trade-cyan"
+                    : "text-content-secondary hover:text-content-primary"
                 }`}
               >
                 Market
               </button>
             </div>
-            <div className="flex items-center gap-1.5">
-              <label className="flex items-center gap-1 cursor-pointer text-[#848e9c] hover:text-white text-[11px]">
-                <input
-                  type="checkbox"
-                  checked={reduceOnly}
-                  onChange={(e) => setReduceOnly(e.target.checked)}
-                  className="rounded bg-[#12161c] border-white/20 text-[#00f0ff] focus:ring-0 w-3 h-3 cursor-pointer"
-                />
-                <span>Reduce-only</span>
-              </label>
-            </div>
+            <label className="flex items-center gap-1.5 cursor-pointer text-content-secondary hover:text-content-primary text-2xs">
+              <input
+                type="checkbox"
+                checked={reduceOnly}
+                onChange={(e) => setReduceOnly(e.target.checked)}
+                className="rounded bg-surface-card border-line-strong text-trade-cyan focus:ring-0 w-3 h-3 cursor-pointer"
+              />
+              <span>Reduce-Only</span>
+            </label>
           </div>
 
-          {/* Limit Price Input & Pegged Offset Display (09 §4.1) */}
+          {/* Limit Price Input */}
           {orderType === "limit" ? (
             <div className="space-y-1">
-              <div className="flex justify-between text-[11px] text-[#848e9c]">
+              <div className="flex justify-between text-2xs text-content-secondary">
                 <span>Price (USDC)</span>
-                <span className="text-white tabular-nums">Oracle: ${oraclePrice.toFixed(2)}</span>
+                <span className="text-content-primary tabular-nums font-mono">
+                  Oracle: ${oraclePrice.toFixed(2)}
+                </span>
               </div>
-              <div className="relative flex items-center">
-                <input
-                  type="number"
-                  step="0.01"
-                  value={priceStr}
-                  onChange={(e) => {
-                    setUserEditedPrice(true);
-                    setPriceStr(e.target.value);
-                  }}
-                  className={`w-full bg-[#12161c] border rounded px-3 py-2 text-white font-mono text-[13px] outline-none transition-colors ${
-                    offsetInfo.clamped
-                      ? "border-[#F6465D] focus:border-[#F6465D]"
-                      : "bp-border focus:border-[#00f0ff]"
-                  }`}
-                  placeholder="0.00"
-                />
-                <span className="absolute right-3 text-[#848e9c] font-mono text-[11px]">USDC</span>
-              </div>
-              {/* Pegged offset explainer (09 §2.2, §4.1, and D.1) */}
+              <Input
+                type="number"
+                step="0.01"
+                value={priceStr}
+                onChange={(e) => {
+                  setUserEditedPrice(true);
+                  setPriceStr(e.target.value);
+                }}
+                rightAdornment={<span className="text-2xs font-mono text-content-muted">USDC</span>}
+                error={offsetInfo.clamped ? "Exceeds ±50 bps collar" : undefined}
+                sizeVariant="md"
+                isNumeric
+                placeholder="0.00"
+              />
+              {/* Pegged Offset Explainer */}
               <div
-                className={`p-1.5 rounded border text-[10px] flex items-center justify-between transition-colors ${
+                className={`p-1.5 rounded border text-2xs flex items-center justify-between transition-colors ${
                   offsetInfo.clamped
-                    ? "bg-[#29171A] border-[#F6465D]/50 text-[#F6465D]"
-                    : "bg-[#181d24] bp-border text-[#848e9c]"
+                    ? "bg-trade-coral/10 border-trade-coral/40 text-trade-coral"
+                    : "bg-surface-card border-line-default text-content-secondary"
                 }`}
               >
                 <span>
                   Pegged:{" "}
-                  <strong className={`font-mono ${offsetInfo.clamped ? "text-[#F6465D]" : "text-white"}`}>
+                  <strong className={`font-mono ${offsetInfo.clamped ? "text-trade-coral" : "text-content-primary"}`}>
                     {offsetInfo.rawOffsetBps >= 0 ? `+${offsetInfo.rawOffsetBps}` : offsetInfo.rawOffsetBps} bps
                   </strong>
-                  {offsetInfo.clamped && (
-                    <span className="ml-1 text-[9px] text-[#F6465D] font-semibold">
-                      (Exceeds ±50 bps collar)
-                    </span>
-                  )}
                 </span>
-                <span className={`text-[9px] font-semibold ${offsetInfo.clamped ? "text-[#F6465D]" : "text-[#00f0ff]"}`}>
+                <span className={`text-[9px] font-semibold ${offsetInfo.clamped ? "text-trade-coral" : "text-trade-cyan"}`}>
                   {offsetInfo.clamped ? "Outside Collar" : "Moves with oracle"}
                 </span>
               </div>
-              {/* Crossing Warning & One-Click Fill Now (Round 9 Track A) */}
-              {indicativePreview && indicativePreview.isCrossing && indicativePreview.isPartial && (
-                <div className="p-2 rounded bg-[#eab308]/10 border border-[#eab308]/30 text-[11px] text-[#eab308] flex items-center gap-1.5">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0 text-[#eab308]" />
-                  <span>Depth insufficient: {indicativePreview.indicativeText}</span>
-                </div>
-              )}
+              {/* Crossing Warning & One-Click Fill Now */}
               {indicativePreview && !indicativePreview.isCrossing && (
-                <div className="p-2 rounded bg-[#eab308]/10 border border-[#eab308]/30 text-[11px] text-[#eab308] flex items-center justify-between gap-2">
-                  <div className="flex items-start gap-1.5 flex-1">
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[#eab308]" />
-                    <span>No crossing liquidity at this price, your order will expire unfilled</span>
+                <div className="p-2 rounded bg-trade-amber/10 border border-trade-amber/30 text-2xs text-trade-amber flex items-center justify-between gap-1.5">
+                  <div className="flex items-start gap-1 flex-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span>No crossing liquidity; will expire unfilled</span>
                   </div>
                   <button
                     type="button"
                     onClick={() => setOrderType("market")}
-                    className="px-2 py-1 rounded bg-[#00f0ff] hover:bg-[#00d8e6] text-black font-semibold text-[10px] shrink-0 cursor-pointer transition-colors"
+                    className="px-1.5 py-0.5 rounded bg-trade-cyan text-black font-semibold text-[10px] shrink-0 hover:bg-trade-cyan/90 transition-colors"
                   >
-                    Fill now
+                    Fill Now
                   </button>
                 </div>
               )}
             </div>
           ) : (
-            /* Market Order Slippage Label (09 §4.1 & Round 10 Item 1 & Round 11) */
-            <div className="p-2.5 rounded bg-[#12161c] border bp-border text-[11px] space-y-1">
+            /* Market Order Slippage & Clearing Label */
+            <div className="p-2.5 rounded bg-surface-card border border-line-default text-2xs space-y-1">
               <div className="flex items-center justify-between">
-                <span className="text-white font-semibold">
+                <span className="text-content-primary font-semibold">
                   {indicativePreview.isPartial ? "Partial Fill Preview" : "Market Order"}
                 </span>
-                <span className={indicativePreview.isPartial ? "text-[#eab308] font-mono text-[10px]" : "text-[#0ecb81] font-mono text-[10px]"}>
+                <span
+                  className={`font-mono text-2xs ${
+                    indicativePreview.isPartial ? "text-trade-amber" : "text-trade-emerald"
+                  }`}
+                >
                   {indicativePreview.indicativeText}
                 </span>
               </div>
-              <p className="text-[10px] text-[#848e9c]">
-                {indicativePreview.isPartial
-                  ? `Depth insufficient: ${indicativePreview.indicativeText} at uniform P* ($${indicativePreview.price.toFixed(3)}), remaining expires unfilled.`
-                  : `Uniform clearing price: all matched lots trade at single P* ($${indicativePreview.price.toFixed(3)}), plus 5 bps fee.`}
+              <p className="text-[10px] text-content-muted leading-relaxed">
+                Uniform clearing price: all matched lots trade at single P* ($
+                {indicativePreview.price.toFixed(3)}), plus 5 bps fee.
               </p>
             </div>
           )}
 
           {/* Size Input in SOL */}
           <div className="space-y-1">
-            <div className="flex justify-between text-[11px] text-[#848e9c]">
+            <div className="flex justify-between text-2xs text-content-secondary">
               <span>Size (SOL)</span>
-              <span className="text-white tabular-nums font-mono">{lots} lots</span>
+              <span className="text-content-primary tabular-nums font-mono">{lots} lots</span>
             </div>
-            <div className="relative flex items-center">
-              <input
-                type="number"
-                step="0.01"
-                min="0.01"
-                value={qtySol}
-                onChange={(e) => setQtySol(e.target.value)}
-                className="w-full bg-[#12161c] border bp-border focus:border-[#00f0ff] rounded px-3 py-2 text-white font-mono text-[13px] outline-none"
-                placeholder="1.00"
-              />
-              <span className="absolute right-3 text-[#848e9c] font-mono text-[11px]">SOL</span>
-            </div>
+            <Input
+              type="number"
+              step="0.01"
+              min="0.01"
+              value={qtySol}
+              onChange={(e) => setQtySol(e.target.value)}
+              rightAdornment={<span className="text-2xs font-mono text-content-muted">SOL</span>}
+              sizeVariant="md"
+              isNumeric
+              placeholder="1.00"
+            />
           </div>
 
           {/* Slider */}
-          <div className="space-y-1 pt-1">
+          <div className="space-y-1 pt-0.5">
             <input
               type="range"
               min="1"
@@ -587,9 +535,9 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
               value={sliderVal}
               onChange={(e) => handleSliderMove(Number(e.target.value))}
               aria-label="Order size percentage slider"
-              className="w-full h-1 bg-[#181d24] rounded-lg appearance-none cursor-pointer accent-[#00f0ff]"
+              className="w-full h-1 bg-surface-panel rounded-lg appearance-none cursor-pointer accent-trade-cyan"
             />
-            <div className="flex justify-between text-[9px] font-mono text-[#848e9c]">
+            <div className="flex justify-between text-[9px] font-mono text-content-muted">
               <span>25%</span>
               <span>50%</span>
               <span>75%</span>
@@ -597,15 +545,17 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
             </div>
           </div>
 
-          {/* 09 §4.1: Lifetime Selector (1 to 4 batches) */}
-          <div className="space-y-1 pt-1">
-            <div className="flex justify-between text-[11px] text-[#848e9c]">
+          {/* Lifetime Selector (1 to 4 batches) */}
+          <div className="space-y-1 pt-0.5">
+            <div className="flex justify-between text-2xs text-content-secondary">
               <span className="flex items-center gap-1">
-                <Clock className="w-3 h-3 text-[#00f0ff]" />
+                <Clock className="w-3 h-3 text-trade-cyan" />
                 Order Lifetime
               </span>
-              <span className="text-[#00f0ff] font-mono text-[10px]">
-                {lifetimeBatches === 1 ? "1 batch (~0.48s)" : `${lifetimeBatches} batches (~${(lifetimeBatches * 0.48).toFixed(2)}s)`}
+              <span className="text-trade-cyan font-mono text-2xs">
+                {lifetimeBatches === 1
+                  ? "1 batch (~0.48s)"
+                  : `${lifetimeBatches} batches (~${(lifetimeBatches * 0.48).toFixed(2)}s)`}
               </span>
             </div>
             <div className="grid grid-cols-4 gap-1">
@@ -614,10 +564,10 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
                   key={`life-${n}`}
                   type="button"
                   onClick={() => setLifetimeBatches(n)}
-                  className={`py-1 rounded text-[11px] font-mono font-medium border transition-colors ${
+                  className={`py-1 rounded text-2xs font-mono font-medium border transition-colors ${
                     lifetimeBatches === n
-                      ? "bg-[#00f0ff]/15 border-[#00f0ff] text-[#00f0ff]"
-                      : "bg-[#12161c] border-white/5 text-[#848e9c] hover:text-white"
+                      ? "bg-trade-cyan/15 border-trade-cyan text-trade-cyan shadow-xs"
+                      : "bg-surface-card border-line-default text-content-secondary hover:text-content-primary hover:border-line-strong"
                   }`}
                 >
                   {n} {n === 1 ? "batch" : "batches"}
@@ -625,130 +575,121 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
               ))}
             </div>
 
-            {/* Combined exposure warning for multi-batch (09 §4.3) */}
             {lifetimeBatches > 1 && (
-              <div className="p-2 rounded bg-[#eab308]/10 border border-[#eab308]/30 text-[10px] text-[#eab308] flex items-start gap-1.5 mt-1">
+              <div className="p-1.5 rounded bg-trade-amber/10 border border-trade-amber/30 text-2xs text-trade-amber flex items-start gap-1 mt-1">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                 <span>
-                  Multi-batch warning: Places {lifetimeBatches} independent orders. Combined worst-case exposure:{" "}
+                  Multi-batch: Places {lifetimeBatches} independent orders. Max exposure:{" "}
                   <strong>{(numQty * lifetimeBatches).toFixed(2)} SOL</strong> ($
-                  {(notionalUsd * lifetimeBatches).toFixed(2)}) if all fill.
+                  {(notionalUsd * lifetimeBatches).toFixed(2)}).
                 </span>
               </div>
             )}
           </div>
 
-          {/* Validation Alert (09 §3.5 rule 10: Validation errors appear once, inline) */}
+          {/* Validation Alert */}
           {validationError && (
-            <div className="p-2 rounded bg-[#f6465d]/10 border border-[#f6465d]/30 text-[11px] text-[#f6465d] flex items-start gap-1.5">
+            <div className="p-2 rounded bg-trade-coral/10 border border-trade-coral/30 text-2xs text-trade-coral flex items-start gap-1.5">
               <ShieldAlert className="w-3.5 h-3.5 shrink-0 mt-0.5" />
               <span>{validationError}</span>
             </div>
           )}
 
-          {/* On-Chain Execution Failure Alert (Round 14: Friendly messages for 6007, 6008, etc.) */}
+          {/* On-Chain Execution Failure Alert */}
           {orderError && (
-            <div className="p-2.5 rounded bg-[#f6465d]/15 border border-[#f6465d]/40 text-[11px] text-[#f6465d] flex items-start justify-between gap-1.5">
+            <div className="p-2.5 rounded bg-trade-coral/15 border border-trade-coral/40 text-2xs text-trade-coral flex items-start justify-between gap-1.5 animate-scale-in">
               <div className="flex items-start gap-1.5">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-[#f6465d]" />
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-trade-coral" />
                 <span className="font-semibold leading-tight">{orderError}</span>
               </div>
               {onClearOrderError && (
                 <button
                   type="button"
                   onClick={onClearOrderError}
-                  className="text-[#848e9c] hover:text-white text-[12px] font-bold shrink-0 ml-1 leading-none"
+                  className="text-content-muted hover:text-content-primary p-0.5 rounded transition-colors"
                   title="Dismiss error"
                 >
-                  ✕
+                  <X className="w-3 h-3" />
                 </button>
               )}
             </div>
           )}
 
-          {/* 09 §4.1: Order Preview Card */}
-          <div className="p-2.5 rounded bg-[#12161c] border bp-border space-y-1 text-[11px]">
-            <div className="flex justify-between text-[#848e9c]">
+          {/* Order Preview Card */}
+          <div className="p-2.5 rounded bg-surface-card border border-line-default space-y-1.5 text-2xs">
+            <div className="flex justify-between text-content-secondary">
               <span>Estimated Notional</span>
-              <span className="text-white font-mono tabular-nums">${notionalUsd.toFixed(2)}</span>
+              <span className="text-content-primary font-mono tabular-nums font-medium">
+                ${notionalUsd.toFixed(2)}
+              </span>
             </div>
-            <div className="flex justify-between text-[#848e9c]">
+            <div className="flex justify-between text-content-secondary">
               <span>Estimated Fee (5 bps)</span>
-              <span className="text-white font-mono tabular-nums">${estimatedFee.toFixed(3)}</span>
+              <span className="text-content-primary font-mono tabular-nums font-medium">
+                ${estimatedFee.toFixed(3)}
+              </span>
             </div>
-            <div className="flex justify-between text-[#848e9c]">
+            <div className="flex justify-between text-content-secondary">
               <span>Req. Margin + Slip</span>
-              <span className="text-white font-mono tabular-nums">${marginRequired.toFixed(2)}</span>
+              <span className="text-content-primary font-mono tabular-nums font-medium">
+                ${marginRequired.toFixed(2)}
+              </span>
             </div>
 
-            {/* 09 §3.5 rule 10: No "$-" for liquidation price; show "—" with tooltip when no position */}
-            <div className="flex justify-between text-[#848e9c]">
-              <span>Est. Liq Price</span>
+            {/* Est. Liquidation Price */}
+            <div className="flex justify-between text-content-secondary">
+              <span className="flex items-center gap-1">
+                Est. Liq Price
+                <Tooltip content="Estimated bankruptcy liquidation threshold (5% MMR)">
+                  <HelpCircle className="w-3 h-3 text-content-muted" />
+                </Tooltip>
+              </span>
               {userPositionLots === 0 ? (
                 <span
-                  className="text-[#848e9c] font-mono tabular-nums cursor-help"
+                  className="text-content-muted font-mono tabular-nums cursor-help"
                   title="No open position. Liquidation price is established after a position is filled."
                 >
                   —
                 </span>
               ) : (
-                <span className="text-[#eab308] font-mono tabular-nums font-semibold">
+                <span className="text-trade-amber font-mono tabular-nums font-semibold">
                   {estimatedLiqPrice !== "—" ? `$${estimatedLiqPrice}` : "—"}
                 </span>
               )}
             </div>
 
-            {/* Indicative fill preview (09 §4.1 & Round 9 Track A) */}
-            <div className="pt-1.5 mt-1 border-t bp-border text-[10px] flex items-center justify-between">
-              <span className="text-[#848e9c]">Indicative Fill (Batch #{currentBatchId + 1})</span>
+            {/* Indicative Fill Preview */}
+            <div className="pt-1.5 mt-1 border-t border-line-default text-[10px] flex items-center justify-between">
+              <span className="text-content-muted">Indicative Fill (Batch #{currentBatchId + 1})</span>
               <div className="flex items-center gap-1.5">
-                <span className={`font-mono font-medium ${indicativePreview?.isCrossing ? "text-[#00f0ff]" : "text-[#eab308]"}`}>
+                <span
+                  className={`font-mono font-medium ${
+                    indicativePreview?.isCrossing ? "text-trade-cyan" : "text-trade-amber"
+                  }`}
+                >
                   {indicativePreview?.willFill
                     ? `${indicativePreview.fillPct}% (${((indicativePreview.fillLots ?? 0) * 0.001).toFixed(2)} SOL)`
                     : "0% (unfilled)"}
                 </span>
-                {!indicativePreview?.isCrossing && orderType === "limit" && (
-                  <button
-                    type="button"
-                    onClick={() => setOrderType("market")}
-                    className="px-1.5 py-0.5 rounded bg-[#00f0ff] text-black font-semibold text-[9px] hover:bg-[#00d8e6] transition-colors"
-                  >
-                    Fill now
-                  </button>
-                )}
               </div>
             </div>
           </div>
         </div>
 
-        {/* 09 §3.5 rule 10: Button states: "Connect wallet", "Deposit to trade", "Insufficient margin" (disabled with reason), "Buy / Long 1.00 SOL" */}
+        {/* Primary Action Button */}
         <div className="pt-2">
-          <button
+          <Button
             type="submit"
-            disabled={buttonState.disabled}
-            className={`w-full py-2.5 rounded font-bold text-[13px] transition-all flex items-center justify-center gap-2 shadow-md ${
-              buttonState.type === "connect"
-                ? "bg-[#00f0ff] hover:bg-[#00d8e6] text-black cursor-pointer active:scale-95"
-                : buttonState.type === "deposit"
-                ? "bg-[#eab308] hover:bg-[#d99b04] text-black cursor-pointer active:scale-95"
-                : buttonState.disabled
-                ? "bg-[#181d24] text-[#848e9c] cursor-not-allowed border bp-border"
-                : side === "BUY"
-                ? "bg-[#00c087] hover:bg-[#00a372] text-[#0b0e11] active:scale-95 cursor-pointer"
-                : "bg-[#f23645] hover:bg-[#d92d3b] text-white active:scale-95 cursor-pointer"
-            }`}
+            variant={buttonConfig.variant}
+            disabled={buttonConfig.disabled}
+            isLoading={buttonConfig.isLoading}
+            fullWidth
+            size="md"
           >
-            {buttonState.type === "loading" ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>{buttonState.text}</span>
-              </>
-            ) : (
-              <span>{buttonState.text}</span>
-            )}
-          </button>
-          <p className="text-center text-[10px] text-[#848e9c] mt-1.5">
-            Executes at the next batch close (about 0.48 s)
+            {buttonConfig.text}
+          </Button>
+          <p className="text-center text-[10px] text-content-muted mt-1.5">
+            Executes at the next batch close (~0.48 s)
           </p>
         </div>
       </form>

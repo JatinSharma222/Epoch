@@ -25,9 +25,11 @@ target/
 .anchor/
 test-ledger/
 
-# Next.js
+# Next.js & Build Traces
 .next/
 dist/
+*.tsbuildinfo
+
 
 # macOS
 .DS_Store
@@ -51,7 +53,12 @@ keys/
 # OS
 Thumbs.db
 
-# Keeper runtime logs
+# Evidence Screenshots (local verification only, never commit per Git hygiene policy)
+evidence/screenshots/
+*.png
+*.jpg
+*.jpeg
+
 keeper/logs/
 *.jsonl
 logs/

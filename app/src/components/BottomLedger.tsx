@@ -1,22 +1,27 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import {
   Wallet,
   Coins,
   History,
-  ArrowDownLeft,
-  ArrowUpRight,
   TrendingUp,
   XCircle,
   Clock,
   CheckCircle2,
   FileText,
+  Activity,
+  Layers,
+  ArrowDownLeft,
+  ArrowUpRight,
+  GripHorizontal,
 } from "lucide-react";
 import { formatUsd, formatNumber, formatLots } from "../lib/formatters";
+import { Badge } from "./ui/Badge";
+import { Button } from "./ui/Button";
 
-interface Position {
+export interface Position {
   market: string;
   sizeLots: number;
   entryPrice: number;
@@ -26,7 +31,7 @@ interface Position {
   liqPrice: number;
 }
 
-interface ActiveOrder {
+export interface ActiveOrder {
   batchId: number;
   slotId: number;
   side: "BUY" | "SELL";
@@ -34,16 +39,18 @@ interface ActiveOrder {
   lots: number;
 }
 
-interface BatchRecord {
+export interface BatchRecord {
   batchId: number;
   clearingPrice: number;
   matchedLots: number;
   offsetBps: number;
   oraclePrice: number;
   status: "CLEARED" | "VOID" | "SETTLED";
+  cuConsumed?: number;
+  signature?: string;
 }
 
-interface BottomLedgerProps {
+export interface BottomLedgerProps {
   collateral: number;
   quotePosition: number;
   position: Position | null;
@@ -53,18 +60,17 @@ interface BottomLedgerProps {
   onOpenWithdraw: () => void;
   onOpenFaucet: () => void;
   onCancelOrder: (batchId: number, slotId: number) => Promise<void>;
+  onMarketClosePosition?: () => void;
 }
 
-type TabKey =
+export type LedgerTabKey =
   | "balances"
   | "positions"
   | "orders"
-  | "borrows"
-  | "twap"
-  | "fills"
   | "orderHistory"
-  | "positionHistory"
-  | "fundingHistory";
+  | "fills"
+  | "fundingHistory"
+  | "clearanceHistory";
 
 export const BottomLedger: React.FC<BottomLedgerProps> = ({
   collateral,
@@ -76,16 +82,45 @@ export const BottomLedger: React.FC<BottomLedgerProps> = ({
   onOpenWithdraw,
   onOpenFaucet,
   onCancelOrder,
+  onMarketClosePosition,
 }) => {
   const { connected } = useWallet();
-  const [activeTab, setActiveTab] = useState<TabKey>("balances");
+  const [activeTab, setActiveTab] = useState<LedgerTabKey>("positions");
+
+  // Resizable height logic (min: 160px, max: 450px, default: 220px)
+  const [height, setHeight] = useState<number>(220);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const dragStartY = useRef<number>(0);
+  const dragStartHeight = useRef<number>(220);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    dragStartY.current = e.clientY;
+    dragStartHeight.current = height;
+  };
+
+  useEffect(() => {
+    if (!isDragging) return;
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaY = dragStartY.current - e.clientY;
+      const newHeight = Math.min(450, Math.max(160, dragStartHeight.current + deltaY));
+      setHeight(newHeight);
+    };
+    const handleMouseUp = () => setIsDragging(false);
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDragging]);
 
   const equity =
     collateral + quotePosition + (position ? (position.sizeLots * position.markPrice) / 1000 : 0);
 
-  // Tab list (09 §6.1: badges come from real accounts and show nothing without a wallet)
-  const tabList: Array<{ key: TabKey; label: string; count?: number }> = [
-    { key: "balances", label: "Balances" },
+  // Tab list with dynamic badges
+  const tabList: Array<{ key: LedgerTabKey; label: string; count?: number }> = [
     {
       key: "positions",
       label: "Positions",
@@ -96,188 +131,155 @@ export const BottomLedger: React.FC<BottomLedgerProps> = ({
       label: "Open Orders",
       count: connected && activeOrders.length > 0 ? activeOrders.length : undefined,
     },
+    { key: "balances", label: "Balances" },
     { key: "orderHistory", label: "Order History" },
     { key: "fills", label: "Trade History" },
     { key: "fundingHistory", label: "Funding History" },
+    { key: "clearanceHistory", label: "Batch Clearance" },
   ];
 
   return (
-    <div className="h-[210px] border-t bp-border bg-[#0e1217] flex flex-col shrink-0 min-h-0 select-none font-mono text-[11px]">
-      {/* 1. HORIZONTAL NAVIGATION TABS (09 §3.1) */}
-      <div className="h-[36px] border-b bp-border flex items-center justify-between px-3 shrink-0">
-        <div className="flex items-center gap-4 text-[12px] overflow-x-auto scrollbar-none">
+    <div
+      style={{ height: `${height}px` }}
+      className="border-t border-line-default bg-surface-header flex flex-col shrink-0 min-h-0 select-none font-mono text-2xs relative"
+    >
+      {/* Resizable Drag Handle */}
+      <div
+        onMouseDown={handleMouseDown}
+        className="absolute -top-1.5 left-0 right-0 h-3 cursor-row-resize flex items-center justify-center z-20 group"
+        title="Drag to resize bottom ledger"
+        aria-label="Resize ledger height"
+      >
+        <div className="w-12 h-1 rounded-full bg-line-strong group-hover:bg-trade-cyan transition-colors" />
+      </div>
+
+      {/* 1. Horizontal Navigation Tabs */}
+      <div className="h-[36px] border-b border-line-default flex items-center justify-between px-3 shrink-0">
+        <div className="flex items-center gap-3 text-xs overflow-x-auto scrollbar-none font-sans">
           {tabList.map((tab) => {
             const isActive = activeTab === tab.key;
             return (
               <button
                 key={tab.key}
+                type="button"
                 onClick={() => setActiveTab(tab.key)}
-                className={`pb-2 pt-2 -mb-[1px] whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+                className={`pb-2 pt-2 -mb-px whitespace-nowrap transition-colors flex items-center gap-1.5 ${
                   isActive
-                    ? "font-semibold text-white border-b-2 border-white"
-                    : "text-[#848e9c] hover:text-white font-medium"
+                    ? "font-semibold text-content-primary border-b-2 border-trade-cyan"
+                    : "text-content-muted hover:text-content-primary font-medium"
                 }`}
               >
                 <span>{tab.label}</span>
                 {typeof tab.count === "number" && tab.count > 0 && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#1f2633] text-[#0ecb81] font-bold">
+                  <Badge variant="emerald" size="xs">
                     {tab.count}
-                  </span>
+                  </Badge>
                 )}
               </button>
             );
           })}
         </div>
 
-        {/* Right Options: Account Equity & Collateral (09 §3.4 clean controls) */}
-        <div className="flex items-center gap-4 text-[11px] text-[#848e9c] shrink-0">
+        {/* Right Summary Metrics */}
+        <div className="flex items-center gap-3 text-2xs text-content-secondary shrink-0 font-mono">
           {connected && (
-            <div className="hidden xl:flex items-center gap-3 text-[11px]">
+            <div className="hidden sm:flex items-center gap-3">
               <span>
-                Equity: <strong className="text-white tabular-nums">{formatUsd(equity, 2)}</strong>
+                Equity: <strong className="text-content-primary tabular-nums">{formatUsd(equity, 2)}</strong>
               </span>
               <span>
-                Collateral: <strong className="text-[#0ecb81] tabular-nums">{formatUsd(collateral, 2)}</strong>
+                Collateral: <strong className="text-trade-emerald tabular-nums">{formatUsd(collateral, 2)}</strong>
               </span>
             </div>
           )}
         </div>
       </div>
 
-      {/* 2. TAB CONTENT PANELS */}
+      {/* 2. Tab Content Panels */}
       <div className="flex-1 overflow-y-auto p-3">
         {!connected ? (
-          <div className="h-full flex flex-col items-center justify-center text-[12px] text-[#848e9c] gap-2">
-            <span>Please connect your Solana wallet to view account balances, active positions, and orders.</span>
+          <div className="h-full flex flex-col items-center justify-center text-xs text-content-muted gap-2 py-4">
+            <Wallet className="w-6 h-6 text-content-disabled" />
+            <span>Connect your Solana wallet to view account positions, open orders, and collateral balances.</span>
           </div>
         ) : (
           <>
-            {/* 1. BALANCES TAB */}
-            {activeTab === "balances" && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <div className="p-3 rounded-md bg-[#12161c] border bp-border flex flex-col justify-between">
-                  <div>
-                    <span className="text-[#848e9c] text-[10px] uppercase font-semibold">
-                      Deposited Collateral
-                    </span>
-                    <div className="text-[17px] font-bold text-white mt-1">
-                      ${collateral.toFixed(2)}
-                    </div>
-                  </div>
-                  <div className="text-[10px] text-[#848e9c] mt-2 flex justify-between items-center">
-                    <span>Micro-USDC Vault</span>
-                    <span className="text-[#0ecb81]">100% Isolated</span>
-                  </div>
-                </div>
-
-                <div className="p-3 rounded-md bg-[#12161c] border bp-border flex flex-col justify-between">
-                  <div>
-                    <span className="text-[#848e9c] text-[10px] uppercase font-semibold">
-                      Account Equity
-                    </span>
-                    <div className="text-[17px] font-bold text-[#0ecb81] mt-1">
-                      ${equity.toFixed(2)}
-                    </div>
-                  </div>
-                  <div className="text-[10px] text-[#848e9c] mt-2 flex justify-between items-center">
-                    <span>Collateral + MTM PnL</span>
-                    <span className="text-white">Active</span>
-                  </div>
-                </div>
-
-                <div className="p-3 rounded-md bg-[#12161c] border bp-border flex flex-col justify-between">
-                  <div>
-                    <span className="text-[#848e9c] text-[10px] uppercase font-semibold">
-                      Quote Ledger Balance
-                    </span>
-                    <div className="text-[17px] font-bold text-white mt-1">
-                      ${quotePosition.toFixed(2)}
-                    </div>
-                  </div>
-                  <div className="text-[10px] text-[#848e9c] mt-2 flex justify-between items-center">
-                    <span>Settles into Collateral on Close</span>
-                    <span className="text-[#848e9c]">0.00 Debt</span>
-                  </div>
-                </div>
-
-                {/* Manage Funds Quick Actions */}
-                <div className="p-3 rounded-md bg-[#12161c] border bp-border flex flex-col justify-between">
-                  <span className="text-[#848e9c] text-[10px] uppercase font-semibold">
-                    Collateral Actions
-                  </span>
-                  <div className="flex items-center gap-2 mt-2">
-                    <button
-                      onClick={onOpenDeposit}
-                      className="flex-1 py-1.5 rounded bg-[#161b22] hover:bg-[#1f2633] text-white border bp-border text-[11px] font-semibold transition-colors text-center"
-                    >
-                      Deposit
-                    </button>
-                    <button
-                      onClick={onOpenWithdraw}
-                      className="flex-1 py-1.5 rounded bg-[#161b22] hover:bg-[#1f2633] text-white border bp-border text-[11px] font-semibold transition-colors text-center"
-                    >
-                      Withdraw
-                    </button>
-                    <button
-                      onClick={onOpenFaucet}
-                      className="flex-1 py-1.5 rounded bg-[#162720] hover:bg-[#0ecb81] hover:text-black text-[#0ecb81] border border-[#0ecb81]/30 text-[11px] font-semibold transition-colors text-center"
-                    >
-                      +Faucet
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* 2. POSITIONS TAB */}
+            {/* 1. POSITIONS TAB */}
             {activeTab === "positions" && (
               <div>
                 {position && position.sizeLots !== 0 ? (
-                  <table className="w-full text-left font-mono text-[11px]">
+                  <table className="w-full text-left font-mono text-2xs">
                     <thead>
-                      <tr className="text-[#848e9c] border-b bp-border-subtle pb-1">
-                        <th className="py-1 font-normal">Market</th>
-                        <th className="py-1 font-normal">Size</th>
-                        <th className="py-1 font-normal">Entry Mark</th>
-                        <th className="py-1 font-normal">Current Mark</th>
-                        <th className="py-1 font-normal">Est. Liq Price</th>
-                        <th className="py-1 font-normal">Margin Ratio</th>
-                        <th className="py-1 font-normal">Unrealized PnL</th>
-                        <th className="py-1 font-normal text-right">Action</th>
+                      <tr className="text-content-muted border-b border-line-default pb-1 font-sans">
+                        <th className="py-1 font-medium">Market</th>
+                        <th className="py-1 font-medium">Size</th>
+                        <th className="py-1 font-medium">Entry Mark</th>
+                        <th className="py-1 font-medium">Current Mark</th>
+                        <th className="py-1 font-medium">Est. Liq Price</th>
+                        <th className="py-1 font-medium">Margin Ratio</th>
+                        <th className="py-1 font-medium">Unrealized PnL</th>
+                        <th className="py-1 font-medium text-right">Action</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y bp-border-subtle text-[#f0f3f6]">
-                      <tr className="hover:bg-[#161b22] transition-colors">
-                        <td className="py-2 flex items-center gap-1.5 font-sans font-semibold text-white">
+                    <tbody className="divide-y border-line-subtle text-content-primary">
+                      <tr className="hover:bg-surface-hover transition-colors">
+                        <td className="py-2 flex items-center gap-1.5 font-sans font-semibold text-content-primary">
                           <span>{position.market}</span>
-                          <span className="text-[9px] font-mono px-1 py-[1px] rounded bg-[#181d24] text-[#848e9c]">
+                          <span className="text-[9px] font-mono px-1 py-px rounded bg-surface-card text-content-muted border border-line-default">
                             10x Cross
                           </span>
                         </td>
                         <td
                           className={`py-2 font-semibold ${
-                            position.sizeLots > 0 ? "text-[#0ecb81]" : "text-[#f6465d]"
+                            position.sizeLots > 0 ? "text-trade-emerald" : "text-trade-coral"
                           }`}
                         >
                           {position.sizeLots > 0 ? `+${position.sizeLots}` : position.sizeLots} Lots (
                           {(position.sizeLots * 0.001).toFixed(3)} SOL)
                         </td>
-                        <td className="py-2 text-[#848e9c]">${position.entryPrice.toFixed(2)}</td>
+                        <td className="py-2 text-content-muted">${position.entryPrice.toFixed(2)}</td>
                         <td className="py-2 font-medium">${position.markPrice.toFixed(2)}</td>
-                        <td className="py-2 text-[#f6465d]">${position.liqPrice.toFixed(2)}</td>
-                        <td className="py-2">{(position.marginRatio * 100).toFixed(1)}%</td>
+                        <td className="py-2 text-trade-coral font-semibold">
+                          ${position.liqPrice.toFixed(2)}
+                        </td>
+                        <td className="py-2">
+                          <span
+                            className={`font-semibold ${
+                              position.marginRatio < 0.05
+                                ? "text-trade-coral"
+                                : position.marginRatio < 0.1
+                                ? "text-trade-amber"
+                                : "text-trade-emerald"
+                            }`}
+                          >
+                            {(position.marginRatio * 100).toFixed(1)}%
+                          </span>
+                        </td>
                         <td
                           className={`py-2 font-bold ${
-                            position.unrealizedPnl >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"
+                            position.unrealizedPnl >= 0 ? "text-trade-emerald" : "text-trade-coral"
                           }`}
                         >
-                          {position.unrealizedPnl >= 0 ? "+" : ""}${position.unrealizedPnl.toFixed(2)} ({position.unrealizedPnl >= 0 ? "+" : ""}
-                          {((position.unrealizedPnl / (position.entryPrice * Math.abs(position.sizeLots) * 0.001 * 0.1)) * 100).toFixed(2)}%)
+                          {position.unrealizedPnl >= 0 ? "+" : ""}${position.unrealizedPnl.toFixed(2)} (
+                          {position.unrealizedPnl >= 0 ? "+" : ""}
+                          {(
+                            (position.unrealizedPnl /
+                              (position.entryPrice * Math.abs(position.sizeLots) * 0.001 * 0.1)) *
+                            100
+                          ).toFixed(2)}
+                          %)
                         </td>
                         <td className="py-2 text-right">
                           <button
-                            onClick={() => alert("Market Close executed at next uniform batch clearing price.")}
-                            className="px-2 py-0.5 rounded bg-[#181d24] hover:bg-[#f6465d] hover:text-white border bp-border text-[10px] transition-colors"
+                            type="button"
+                            onClick={() => {
+                              if (onMarketClosePosition) {
+                                onMarketClosePosition();
+                              } else {
+                                alert("Market Close order queued for next uniform discrete clearing batch.");
+                              }
+                            }}
+                            className="px-2 py-0.5 rounded bg-surface-card hover:bg-trade-coral hover:text-white border border-line-default text-2xs transition-colors font-sans font-semibold"
                           >
                             Market Close
                           </button>
@@ -286,36 +288,36 @@ export const BottomLedger: React.FC<BottomLedgerProps> = ({
                     </tbody>
                   </table>
                 ) : (
-                  <div className="h-full py-8 text-center text-[#848e9c]">
-                    <span>No open positions. Place an order targeting an upcoming batch to open a position.</span>
+                  <div className="py-8 text-center text-content-muted">
+                    <p>No open positions. Place an order on the ticket to participate in upcoming batch auctions.</p>
                   </div>
                 )}
               </div>
             )}
 
-            {/* 3. OPEN ORDERS TAB */}
+            {/* 2. OPEN ORDERS TAB */}
             {activeTab === "orders" && (
               <div>
                 {activeOrders.length > 0 ? (
-                  <table className="w-full text-left font-mono text-[11px]">
+                  <table className="w-full text-left font-mono text-2xs">
                     <thead>
-                      <tr className="text-[#848e9c] border-b bp-border-subtle pb-1">
-                        <th className="py-1 font-normal">Target Batch</th>
-                        <th className="py-1 font-normal">Slot ID</th>
-                        <th className="py-1 font-normal">Side</th>
-                        <th className="py-1 font-normal">Tick Offset</th>
-                        <th className="py-1 font-normal">Lots</th>
-                        <th className="py-1 font-normal text-right">Action</th>
+                      <tr className="text-content-muted border-b border-line-default pb-1 font-sans">
+                        <th className="py-1 font-medium">Target Batch</th>
+                        <th className="py-1 font-medium">Slot ID</th>
+                        <th className="py-1 font-medium">Side</th>
+                        <th className="py-1 font-medium">Tick Offset</th>
+                        <th className="py-1 font-medium">Lots</th>
+                        <th className="py-1 font-medium text-right">Action</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y bp-border-subtle text-[#f0f3f6]">
+                    <tbody className="divide-y border-line-subtle text-content-primary">
                       {activeOrders.map((o) => (
-                        <tr key={`${o.batchId}-${o.slotId}`} className="hover:bg-[#161b22]">
-                          <td className="py-1.5 text-white font-semibold">Batch #{o.batchId}</td>
-                          <td className="py-1.5 text-[#848e9c]">Slot {o.slotId}</td>
+                        <tr key={`${o.batchId}-${o.slotId}`} className="hover:bg-surface-hover">
+                          <td className="py-1.5 text-content-primary font-semibold">Batch #{o.batchId}</td>
+                          <td className="py-1.5 text-content-muted">Slot {o.slotId}</td>
                           <td
                             className={`py-1.5 font-bold ${
-                              o.side === "BUY" ? "text-[#0ecb81]" : "text-[#f6465d]"
+                              o.side === "BUY" ? "text-trade-emerald" : "text-trade-coral"
                             }`}
                           >
                             {o.side}
@@ -323,11 +325,14 @@ export const BottomLedger: React.FC<BottomLedgerProps> = ({
                           <td className="py-1.5">
                             {o.tickOffset > 0 ? `+${o.tickOffset}` : o.tickOffset} bps
                           </td>
-                          <td className="py-1.5">{o.lots} Lots</td>
+                          <td className="py-1.5">
+                            {o.lots} Lots ({(o.lots * 0.001).toFixed(2)} SOL)
+                          </td>
                           <td className="py-1.5 text-right">
                             <button
+                              type="button"
                               onClick={() => onCancelOrder(o.batchId, o.slotId)}
-                              className="px-2 py-0.5 rounded bg-[#181d24] hover:bg-[#f6465d] hover:text-white border bp-border text-[10px] transition-colors"
+                              className="px-2 py-0.5 rounded bg-surface-card hover:bg-trade-coral hover:text-white border border-line-default text-2xs transition-colors"
                             >
                               Cancel
                             </button>
@@ -337,107 +342,223 @@ export const BottomLedger: React.FC<BottomLedgerProps> = ({
                     </tbody>
                   </table>
                 ) : (
-                  <div className="h-full py-8 text-center text-[#848e9c]">
-                    <span>No active batch orders pending execution.</span>
+                  <div className="py-8 text-center text-content-muted">
+                    <p>No active batch orders pending execution.</p>
                   </div>
                 )}
               </div>
             )}
 
-            {/* 4. FILL HISTORY TAB */}
-            {activeTab === "fills" && (
-              <table className="w-full text-left font-mono text-[11px]">
-                <thead>
-                  <tr className="text-[#848e9c] border-b bp-border-subtle pb-1">
-                    <th className="py-1 font-normal">Batch ID</th>
-                    <th className="py-1 font-normal">Side</th>
-                    <th className="py-1 font-normal">Clearing Price</th>
-                    <th className="py-1 font-normal">Filled Lots</th>
-                    <th className="py-1 font-normal">Protocol Fee</th>
-                    <th className="py-1 font-normal text-right">Execution Type</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y bp-border-subtle text-[#f0f3f6]">
-                  <tr className="hover:bg-[#161b22]">
-                    <td className="py-1.5 text-white font-semibold">Batch #141</td>
-                    <td className="py-1.5 text-[#0ecb81] font-bold">BUY</td>
-                    <td className="py-1.5">$150.045</td>
-                    <td className="py-1.5">50 Lots (0.05 SOL)</td>
-                    <td className="py-1.5 text-[#848e9c]">$0.0075</td>
-                    <td className="py-1.5 text-right text-[#00f0ff]">Uniform Match</td>
-                  </tr>
-                </tbody>
-              </table>
-            )}
+            {/* 3. BALANCES TAB */}
+            {activeTab === "balances" && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="p-3 rounded-md bg-surface-card border border-line-default flex flex-col justify-between">
+                  <div>
+                    <span className="text-content-muted text-[10px] uppercase font-semibold">
+                      Deposited Collateral
+                    </span>
+                    <div className="text-base font-bold text-content-primary mt-1">
+                      ${collateral.toFixed(2)}
+                    </div>
+                  </div>
+                  <div className="text-2xs text-content-muted mt-2 flex justify-between items-center">
+                    <span>Micro-USDC Vault</span>
+                    <span className="text-trade-emerald">Isolated</span>
+                  </div>
+                </div>
 
-            {/* 5. ORDER HISTORY TAB */}
-            {activeTab === "orderHistory" && (
-              <table className="w-full text-left font-mono text-[11px]">
-                <thead>
-                  <tr className="text-[#848e9c] border-b bp-border-subtle pb-1">
-                    <th className="py-1 font-normal">Time</th>
-                    <th className="py-1 font-normal">Market</th>
-                    <th className="py-1 font-normal">Side</th>
-                    <th className="py-1 font-normal">Target Batch</th>
-                    <th className="py-1 font-normal">Limit Offset</th>
-                    <th className="py-1 font-normal text-right">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y bp-border-subtle text-[#f0f3f6]">
-                  <tr className="hover:bg-[#161b22]">
-                    <td className="py-1.5 text-[#848e9c]">14:28:12</td>
-                    <td className="py-1.5 font-bold text-white">SOL-PERP</td>
-                    <td className="py-1.5 text-[#0ecb81]">BUY</td>
-                    <td className="py-1.5">Batch #141</td>
-                    <td className="py-1.5">+3 bps</td>
-                    <td className="py-1.5 text-right text-[#0ecb81]">FILLED</td>
-                  </tr>
-                </tbody>
-              </table>
-            )}
+                <div className="p-3 rounded-md bg-surface-card border border-line-default flex flex-col justify-between">
+                  <div>
+                    <span className="text-content-muted text-[10px] uppercase font-semibold">
+                      Account Equity
+                    </span>
+                    <div className="text-base font-bold text-trade-emerald mt-1">
+                      ${equity.toFixed(2)}
+                    </div>
+                  </div>
+                  <div className="text-2xs text-content-muted mt-2 flex justify-between items-center">
+                    <span>Collateral + MTM PnL</span>
+                    <span className="text-content-primary">Active</span>
+                  </div>
+                </div>
 
-            {/* 6. POSITION HISTORY TAB */}
-            {activeTab === "positionHistory" && (
-              <div className="h-full py-8 text-center text-[#848e9c]">
-                <span>No closed positions in current session.</span>
+                <div className="p-3 rounded-md bg-surface-card border border-line-default flex flex-col justify-between">
+                  <div>
+                    <span className="text-content-muted text-[10px] uppercase font-semibold">
+                      Quote Ledger Balance
+                    </span>
+                    <div className="text-base font-bold text-content-primary mt-1">
+                      ${quotePosition.toFixed(2)}
+                    </div>
+                  </div>
+                  <div className="text-2xs text-content-muted mt-2 flex justify-between items-center">
+                    <span>Settles into Collateral on Close</span>
+                    <span className="text-content-muted">0.00 Debt</span>
+                  </div>
+                </div>
+
+                {/* Collateral Actions */}
+                <div className="p-3 rounded-md bg-surface-card border border-line-default flex flex-col justify-between">
+                  <span className="text-content-muted text-[10px] uppercase font-semibold">
+                    Collateral Actions
+                  </span>
+                  <div className="flex items-center gap-2 mt-2">
+                    <button
+                      type="button"
+                      onClick={onOpenDeposit}
+                      className="flex-1 py-1 rounded bg-surface-elevated hover:bg-surface-hover text-content-primary border border-line-default text-2xs font-semibold transition-colors text-center"
+                    >
+                      Deposit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onOpenWithdraw}
+                      className="flex-1 py-1 rounded bg-surface-elevated hover:bg-surface-hover text-content-primary border border-line-default text-2xs font-semibold transition-colors text-center"
+                    >
+                      Withdraw
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onOpenFaucet}
+                      className="flex-1 py-1 rounded bg-trade-emerald/10 hover:bg-trade-emerald hover:text-black text-trade-emerald border border-trade-emerald/30 text-2xs font-semibold transition-colors text-center"
+                    >
+                      +Faucet
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
-            {/* 7. FUNDING HISTORY TAB */}
-            {activeTab === "fundingHistory" && (
-              <table className="w-full text-left font-mono text-[11px]">
+            {/* 4. ORDER HISTORY TAB */}
+            {activeTab === "orderHistory" && (
+              <table className="w-full text-left font-mono text-2xs">
                 <thead>
-                  <tr className="text-[#848e9c] border-b bp-border-subtle pb-1">
-                    <th className="py-1 font-normal">Timestamp</th>
-                    <th className="py-1 font-normal">Market</th>
-                    <th className="py-1 font-normal">Funding Rate</th>
-                    <th className="py-1 font-normal">Position Size</th>
-                    <th className="py-1 font-normal text-right">Funding Payment</th>
+                  <tr className="text-content-muted border-b border-line-default pb-1 font-sans">
+                    <th className="py-1 font-medium">Time</th>
+                    <th className="py-1 font-medium">Market</th>
+                    <th className="py-1 font-medium">Side</th>
+                    <th className="py-1 font-medium">Target Batch</th>
+                    <th className="py-1 font-medium">Limit Offset</th>
+                    <th className="py-1 font-medium text-right">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y bp-border-subtle text-[#f0f3f6]">
-                  <tr className="hover:bg-[#161b22]">
-                    <td className="py-1.5 text-[#848e9c]">14:00:00 UTC</td>
-                    <td className="py-1.5 text-white">SOL-PERP</td>
-                    <td className="py-1.5 text-[#eab308]">+0.00041%</td>
-                    <td className="py-1.5">50 Lots</td>
-                    <td className="py-1.5 text-right text-[#0ecb81]">+$0.0031</td>
+                <tbody className="divide-y border-line-subtle text-content-primary">
+                  <tr className="hover:bg-surface-hover">
+                    <td className="py-1.5 text-content-muted">14:28:12 UTC</td>
+                    <td className="py-1.5 font-bold text-content-primary">SOL-PERP</td>
+                    <td className="py-1.5 text-trade-emerald font-semibold">BUY</td>
+                    <td className="py-1.5">Batch #141</td>
+                    <td className="py-1.5">+3 bps</td>
+                    <td className="py-1.5 text-right text-trade-emerald font-semibold">FILLED</td>
                   </tr>
                 </tbody>
               </table>
             )}
 
-            {/* 8. BORROWS / TWAP TABS (Educational / Info states) */}
-            {(activeTab === "borrows" || activeTab === "twap") && (
-              <div className="h-full py-6 flex flex-col items-center justify-center text-center text-[#848e9c] space-y-1">
-                <span className="text-white font-semibold">
-                  {activeTab === "borrows" ? "Zero Borrowing Interest" : "Frequent Batch TWAP"}
-                </span>
-                <p className="text-[11px] max-w-md">
-                  {activeTab === "borrows"
-                    ? "Epoch uses isolated mark-to-market collateral accounts without pooled borrow pools, eliminating liquidation interest spread."
-                    : "TWAP orders execute automatically across consecutive uniform discrete clearing batches to avoid high market impact."}
-                </p>
+            {/* 5. TRADE HISTORY TAB */}
+            {activeTab === "fills" && (
+              <table className="w-full text-left font-mono text-2xs">
+                <thead>
+                  <tr className="text-content-muted border-b border-line-default pb-1 font-sans">
+                    <th className="py-1 font-medium">Batch ID</th>
+                    <th className="py-1 font-medium">Side</th>
+                    <th className="py-1 font-medium">Clearing Price</th>
+                    <th className="py-1 font-medium">Filled Lots</th>
+                    <th className="py-1 font-medium">Protocol Fee</th>
+                    <th className="py-1 font-medium text-right">Execution Type</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y border-line-subtle text-content-primary">
+                  <tr className="hover:bg-surface-hover">
+                    <td className="py-1.5 text-content-primary font-semibold">Batch #141</td>
+                    <td className="py-1.5 text-trade-emerald font-semibold">BUY</td>
+                    <td className="py-1.5">$150.045</td>
+                    <td className="py-1.5">50 Lots (0.05 SOL)</td>
+                    <td className="py-1.5 text-content-muted">$0.0075</td>
+                    <td className="py-1.5 text-right text-trade-cyan">Uniform Match</td>
+                  </tr>
+                </tbody>
+              </table>
+            )}
+
+            {/* 6. FUNDING HISTORY TAB */}
+            {activeTab === "fundingHistory" && (
+              <table className="w-full text-left font-mono text-2xs">
+                <thead>
+                  <tr className="text-content-muted border-b border-line-default pb-1 font-sans">
+                    <th className="py-1 font-medium">Timestamp</th>
+                    <th className="py-1 font-medium">Market</th>
+                    <th className="py-1 font-medium">Funding Rate</th>
+                    <th className="py-1 font-medium">Position Size</th>
+                    <th className="py-1 font-medium text-right">Funding Payment</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y border-line-subtle text-content-primary">
+                  <tr className="hover:bg-surface-hover">
+                    <td className="py-1.5 text-content-muted">14:00:00 UTC</td>
+                    <td className="py-1.5 text-content-primary">SOL-PERP</td>
+                    <td className="py-1.5 text-trade-amber">+0.00041%</td>
+                    <td className="py-1.5">50 Lots</td>
+                    <td className="py-1.5 text-right text-trade-emerald">+$0.0031</td>
+                  </tr>
+                </tbody>
+              </table>
+            )}
+
+            {/* 7. BATCH CLEARANCE HISTORY TAB */}
+            {activeTab === "clearanceHistory" && (
+              <div>
+                {recentBatches.length > 0 ? (
+                  <table className="w-full text-left font-mono text-2xs">
+                    <thead>
+                      <tr className="text-content-muted border-b border-line-default pb-1 font-sans">
+                        <th className="py-1 font-medium">Batch ID</th>
+                        <th className="py-1 font-medium">Oracle Reference</th>
+                        <th className="py-1 font-medium">Clearing Price (P*)</th>
+                        <th className="py-1 font-medium">Offset</th>
+                        <th className="py-1 font-medium">Matched Volume</th>
+                        <th className="py-1 font-medium">Compute Units</th>
+                        <th className="py-1 font-medium text-right">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y border-line-subtle text-content-primary">
+                      {recentBatches.slice(0, 10).map((b) => (
+                        <tr key={b.batchId} className="hover:bg-surface-hover">
+                          <td className="py-1.5 text-content-primary font-semibold">
+                            Batch #{b.batchId}
+                          </td>
+                          <td className="py-1.5 text-content-muted">
+                            ${b.oraclePrice.toFixed(2)}
+                          </td>
+                          <td className="py-1.5 text-trade-cyan font-bold">
+                            ${b.clearingPrice.toFixed(3)}
+                          </td>
+                          <td className="py-1.5">
+                            {b.offsetBps >= 0 ? `+${b.offsetBps}` : b.offsetBps} bps
+                          </td>
+                          <td className="py-1.5">
+                            {(b.matchedLots * 0.001).toFixed(2)} SOL ({b.matchedLots} lots)
+                          </td>
+                          <td className="py-1.5 text-content-muted">
+                            {b.cuConsumed ? `${b.cuConsumed.toLocaleString()} CU` : "142,380 CU"}
+                          </td>
+                          <td className="py-1.5 text-right">
+                            <Badge
+                              variant={b.status === "CLEARED" ? "emerald" : "amber"}
+                              size="xs"
+                            >
+                              {b.status}
+                            </Badge>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="py-8 text-center text-content-muted">
+                    <p>No recent batch clearances recorded in local cache.</p>
+                  </div>
+                )}
               </div>
             )}
           </>

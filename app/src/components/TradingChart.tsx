@@ -1,25 +1,31 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   Zap,
   Maximize2,
-  Camera,
   RotateCcw,
   Clock,
   Info,
   ExternalLink,
+  SlidersHorizontal,
 } from "lucide-react";
 import { fetchLiveKlines, Candle, MarketStats } from "../lib/marketData";
-import { formatNumber, formatCompactUsd, formatPercent, formatFundingRate } from "../lib/formatters";
+import {
+  formatNumber,
+  formatCompactUsd,
+  formatPercent,
+  formatFundingRate,
+} from "../lib/formatters";
 
-interface TradingChartProps {
+export interface TradingChartProps {
   markPrice: number;
   batchId: number;
   bidQty: number[];
   askQty: number[];
   stats?: MarketStats | null;
   onSelectPrice?: (price: number) => void;
+  recentClearingPrice?: number;
 }
 
 export const TradingChart: React.FC<TradingChartProps> = ({
@@ -29,8 +35,8 @@ export const TradingChart: React.FC<TradingChartProps> = ({
   askQty,
   stats,
   onSelectPrice,
+  recentClearingPrice,
 }) => {
-  // 09 §3.5 rule 7: "Price", "Batch curve", and "Market info" tabs only
   const [chartMode, setChartMode] = useState<"price" | "batch_curve" | "market_info">("price");
   const [timeframe, setTimeframe] = useState<"1m" | "5m" | "15m" | "1h" | "4h" | "1D">("1h");
   const [priceRef, setPriceRef] = useState<"last" | "oracle">("last");
@@ -38,8 +44,11 @@ export const TradingChart: React.FC<TradingChartProps> = ({
   const [realCandles, setRealCandles] = useState<Candle[]>([]);
   const [utcTime, setUtcTime] = useState<string>("");
   const [showSma, setShowSma] = useState<boolean>(true);
+  const [crosshairPos, setCrosshairPos] = useState<{ x: number; y: number; price: number } | null>(null);
 
-  // Live UTC Clock (09 §8.1: Single live UTC clock across the screen)
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  // Live UTC Clock
   useEffect(() => {
     const updateClock = () => {
       const now = new Date();
@@ -50,7 +59,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch live candlesticks whenever timeframe changes
+  // Fetch live candlesticks
   useEffect(() => {
     let mounted = true;
     const load = async () => {
@@ -60,7 +69,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       }
     };
     load();
-    const interval = setInterval(load, 10000); // 10s poll
+    const interval = setInterval(load, 10000);
     return () => {
       mounted = false;
       clearInterval(interval);
@@ -75,7 +84,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
     const list = [];
     let current = markPrice - 2.8;
     for (let i = 0; i < 48; i++) {
-      const delta = Math.sin(i * 0.45) * 1.4 + (Math.cos(i * 0.75) * 0.9);
+      const delta = Math.sin(i * 0.45) * 1.4 + Math.cos(i * 0.75) * 0.9;
       const open = current;
       const close = open + delta;
       const high = Math.max(open, close) + Math.abs(Math.sin(i * 1.1)) * 0.7 + 0.1;
@@ -128,7 +137,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
     return d;
   }, [smaPoints]);
 
-  // Dynamic Volume metrics & SMA (UX-16)
+  // Volume metrics
   const { maxVolume, volumeSma } = useMemo(() => {
     if (candles.length === 0) return { maxVolume: 1, volumeSma: 0 };
     const volumes = candles.map((c) => c.volume);
@@ -139,11 +148,10 @@ export const TradingChart: React.FC<TradingChartProps> = ({
     return { maxVolume: maxV, volumeSma: sma };
   }, [candles]);
 
-  // Active displayed candle stats
   const activeCandle = hoveredCandle !== null ? candles[hoveredCandle] : candles[candles.length - 1];
 
-  // FBA Crossing Curve calculations for the "Batch curve" tab
-  const { eqPrice, eqVol } = useMemo(() => {
+  // FBA Crossing Curve calculations
+  const { eqPrice, eqVol, eqTick, demandSteps, supplySteps } = useMemo(() => {
     const k = 101;
     const demand = new Array(k).fill(0);
     const supply = new Array(k).fill(0);
@@ -172,10 +180,13 @@ export const TradingChart: React.FC<TradingChartProps> = ({
 
     const offsetBps = bestT - 50;
     const p = markPrice * (1 + offsetBps / 10_000);
+
     return {
       eqTick: bestT,
       eqPrice: p,
       eqVol: maxM,
+      demandSteps: demand,
+      supplySteps: supply,
     };
   }, [bidQty, askQty, markPrice]);
 
@@ -189,17 +200,53 @@ export const TradingChart: React.FC<TradingChartProps> = ({
     }
   };
 
+  // Crosshair mouse handler
+  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clientX = e.clientX - rect.left;
+    const clientY = e.clientY - rect.top;
+
+    const svgWidth = 940;
+    const svgHeight = 380;
+    const xRatio = svgWidth / rect.width;
+    const yRatio = svgHeight / rect.height;
+
+    const svgX = clientX * xRatio;
+    const svgY = clientY * yRatio;
+
+    // Price calculation
+    const priceRange = maxPrice - minPrice;
+    const calcPrice = maxPrice - ((svgY - 30) / 270) * priceRange;
+
+    // Candle detection
+    const candleIdx = Math.floor((svgX - 20) / 17.5);
+    if (candleIdx >= 0 && candleIdx < candles.length) {
+      setHoveredCandle(candleIdx);
+    }
+
+    setCrosshairPos({
+      x: Math.max(0, Math.min(870, svgX)),
+      y: Math.max(10, Math.min(340, svgY)),
+      price: Math.max(minPrice, Math.min(maxPrice, calcPrice)),
+    });
+  };
+
+  const handleMouseLeave = () => {
+    setCrosshairPos(null);
+    setHoveredCandle(null);
+  };
+
   return (
-    <div className="flex-1 flex flex-col min-w-0 bg-[#0e1217] border-r bp-border overflow-hidden select-none">
-      {/* 1. CHART TOP TABS & CONTROLS (09 §3.5 rule 7: Price, Batch curve, Market info only) */}
-      <div className="h-[38px] border-b bp-border bg-[#0e1217] flex items-center justify-between px-3 shrink-0">
-        <div className="flex items-center gap-1 text-[12px]">
+    <div className="flex-1 flex flex-col min-w-0 bg-surface-header border-r border-line-default overflow-hidden select-none font-sans">
+      {/* 1. Header Tabs & Price Reference Switcher */}
+      <div className="h-[36px] border-b border-line-default bg-surface-header flex items-center justify-between px-3 shrink-0">
+        <div className="flex items-center gap-1 text-xs">
           <button
             onClick={() => setChartMode("price")}
             className={`px-2.5 py-1 rounded transition-colors ${
               chartMode === "price"
-                ? "bg-[#181d24] font-semibold text-white shadow-sm"
-                : "font-medium text-[#848e9c] hover:text-white"
+                ? "bg-surface-elevated font-semibold text-content-primary shadow-xs border border-line-subtle"
+                : "font-medium text-content-secondary hover:text-content-primary hover:bg-surface-hover"
             }`}
           >
             Price
@@ -208,34 +255,34 @@ export const TradingChart: React.FC<TradingChartProps> = ({
             onClick={() => setChartMode("batch_curve")}
             className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1.5 ${
               chartMode === "batch_curve"
-                ? "bg-[#181d24] font-semibold text-white shadow-sm"
-                : "font-medium text-[#848e9c] hover:text-white"
+                ? "bg-surface-elevated font-semibold text-content-primary shadow-xs border border-line-subtle"
+                : "font-medium text-content-secondary hover:text-content-primary hover:bg-surface-hover"
             }`}
           >
-            <Zap className="w-3.5 h-3.5 text-[#00f0ff]" />
-            <span>Batch curve</span>
+            <Zap className="w-3 h-3 text-trade-cyan" />
+            <span>Batch Curve</span>
           </button>
           <button
             onClick={() => setChartMode("market_info")}
             className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1.5 ${
               chartMode === "market_info"
-                ? "bg-[#181d24] font-semibold text-white shadow-sm"
-                : "font-medium text-[#848e9c] hover:text-white"
+                ? "bg-surface-elevated font-semibold text-content-primary shadow-xs border border-line-subtle"
+                : "font-medium text-content-secondary hover:text-content-primary hover:bg-surface-hover"
             }`}
           >
-            <Info className="w-3.5 h-3.5 text-[#eab308]" />
-            <span>Market info</span>
+            <Info className="w-3 h-3 text-trade-amber" />
+            <span>Market Info</span>
           </button>
         </div>
 
-        {/* Price Reference Switcher (09 §3.4: Oracle and Last batch price only) */}
-        <div className="flex items-center p-0.5 rounded bg-[#12161c] border bp-border text-[10px] font-mono">
+        {/* Reference Switcher */}
+        <div className="flex items-center p-0.5 rounded bg-surface-card border border-line-default text-2xs font-mono">
           <button
             onClick={() => setPriceRef("last")}
             className={`px-2 py-0.5 rounded transition-all ${
               priceRef === "last"
-                ? "bg-[#1f2633] font-semibold text-white shadow-sm"
-                : "text-[#848e9c] hover:text-white"
+                ? "bg-surface-elevated font-semibold text-content-primary shadow-xs"
+                : "text-content-muted hover:text-content-primary"
             }`}
           >
             Last Batch
@@ -244,8 +291,8 @@ export const TradingChart: React.FC<TradingChartProps> = ({
             onClick={() => setPriceRef("oracle")}
             className={`px-2 py-0.5 rounded transition-all ${
               priceRef === "oracle"
-                ? "bg-[#1f2633] font-semibold text-white shadow-sm"
-                : "text-[#848e9c] hover:text-white"
+                ? "bg-surface-elevated font-semibold text-content-primary shadow-xs"
+                : "text-content-muted hover:text-content-primary"
             }`}
           >
             Oracle
@@ -253,57 +300,67 @@ export const TradingChart: React.FC<TradingChartProps> = ({
         </div>
       </div>
 
-      {/* 2. TRADINGVIEW TOOLBAR STRIP */}
-      <div className="h-[32px] border-b bp-border bg-[#0e1217] flex items-center justify-between px-3 shrink-0 text-[11px] text-[#848e9c] font-mono">
-        <div className="flex items-center gap-2.5">
+      {/* 2. TradingView Toolbar Strip: Timeframes, SMA, Fullscreen */}
+      <div className="h-[30px] border-b border-line-default bg-surface-header flex items-center justify-between px-3 shrink-0 text-2xs text-content-secondary font-mono">
+        <div className="flex items-center gap-2">
           {(["1m", "5m", "15m", "1h", "4h", "1D"] as const).map((tf) => (
-            <span
+            <button
               key={tf}
+              type="button"
               onClick={() => setTimeframe(tf)}
-              className={`cursor-pointer px-1 py-0.5 rounded transition-colors ${
-                timeframe === tf ? "font-semibold text-white bg-[#181d24]" : "hover:text-white"
+              className={`px-1.5 py-0.5 rounded transition-colors ${
+                timeframe === tf
+                  ? "font-semibold text-content-primary bg-surface-elevated border border-line-subtle shadow-xs"
+                  : "text-content-muted hover:text-content-primary hover:bg-surface-hover"
               }`}
             >
               {tf}
-            </span>
+            </button>
           ))}
 
-          <div className="w-[1px] h-3.5 bg-[#242b35] mx-0.5"></div>
+          <div className="w-px h-3 bg-line-default mx-0.5" />
 
-          {/* Indicator Button (functional toggle for SMA) */}
+          {/* SMA Toggle */}
           <button
+            type="button"
             onClick={() => setShowSma(!showSma)}
             className={`flex items-center gap-1 transition-colors px-1.5 py-0.5 rounded ${
-              showSma ? "text-[#00f0ff] bg-[#00f0ff]/10" : "text-[#848e9c] hover:text-white"
+              showSma
+                ? "text-trade-cyan bg-trade-cyan/10 border border-trade-cyan/20"
+                : "text-content-muted hover:text-content-primary"
             }`}
             title="Toggle SMA(10) indicator"
           >
-            <span className="font-serif italic font-semibold text-[12px]">fx</span>
-            <span className="text-[11px] font-sans">SMA (10)</span>
+            <span className="italic font-bold text-xs">fx</span>
+            <span>SMA (10)</span>
           </button>
         </div>
 
-        {/* Right Tools: Single Live UTC Clock & Controls */}
-        <div className="flex items-center gap-2.5 text-[11px]">
-          {/* Live UTC Clock (09 §3.5 rule 12: Single live UTC clock, no static clocks) */}
-          <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#12161c] border bp-border text-white tabular-nums font-mono text-[10px]">
-            <Clock className="w-3 h-3 text-[#00f0ff]" />
+        {/* Live Status Indicators */}
+        <div className="flex items-center gap-3">
+          <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded bg-surface-card border border-line-default text-content-secondary tabular-nums font-mono text-2xs">
+            <Clock className="w-3 h-3 text-trade-cyan" />
             <span>{utcTime || "00:00:00 UTC"}</span>
           </div>
 
-          <span className="text-[#0ecb81] font-semibold flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#0ecb81] animate-pulse"></span>
+          <span className="text-trade-emerald font-semibold flex items-center gap-1 text-2xs">
+            <span className="w-1.5 h-1.5 rounded-full bg-trade-emerald animate-pulse" />
             Pyth Live
           </span>
           <button
-            className="hover:text-white transition-colors text-[#848e9c]"
+            type="button"
+            className="hover:text-content-primary transition-colors text-content-muted"
             title="Reset Chart View"
-            onClick={() => setHoveredCandle(null)}
+            onClick={() => {
+              setHoveredCandle(null);
+              setCrosshairPos(null);
+            }}
           >
             <RotateCcw className="w-3.5 h-3.5" />
           </button>
           <button
-            className="hover:text-white transition-colors text-[#848e9c]"
+            type="button"
+            className="hover:text-content-primary transition-colors text-content-muted"
             title="Toggle Fullscreen"
             onClick={toggleFullscreen}
           >
@@ -312,27 +369,47 @@ export const TradingChart: React.FC<TradingChartProps> = ({
         </div>
       </div>
 
-      {/* 3. MAIN WORKSPACE: CANVAS VIEW */}
-      <div className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden bg-[#0e1217]">
+      {/* 3. Main Chart Canvas Area */}
+      <div className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden bg-surface-header">
         {chartMode === "price" ? (
           <div className="w-full h-full flex flex-col min-h-0 relative select-none">
-            {/* Floating Candle Stats Strip (09 §3.5 rule 6: Never label reference data "Epoch") */}
-            <div className="absolute top-2 left-3 z-10 flex flex-wrap items-center gap-x-3 text-[11px] font-mono pointer-events-none">
-              <span className="text-[#f0f3f6] font-bold">SOL-PERP · {timeframe} · Reference (Binance)</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-[#0ecb81]"></span>
-              <span className="text-[#848e9c]">
-                O <span className={activeCandle?.isGreen ? "text-[#0ecb81]" : "text-[#f6465d]"}>{activeCandle?.open.toFixed(2)}</span>
+            {/* Floating Candle Stats Strip */}
+            <div className="absolute top-2 left-3 z-10 flex flex-wrap items-center gap-x-3 text-2xs font-mono pointer-events-none">
+              <span className="text-content-primary font-bold">
+                SOL-PERP · {timeframe} · Reference (Binance)
               </span>
-              <span className="text-[#848e9c]">
-                H <span className={activeCandle?.isGreen ? "text-[#0ecb81]" : "text-[#f6465d]"}>{activeCandle?.high.toFixed(2)}</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-trade-emerald" />
+              <span className="text-content-muted">
+                O{" "}
+                <span className={activeCandle?.isGreen ? "text-trade-emerald" : "text-trade-coral"}>
+                  {activeCandle?.open.toFixed(2)}
+                </span>
               </span>
-              <span className="text-[#848e9c]">
-                L <span className={activeCandle?.isGreen ? "text-[#0ecb81]" : "text-[#f6465d]"}>{activeCandle?.low.toFixed(2)}</span>
+              <span className="text-content-muted">
+                H{" "}
+                <span className={activeCandle?.isGreen ? "text-trade-emerald" : "text-trade-coral"}>
+                  {activeCandle?.high.toFixed(2)}
+                </span>
               </span>
-              <span className="text-[#848e9c]">
-                C <span className={activeCandle?.isGreen ? "text-[#0ecb81]" : "text-[#f6465d]"}>{activeCandle?.close.toFixed(2)}</span>
+              <span className="text-content-muted">
+                L{" "}
+                <span className={activeCandle?.isGreen ? "text-trade-emerald" : "text-trade-coral"}>
+                  {activeCandle?.low.toFixed(2)}
+                </span>
               </span>
-              <span className={activeCandle?.isGreen ? "text-[#0ecb81] font-semibold" : "text-[#f6465d] font-semibold"}>
+              <span className="text-content-muted">
+                C{" "}
+                <span className={activeCandle?.isGreen ? "text-trade-emerald" : "text-trade-coral"}>
+                  {activeCandle?.close.toFixed(2)}
+                </span>
+              </span>
+              <span
+                className={
+                  activeCandle?.isGreen
+                    ? "text-trade-emerald font-semibold"
+                    : "text-trade-coral font-semibold"
+                }
+              >
                 {activeCandle && activeCandle.close >= activeCandle.open ? "+" : ""}
                 {(activeCandle ? activeCandle.close - activeCandle.open : 0).toFixed(2)}
               </span>
@@ -340,9 +417,9 @@ export const TradingChart: React.FC<TradingChartProps> = ({
 
             {/* Volume SMA Label */}
             {showSma && (
-              <div className="absolute top-7 left-3 z-10 flex items-center gap-1.5 font-mono text-[10px] text-[#848e9c] pointer-events-none">
+              <div className="absolute top-7 left-3 z-10 flex items-center gap-1.5 font-mono text-2xs text-content-muted pointer-events-none">
                 <span>Volume SMA(10):</span>
-                <span className="text-[#eab308] tabular-nums font-medium">
+                <span className="text-trade-amber tabular-nums font-medium">
                   {formatNumber(volumeSma, 2)}
                 </span>
               </div>
@@ -351,11 +428,16 @@ export const TradingChart: React.FC<TradingChartProps> = ({
             {/* SVG Candlestick & Volume Canvas */}
             <div className="flex-1 w-full h-full relative">
               <svg
+                ref={svgRef}
                 viewBox="0 0 940 380"
-                className="w-full h-full"
+                className="w-full h-full cursor-crosshair"
                 preserveAspectRatio="none"
+                onMouseMove={handleMouseMove}
+                onMouseLeave={handleMouseLeave}
                 onClick={(e) => {
-                  if (onSelectPrice) {
+                  if (onSelectPrice && crosshairPos) {
+                    onSelectPrice(parseFloat(crosshairPos.price.toFixed(2)));
+                  } else if (onSelectPrice) {
                     const rect = e.currentTarget.getBoundingClientRect();
                     const y = e.clientY - rect.top;
                     const pct = y / rect.height;
@@ -396,7 +478,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
                       <text
                         x="880"
                         y={y + 4}
-                        fill="#848e9c"
+                        fill="#7C879C"
                         fontFamily="JetBrains Mono"
                         fontSize="10"
                       >
@@ -410,7 +492,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
                 <line x1="870" y1="0" x2="870" y2="350" stroke="rgba(255, 255, 255, 0.07)" />
 
                 {/* Volume Histogram (Bottom) */}
-                <g opacity="0.6">
+                <g opacity="0.65">
                   {candles.map((c) => {
                     const x = 20 + c.i * 17.5;
                     const vHeight = Math.max(2, (c.volume / maxVolume) * 45);
@@ -422,8 +504,9 @@ export const TradingChart: React.FC<TradingChartProps> = ({
                         y={y}
                         width="11"
                         height={vHeight}
-                        fill={c.isGreen ? "#0ecb81" : "#f6465d"}
+                        fill={c.isGreen ? "#10B981" : "#F43F5E"}
                         opacity={0.4}
+                        rx="0.5"
                       />
                     );
                   })}
@@ -442,26 +525,24 @@ export const TradingChart: React.FC<TradingChartProps> = ({
                   const isHovered = hoveredCandle === c.i;
 
                   return (
-                    <g
-                      key={`candle-${c.i}`}
-                      onMouseEnter={() => setHoveredCandle(c.i)}
-                      className="cursor-pointer"
-                    >
+                    <g key={`candle-${c.i}`} className="cursor-pointer">
+                      {/* Wick */}
                       <line
                         x1={x + 5.5}
                         y1={yHigh}
                         x2={x + 5.5}
                         y2={yLow}
-                        stroke={c.isGreen ? "#0ecb81" : "#f6465d"}
+                        stroke={c.isGreen ? "#10B981" : "#F43F5E"}
                         strokeWidth="1.2"
                       />
+                      {/* Body */}
                       <rect
                         x={x}
                         y={candleTop}
                         width="11"
                         height={candleHeight}
-                        fill={c.isGreen ? "#0ecb81" : "#f6465d"}
-                        stroke={isHovered ? "#ffffff" : "none"}
+                        fill={c.isGreen ? "#10B981" : "#F43F5E"}
+                        stroke={isHovered ? "#FFFFFF" : "none"}
                         strokeWidth={isHovered ? 1 : 0}
                         rx="1"
                       />
@@ -474,12 +555,44 @@ export const TradingChart: React.FC<TradingChartProps> = ({
                   <path
                     d={smaPath}
                     fill="none"
-                    stroke="#00f0ff"
+                    stroke="#00D8F6"
                     strokeWidth="1.5"
                     strokeDasharray="3 3"
                     opacity="0.8"
                   />
                 )}
+
+                {/* Uniform Clearing Price Line (P*) if available */}
+                {(() => {
+                  const pStar = recentClearingPrice || (stats?.lastPrice ?? markPrice);
+                  const scaleY = (p: number) => 300 - ((p - minPrice) / (maxPrice - minPrice)) * 240;
+                  const y = scaleY(pStar);
+                  return (
+                    <g>
+                      <line
+                        x1="0"
+                        y1={y}
+                        x2="870"
+                        y2={y}
+                        stroke="#00D8F6"
+                        strokeDasharray="2 3"
+                        strokeWidth="1.2"
+                      />
+                      <rect x="872" y={y - 8} width="64" height="16" fill="#00D8F6" rx="2" />
+                      <text
+                        x="904"
+                        y={y + 3}
+                        fill="#07090E"
+                        fontFamily="JetBrains Mono"
+                        fontSize="9"
+                        fontWeight="700"
+                        textAnchor="middle"
+                      >
+                        P* {pStar.toFixed(2)}
+                      </text>
+                    </g>
+                  );
+                })()}
 
                 {/* Oracle / Last Price Line */}
                 {(() => {
@@ -493,17 +606,17 @@ export const TradingChart: React.FC<TradingChartProps> = ({
                         y1={y}
                         x2="870"
                         y2={y}
-                        stroke="#0ecb81"
+                        stroke="#10B981"
                         strokeDasharray="4 4"
                         strokeWidth="1.5"
                       />
-                      <rect x="872" y={y - 9} width="62" height="18" fill="#0ecb81" rx="2" />
+                      <rect x="872" y={y - 9} width="64" height="18" fill="#10B981" rx="2" />
                       <text
-                        x="903"
+                        x="904"
                         y={y + 3}
-                        fill="#0e1217"
+                        fill="#07090E"
                         fontFamily="JetBrains Mono"
-                        fontSize="11"
+                        fontSize="10"
                         fontWeight="700"
                         textAnchor="middle"
                       >
@@ -512,33 +625,80 @@ export const TradingChart: React.FC<TradingChartProps> = ({
                     </g>
                   );
                 })()}
+
+                {/* Dynamic Crosshair Guidelines */}
+                {crosshairPos && (
+                  <g pointerEvents="none">
+                    {/* Vertical guideline */}
+                    <line
+                      x1={crosshairPos.x}
+                      y1="0"
+                      x2={crosshairPos.x}
+                      y2="350"
+                      stroke="rgba(255, 255, 255, 0.25)"
+                      strokeDasharray="3 3"
+                      strokeWidth="1"
+                    />
+                    {/* Horizontal guideline */}
+                    <line
+                      x1="0"
+                      y1={crosshairPos.y}
+                      x2="870"
+                      y2={crosshairPos.y}
+                      stroke="rgba(255, 255, 255, 0.25)"
+                      strokeDasharray="3 3"
+                      strokeWidth="1"
+                    />
+                    {/* Crosshair Price Badge on Axis */}
+                    <rect
+                      x="872"
+                      y={crosshairPos.y - 8}
+                      width="64"
+                      height="16"
+                      fill="#1E2638"
+                      stroke="#4F5F7A"
+                      rx="2"
+                    />
+                    <text
+                      x="904"
+                      y={crosshairPos.y + 3}
+                      fill="#F0F4FA"
+                      fontFamily="JetBrains Mono"
+                      fontSize="9"
+                      fontWeight="600"
+                      textAnchor="middle"
+                    >
+                      {crosshairPos.price.toFixed(2)}
+                    </text>
+                  </g>
+                )}
               </svg>
             </div>
 
-            {/* Bottom Clean Status Strip (Inert controls removed per 09 §3.5 rule 12) */}
-            <div className="h-[26px] border-t bp-border flex items-center justify-between px-3 text-[10px] font-mono text-[#848e9c] shrink-0 bg-[#0e1217]">
+            {/* Bottom Clean Status Strip */}
+            <div className="h-[26px] border-t border-line-default flex items-center justify-between px-3 text-2xs font-mono text-content-muted shrink-0 bg-surface-header">
               <div className="flex items-center gap-2">
-                <span className="text-[#00f0ff]">K=101 Ticks</span>
-                <span className="text-[#4b5563]">·</span>
+                <span className="text-trade-cyan font-medium">K=101 Ticks</span>
+                <span className="text-line-strong">·</span>
                 <span>±50 bps around Pyth Oracle</span>
-                <span className="text-[#4b5563]">·</span>
+                <span className="text-line-strong">·</span>
                 <span>1 bp Tick Spacing</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#0ecb81] animate-pulse"></span>
-                <span className="text-white font-medium">Pyth Oracle Reference</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-trade-emerald animate-pulse" />
+                <span className="text-content-primary font-medium">Pyth Oracle Reference</span>
               </div>
             </div>
           </div>
         ) : chartMode === "batch_curve" ? (
           /* FBA BATCH CROSSING CURVE VIEW */
           <div className="w-full h-full flex flex-col min-h-0 relative select-none p-3">
-            <div className="flex items-center justify-between px-2 py-1 font-mono text-[11px] border-b bp-border pb-2 mb-2">
-              <span className="text-white font-bold flex items-center gap-1.5">
-                <Zap className="w-4 h-4 text-[#00f0ff]" />
+            <div className="flex items-center justify-between px-2 py-1 font-mono text-xs border-b border-line-default pb-2 mb-2">
+              <span className="text-content-primary font-bold flex items-center gap-1.5">
+                <Zap className="w-4 h-4 text-trade-cyan" />
                 Batch #{batchId} Uniform Crossing Curve
               </span>
-              <span className="text-[#0ecb81]">
+              <span className="text-trade-emerald font-semibold">
                 Equilibrium: ${eqPrice.toFixed(3)} · {eqVol} Lots Matched
               </span>
             </div>
@@ -554,8 +714,15 @@ export const TradingChart: React.FC<TradingChartProps> = ({
                   stroke="rgba(255, 255, 255, 0.15)"
                   strokeDasharray="3 3"
                 />
-                <text x="430" y="320" fill="#848e9c" fontSize="10" fontFamily="JetBrains Mono" textAnchor="middle">
-                  0 bps (Mark ${markPrice.toFixed(2)})
+                <text
+                  x="430"
+                  y="320"
+                  fill="#7C879C"
+                  fontSize="10"
+                  fontFamily="JetBrains Mono"
+                  textAnchor="middle"
+                >
+                  0 bps (Oracle ${markPrice.toFixed(2)})
                 </text>
 
                 {/* Demand Step Curve (Cyan) */}
@@ -570,11 +737,11 @@ export const TradingChart: React.FC<TradingChartProps> = ({
                     return d;
                   })()}
                   fill="none"
-                  stroke="#00f0ff"
+                  stroke="#00D8F6"
                   strokeWidth="2.5"
                 />
 
-                {/* Supply Step Curve (Red) */}
+                {/* Supply Step Curve (Coral) */}
                 <path
                   d={(() => {
                     let d = "M 40 290";
@@ -586,122 +753,137 @@ export const TradingChart: React.FC<TradingChartProps> = ({
                     return d;
                   })()}
                   fill="none"
-                  stroke="#f6465d"
+                  stroke="#F43F5E"
                   strokeWidth="2.5"
                 />
 
                 {/* Intersection Equilibrium Beacon */}
-                <line x1="440" y1="20" x2="440" y2="300" stroke="#0ecb81" strokeDasharray="4 4" strokeWidth="1.5" />
-                <circle cx="440" cy="165" r="5" fill="#0ecb81" stroke="#0e1217" strokeWidth="2" />
+                <line
+                  x1="440"
+                  y1="20"
+                  x2="440"
+                  y2="300"
+                  stroke="#10B981"
+                  strokeDasharray="4 4"
+                  strokeWidth="1.5"
+                />
+                <circle cx="440" cy="165" r="5" fill="#10B981" stroke="#07090E" strokeWidth="2" />
               </svg>
             </div>
 
-            <div className="h-[28px] border-t bp-border flex items-center justify-between px-2 text-[10px] font-mono text-[#848e9c] shrink-0 mt-2">
+            <div className="h-[28px] border-t border-line-default flex items-center justify-between px-2 text-2xs font-mono text-content-muted shrink-0 mt-2">
               <span>Intra-batch sandwich MEV eliminated via single discrete clearing price.</span>
-              <span className="text-[#00f0ff]">Grid: K=101 ticks · 1 bp offset spacing</span>
+              <span className="text-trade-cyan">Grid: K=101 ticks · 1 bp offset spacing</span>
             </div>
           </div>
         ) : (
-          /* POPULATED MARKET INFO PANEL (09 §3.5 rule 6 & rule 7: Binance reference data labeled) */
-          <div className="w-full h-full flex flex-col min-h-0 overflow-y-auto p-4 space-y-4 font-mono text-[11px] text-[#f0f3f6]">
-            <div className="flex items-center justify-between border-b bp-border pb-2">
+          /* POPULATED MARKET INFO PANEL */
+          <div className="w-full h-full flex flex-col min-h-0 overflow-y-auto p-4 space-y-4 font-mono text-xs text-content-primary">
+            <div className="flex items-center justify-between border-b border-line-default pb-2">
               <div className="flex items-center gap-2">
-                <Info className="w-4 h-4 text-[#eab308]" />
-                <span className="text-[13px] font-bold text-white font-sans">
+                <Info className="w-4 h-4 text-trade-amber" />
+                <span className="text-sm font-bold text-content-primary font-sans">
                   SOL-PERP Market Details & Reference Feeds
                 </span>
               </div>
-              <span className="text-[10px] px-2 py-0.5 rounded bg-[#1f2633] text-[#848e9c] border bp-border">
+              <span className="text-2xs px-2 py-0.5 rounded bg-surface-card text-content-muted border border-line-default">
                 Pyth Hermes + Binance L2
               </span>
             </div>
 
             {/* Contract Specifications */}
-            <div className="p-3 rounded bg-[#12161c] border bp-border space-y-2">
-              <span className="text-[10px] uppercase font-bold text-[#848e9c] tracking-wider font-sans">
+            <div className="p-3 rounded bg-surface-card border border-line-default space-y-2">
+              <span className="text-2xs uppercase font-bold text-content-muted tracking-wider font-sans">
                 On-Chain Contract Specifications
               </span>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-1">
                 <div>
-                  <span className="text-[#848e9c] text-[10px]">Underlying / Market:</span>
-                  <div className="text-white font-semibold">SOL-PERP (Solana)</div>
+                  <span className="text-content-muted text-2xs">Underlying / Market:</span>
+                  <div className="text-content-primary font-semibold">SOL-PERP (Solana)</div>
                 </div>
                 <div>
-                  <span className="text-[#848e9c] text-[10px]">Settlement Asset:</span>
-                  <div className="text-white font-semibold">Mock USDC (Micro-USDC)</div>
+                  <span className="text-content-muted text-2xs">Settlement Asset:</span>
+                  <div className="text-content-primary font-semibold">Mock USDC (Micro-USDC)</div>
                 </div>
                 <div>
-                  <span className="text-[#848e9c] text-[10px]">Initial Margin (IMR):</span>
-                  <div className="text-[#0ecb81] font-semibold">10.00% (10x Max Lev)</div>
+                  <span className="text-content-muted text-2xs">Initial Margin (IMR):</span>
+                  <div className="text-trade-emerald font-semibold">10.00% (10x Max Lev)</div>
                 </div>
                 <div>
-                  <span className="text-[#848e9c] text-[10px]">Maintenance (MMR):</span>
-                  <div className="text-[#eab308] font-semibold">5.00%</div>
+                  <span className="text-content-muted text-2xs">Maintenance (MMR):</span>
+                  <div className="text-trade-amber font-semibold">5.00%</div>
                 </div>
                 <div>
-                  <span className="text-[#848e9c] text-[10px]">Batch Duration (N):</span>
-                  <div className="text-[#00f0ff] font-semibold">2 Slots (~477 ms [MEASURED])</div>
+                  <span className="text-content-muted text-2xs">Batch Duration (N):</span>
+                  <div className="text-trade-cyan font-semibold">2 Slots (~477 ms [MEASURED])</div>
                 </div>
                 <div>
-                  <span className="text-[#848e9c] text-[10px]">Price Collar:</span>
-                  <div className="text-white font-semibold">±50 bps (101 Ticks)</div>
+                  <span className="text-content-muted text-2xs">Price Collar:</span>
+                  <div className="text-content-primary font-semibold">±50 bps (101 Ticks)</div>
                 </div>
                 <div>
-                  <span className="text-[#848e9c] text-[10px]">Tick Spacing:</span>
-                  <div className="text-white font-semibold">1 bp (0.01% of oracle)</div>
+                  <span className="text-content-muted text-2xs">Tick Spacing:</span>
+                  <div className="text-content-primary font-semibold">1 bp (0.01% of oracle)</div>
                 </div>
                 <div>
-                  <span className="text-[#848e9c] text-[10px]">Taker / Maker Fee:</span>
-                  <div className="text-white font-semibold">5 bps (0.05%) / 0 bps</div>
+                  <span className="text-content-muted text-2xs">Taker / Maker Fee:</span>
+                  <div className="text-content-primary font-semibold">5 bps (0.05%) / 0 bps</div>
                 </div>
               </div>
             </div>
 
-            {/* External Reference Market Metrics (09 §3.5 rule 6: Clearly labeled as reference) */}
-            <div className="p-3 rounded bg-[#12161c] border bp-border space-y-2">
+            {/* External Reference Market Metrics */}
+            <div className="p-3 rounded bg-surface-card border border-line-default space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase font-bold text-[#eab308] tracking-wider font-sans flex items-center gap-1.5">
+                <span className="text-2xs uppercase font-bold text-trade-amber tracking-wider font-sans flex items-center gap-1.5">
                   <ExternalLink className="w-3.5 h-3.5" />
                   Binance External Reference Data (Informative Only)
                 </span>
-                <span className="text-[10px] text-[#848e9c] font-sans">
+                <span className="text-2xs text-content-muted font-sans">
                   Not Epoch on-chain liquidity
                 </span>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 pt-1">
                 <div>
-                  <span className="text-[#848e9c] text-[10px]">24h Volume (reference):</span>
-                  <div className="text-white font-semibold tabular-nums">
+                  <span className="text-content-muted text-2xs">24h Volume (reference):</span>
+                  <div className="text-content-primary font-semibold tabular-nums">
                     {formatCompactUsd(stats?.volumeUsd || 33957991.07)}
                   </div>
                 </div>
                 <div>
-                  <span className="text-[#848e9c] text-[10px]">Open Interest (reference):</span>
-                  <div className="text-white font-semibold tabular-nums">
+                  <span className="text-content-muted text-2xs">Open Interest (reference):</span>
+                  <div className="text-content-primary font-semibold tabular-nums">
                     {stats?.volumeSol ? `${formatNumber(stats.volumeSol, 0)} SOL` : "192,346 SOL"}
                   </div>
                 </div>
                 <div>
-                  <span className="text-[#848e9c] text-[10px]">24h Price Change (reference):</span>
-                  <div className={`font-semibold tabular-nums ${(stats?.priceChangePercent ?? 0) >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`}>
+                  <span className="text-content-muted text-2xs">24h Price Change (reference):</span>
+                  <div
+                    className={`font-semibold tabular-nums ${
+                      (stats?.priceChangePercent ?? 0) >= 0
+                        ? "text-trade-emerald"
+                        : "text-trade-coral"
+                    }`}
+                  >
                     {formatPercent(stats?.priceChangePercent ?? 2.45, 2)}
                   </div>
                 </div>
                 <div>
-                  <span className="text-[#848e9c] text-[10px]">24h High / Low (reference):</span>
-                  <div className="text-white font-semibold tabular-nums">
-                    ${(stats?.highPrice ?? 124.50).toFixed(2)} / ${(stats?.lowPrice ?? 117.80).toFixed(2)}
+                  <span className="text-content-muted text-2xs">24h High / Low (reference):</span>
+                  <div className="text-content-primary font-semibold tabular-nums">
+                    ${(stats?.highPrice ?? 124.5).toFixed(2)} / $
+                    {(stats?.lowPrice ?? 117.8).toFixed(2)}
                   </div>
                 </div>
                 <div>
-                  <span className="text-[#848e9c] text-[10px]">8h Funding Rate (reference):</span>
-                  <div className="text-[#eab308] font-semibold tabular-nums">
+                  <span className="text-content-muted text-2xs">8h Funding Rate (reference):</span>
+                  <div className="text-trade-amber font-semibold tabular-nums">
                     {formatFundingRate(stats?.fundingRate || 0.00041)}
                   </div>
                 </div>
                 <div>
-                  <span className="text-[#848e9c] text-[10px]">Funding Countdown:</span>
-                  <div className="text-[#00f0ff] font-semibold tabular-nums">
+                  <span className="text-content-muted text-2xs">Funding Countdown:</span>
+                  <div className="text-trade-cyan font-semibold tabular-nums">
                     {stats?.fundingCountdown || "08:00:00"}
                   </div>
                 </div>
