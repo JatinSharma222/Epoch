@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { Coins, X, Loader2, CheckCircle2 } from "lucide-react";
+import { Button } from "./ui/Button";
 
 interface FaucetModalProps {
   isOpen: boolean;
@@ -38,28 +39,41 @@ export const FaucetModal: React.FC<FaucetModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 font-mono text-[12px]">
-      <div className="w-full max-w-md bg-[#111418] border bp-border rounded-lg shadow-2xl p-5 relative select-none">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 font-mono text-xs select-none animate-scale-in"
+      role="presentation"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Devnet Faucet"
+        className="w-full max-w-md bg-surface-panel border border-line-strong rounded-lg shadow-modal p-5 relative"
+      >
         <button
+          type="button"
           onClick={onClose}
-          className="absolute top-4 right-4 text-[#848e9c] hover:text-white"
+          className="absolute top-4 right-4 text-content-muted hover:text-content-primary p-1 rounded hover:bg-surface-elevated transition-colors"
+          aria-label="Close faucet modal"
         >
           <X className="w-4 h-4" />
         </button>
 
         <div className="flex items-center gap-2.5 mb-4">
-          <div className="w-8 h-8 rounded-full bg-[#181d24] border bp-border flex items-center justify-center text-[#eab308]">
+          <div className="w-8 h-8 rounded-full bg-surface-card border border-line-default flex items-center justify-center text-trade-amber">
             <Coins className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="font-sans font-bold text-[15px] text-white">Devnet Faucet</h3>
-            <p className="text-[11px] text-[#848e9c]">Mint mock USDC collateral for test trading</p>
+            <h3 className="font-sans font-bold text-sm text-content-primary">Devnet Faucet</h3>
+            <p className="text-2xs text-content-muted font-sans">Mint mock USDC collateral for test trading</p>
           </div>
         </div>
 
         <div className="space-y-4">
           <div>
-            <label className="block text-[11px] text-[#848e9c] mb-1.5">
+            <label className="block text-2xs text-content-muted mb-1.5 font-sans">
               Select Airdrop Amount
             </label>
             <div className="grid grid-cols-3 gap-2">
@@ -70,8 +84,8 @@ export const FaucetModal: React.FC<FaucetModalProps> = ({
                   onClick={() => setAmount(amt)}
                   className={`py-2 rounded border text-center transition-all ${
                     amount === amt
-                      ? "bg-[#181d24] border-[#0ecb81] text-[#0ecb81] font-bold"
-                      : "bg-[#12161c] bp-border text-[#848e9c] hover:text-white"
+                      ? "bg-surface-elevated border-trade-emerald text-trade-emerald font-bold"
+                      : "bg-surface-card border-line-default text-content-secondary hover:text-content-primary hover:bg-surface-hover"
                   }`}
                 >
                   ${amt.toLocaleString()} USDC
@@ -80,40 +94,42 @@ export const FaucetModal: React.FC<FaucetModalProps> = ({
             </div>
           </div>
 
-          <div className="p-3 rounded bg-[#12161c] border bp-border text-[11px] text-[#848e9c] space-y-1">
+          <div className="p-3 rounded bg-surface-card border border-line-default text-[11px] text-content-secondary space-y-1">
             <div className="flex justify-between">
-              <span>Token:</span>
-              <span className="text-white">Mock USDC (6 Decimals)</span>
+              <span className="text-content-muted">Token:</span>
+              <span className="text-content-primary font-medium">Mock USDC (6 Decimals)</span>
             </div>
             <div className="flex justify-between">
-              <span>Destination:</span>
-              <span className="text-white">Your Associated Token Account</span>
+              <span className="text-content-muted">Destination:</span>
+              <span className="text-content-primary font-medium">Your Associated Token Account</span>
             </div>
             <div className="flex justify-between">
-              <span>Max per request:</span>
-              <span className="text-[#0ecb81]">$10,000 USDC</span>
+              <span className="text-content-muted">Max per request:</span>
+              <span className="text-trade-emerald font-semibold">$10,000 USDC</span>
             </div>
           </div>
 
-          <button
+          <Button
+            variant="buy"
+            size="md"
             onClick={handleClaim}
             disabled={loading || success}
-            className="w-full py-2.5 rounded bg-[#0ecb81] hover:bg-[#00a372] text-[#0b0e11] font-bold text-[13px] flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+            className="w-full font-bold"
           >
             {loading ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
                 <span>Minting Mock USDC...</span>
               </>
             ) : success ? (
               <>
-                <CheckCircle2 className="w-4 h-4 text-[#0b0e11]" />
+                <CheckCircle2 className="w-4 h-4 mr-2" />
                 <span>Airdropped Successfully!</span>
               </>
             ) : (
               <span>Claim ${amount.toLocaleString()} Mock USDC</span>
             )}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

@@ -74,43 +74,43 @@ export const EvidenceView: React.FC = () => {
   ];
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 bg-[#0B0E11] font-sans text-[12px] select-none">
+    <div className="flex-1 overflow-y-auto p-4 bg-surface-canvas font-sans text-[12px] select-none">
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Header */}
-        <div className="pb-3 border-b bp-border flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="pb-3 border-b border-line-default flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
-            <h2 className="text-[18px] font-bold text-white flex items-center gap-2">
-              <Award className="w-5 h-5 text-[#00F0FF]" />
+            <h2 className="text-[18px] font-bold text-content-primary flex items-center gap-2">
+              <Award className="w-5 h-5 text-trade-cyan" />
               Empirical Evidence & Protocol Verification
             </h2>
-            <p className="text-[11px] text-[#848E9C]">
-              Real, verifiable measurements dynamically loaded from <span className="font-mono text-white">evidence/cu.json</span>, <span className="font-mono text-white">soak_test_report.json</span>, and live on-chain logs.
+            <p className="text-[11px] text-content-muted">
+              Real, verifiable measurements dynamically loaded from <span className="font-mono text-content-primary">evidence/cu.json</span>, <span className="font-mono text-content-primary">soak_test_report.json</span>, and live on-chain logs.
             </p>
           </div>
           {/* Toolchain & Network Banner */}
-          <div className="flex items-center gap-3 text-[11px] font-mono bg-[#0E1217] border bp-border px-3 py-1.5 rounded-lg text-[#848E9C] shrink-0">
+          <div className="flex items-center gap-3 text-[11px] font-mono bg-surface-card border border-line-default px-3 py-1.5 rounded-lg text-content-muted shrink-0">
             <div className="flex items-center gap-1.5">
-              <Server className="w-3.5 h-3.5 text-[#0ECB81]" />
-              <span>Network: <strong className="text-white">Solana Devnet / Localnet</strong></span>
+              <Server className="w-3.5 h-3.5 text-trade-emerald" />
+              <span>Network: <strong className="text-content-primary">Solana Devnet / Localnet</strong></span>
             </div>
-            <span className="text-[#272A2E]">|</span>
+            <span className="text-line-default">|</span>
             <div className="flex items-center gap-1.5">
-              <Terminal className="w-3.5 h-3.5 text-[#00F0FF]" />
+              <Terminal className="w-3.5 h-3.5 text-trade-cyan" />
               <span>Solana {cuData.toolchain.solana} · Anchor {cuData.toolchain.anchor} · Rustc {(cuData.toolchain as any).rustc ?? (cuData.toolchain as any).rust ?? "1.89.0"}</span>
             </div>
           </div>
         </div>
 
         {/* Verification Milestone M1: Compute Units Consumption (Local Worst-Case vs Devnet Live) */}
-        <div className="bg-[#0E1217] rounded-lg border bp-border p-4 space-y-3">
+        <div className="bg-surface-card rounded-lg border border-line-default p-4 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Cpu className="w-4 h-4 text-[#0ECB81]" />
-              <span className="font-bold text-white text-[13px]">
+              <Cpu className="w-4 h-4 text-trade-emerald" />
+              <span className="font-bold text-content-primary text-[13px]">
                 Verification Milestone M1 — Compute Unit Consumption Benchmarks (K=101 Ticks)
               </span>
             </div>
-            <span className="px-2 py-0.5 rounded bg-[#162720] text-[#0ECB81] text-[10px] font-bold border border-[#0ECB81]/30 font-mono">
+            <span className="px-2 py-0.5 rounded bg-trade-emerald/10 text-trade-emerald text-[10px] font-bold border border-trade-emerald/30 font-mono">
               PASSED [MEASURED]
             </span>
           </div>
@@ -118,162 +118,162 @@ export const EvidenceView: React.FC = () => {
           {/* CU Breakdown Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 font-mono">
             {/* Local Worst-Case */}
-            <div className="p-3 rounded bg-[#12161C] border border-[#00F0FF]/30 bg-[#00F0FF]/5">
-              <div className="text-[10px] text-[#00F0FF] font-semibold">Local Validator (Worst-Case)</div>
-              <div className="text-[9px] text-[#848E9C]">128 Orders @ 1 Tick (Max matching)</div>
-              <div className="text-[16px] font-bold text-[#00F0FF] mt-1 tabular-nums">
+            <div className="p-3 rounded bg-surface-card border border-trade-cyan/30 bg-trade-cyan/5">
+              <div className="text-[10px] text-trade-cyan font-semibold">Local Validator (Worst-Case)</div>
+              <div className="text-[9px] text-content-muted">128 Orders @ 1 Tick (Max matching)</div>
+              <div className="text-[16px] font-bold text-trade-cyan mt-1 tabular-nums">
                 {formatNumber(worstCaseLocalCu, 0)} CU
               </div>
-              <div className="text-[9px] text-[#848E9C] mt-1 space-y-0.5">
+              <div className="text-[9px] text-content-muted mt-1 space-y-0.5">
                 <div>{pctLocalOfG1Budget}% of 600k Target</div>
-                <div className="text-[#0ECB81]">{pctLocalOfTxLimit}% of 1.4M Solana Tx Limit</div>
+                <div className="text-trade-emerald">{pctLocalOfTxLimit}% of 1.4M Solana Tx Limit</div>
               </div>
             </div>
 
             {/* Devnet Live Measured */}
-            <div className="p-3 rounded bg-[#12161C] border border-[#0ECB81]/30 bg-[#0ECB81]/5">
-              <div className="text-[10px] text-[#0ECB81] font-semibold">Solana Devnet (Live Measured)</div>
-              <div className="text-[9px] text-[#848E9C]">Batch #6579 (10 lots matched)</div>
-              <div className="text-[16px] font-bold text-[#0ECB81] mt-1 tabular-nums">
+            <div className="p-3 rounded bg-surface-card border border-trade-emerald/30 bg-trade-emerald/5">
+              <div className="text-[10px] text-trade-emerald font-semibold">Solana Devnet (Live Measured)</div>
+              <div className="text-[9px] text-content-muted">Batch #6579 (10 lots matched)</div>
+              <div className="text-[16px] font-bold text-trade-emerald mt-1 tabular-nums">
                 {formatNumber(devnetMeasuredCu, 0)} CU
               </div>
-              <div className="text-[9px] text-[#848E9C] mt-1 space-y-0.5">
+              <div className="text-[9px] text-content-muted mt-1 space-y-0.5">
                 <div>{pctDevnetOfG1Budget}% of 600k Target</div>
-                <div className="text-[#0ECB81]">{pctDevnetOfTxLimit}% of 1.4M Solana Tx Limit</div>
+                <div className="text-trade-emerald">{pctDevnetOfTxLimit}% of 1.4M Solana Tx Limit</div>
               </div>
             </div>
 
-            <div className="p-3 rounded bg-[#12161C] border bp-border">
-              <span className="text-[#848E9C] text-[10px]">10 Orders (Nominal)</span>
-              <div className="text-[15px] font-bold text-white mt-1 tabular-nums">
+            <div className="p-3 rounded bg-surface-card border border-line-default">
+              <span className="text-content-muted text-[10px]">10 Orders (Nominal)</span>
+              <div className="text-[15px] font-bold text-content-primary mt-1 tabular-nums">
                 {nominal10 ? formatNumber(nominal10.cu_consumed, 0) : "16,632"} CU
               </div>
-              <span className="text-[9px] text-[#0ECB81]">Target: ≤ 600k CU</span>
+              <span className="text-[9px] text-trade-emerald">Target: ≤ 600k CU</span>
             </div>
 
-            <div className="p-3 rounded bg-[#12161C] border bp-border">
-              <span className="text-[#848E9C] text-[10px]">32 Orders (Medium)</span>
-              <div className="text-[15px] font-bold text-white mt-1 tabular-nums">
+            <div className="p-3 rounded bg-surface-card border border-line-default">
+              <span className="text-content-muted text-[10px]">32 Orders (Medium)</span>
+              <div className="text-[15px] font-bold text-content-primary mt-1 tabular-nums">
                 {nominal32 ? formatNumber(nominal32.cu_consumed, 0) : "22,157"} CU
               </div>
-              <span className="text-[9px] text-[#0ECB81]">Target: ≤ 600k CU</span>
+              <span className="text-[9px] text-trade-emerald">Target: ≤ 600k CU</span>
             </div>
           </div>
 
           {/* Ancillary Instruction Benchmarks */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1 font-mono">
-            <div className="p-2.5 rounded bg-[#12161C] border bp-border flex items-center justify-between">
+            <div className="p-2.5 rounded bg-surface-card border border-line-default flex items-center justify-between">
               <div>
-                <div className="text-[11px] font-semibold text-white">place_order</div>
-                <div className="text-[9px] text-[#848E9C]">Per user placement</div>
+                <div className="text-[11px] font-semibold text-content-primary">place_order</div>
+                <div className="text-[9px] text-content-muted">Per user placement</div>
               </div>
               <div className="text-right">
-                <div className="text-[13px] font-bold text-[#0ECB81] tabular-nums">
+                <div className="text-[13px] font-bold text-trade-emerald tabular-nums">
                   {placeOrderEmpty?.cu_consumed} – {placeOrderNearFull?.cu_consumed} CU
                 </div>
-                <div className="text-[9px] text-[#848E9C]">Target: ≤ 60,000 CU</div>
+                <div className="text-[9px] text-content-muted">Target: ≤ 60,000 CU</div>
               </div>
             </div>
 
-            <div className="p-2.5 rounded bg-[#12161C] border bp-border flex items-center justify-between">
+            <div className="p-2.5 rounded bg-surface-card border border-line-default flex items-center justify-between">
               <div>
-                <div className="text-[11px] font-semibold text-white">settle_users</div>
-                <div className="text-[9px] text-[#848E9C]">Devnet live (14.7k–16.9k) / 16 users (28.3k)</div>
+                <div className="text-[11px] font-semibold text-content-primary">settle_users</div>
+                <div className="text-[9px] text-content-muted">Devnet live (14.7k–16.9k) / 16 users (28.3k)</div>
               </div>
               <div className="text-right">
-                <div className="text-[13px] font-bold text-[#0ECB81] tabular-nums">
+                <div className="text-[13px] font-bold text-trade-emerald tabular-nums">
                   14,791 – 28,380 CU
                 </div>
-                <div className="text-[9px] text-[#848E9C]">Target: ≤ 400,000 CU</div>
+                <div className="text-[9px] text-content-muted">Target: ≤ 400,000 CU</div>
               </div>
             </div>
 
-            <div className="p-2.5 rounded bg-[#12161C] border bp-border flex items-center justify-between">
+            <div className="p-2.5 rounded bg-surface-card border border-line-default flex items-center justify-between">
               <div>
-                <div className="text-[11px] font-semibold text-white">worst_case_dust</div>
-                <div className="text-[9px] text-[#848E9C]">Fractional pro-rata remainder</div>
+                <div className="text-[11px] font-semibold text-content-primary">worst_case_dust</div>
+                <div className="text-[9px] text-content-muted">Fractional pro-rata remainder</div>
               </div>
               <div className="text-right">
-                <div className="text-[13px] font-bold text-[#0ECB81] tabular-nums">
+                <div className="text-[13px] font-bold text-trade-emerald tabular-nums">
                   {worstCaseDust ? formatNumber(worstCaseDust.cu_consumed, 0) : "36,240"} CU
                 </div>
-                <div className="text-[9px] text-[#848E9C]">Target: ≤ 600,000 CU</div>
+                <div className="text-[9px] text-content-muted">Target: ≤ 600,000 CU</div>
               </div>
             </div>
           </div>
         </div>
 
         {/* Verification Milestone M4: Continuous Soak Telemetry Report */}
-        <div className="bg-[#0E1217] rounded-lg border bp-border p-4 space-y-3">
+        <div className="bg-surface-card rounded-lg border border-line-default p-4 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Activity className="w-4 h-4 text-[#00F0FF]" />
-              <span className="font-bold text-white text-[13px]">
+              <Activity className="w-4 h-4 text-trade-cyan" />
+              <span className="font-bold text-content-primary text-[13px]">
                 Verification Milestone M4 — Continuous Soak Telemetry & Invariant Audit
               </span>
             </div>
-            <span className="px-2 py-0.5 rounded bg-[#162720] text-[#0ECB81] text-[10px] font-bold border border-[#0ECB81]/30 font-mono">
+            <span className="px-2 py-0.5 rounded bg-trade-emerald/10 text-trade-emerald text-[10px] font-bold border border-trade-emerald/30 font-mono">
               {soakData.status === "COMPLETED" ? "PASSED [MEASURED]" : "ACTIVE STREAM"}
             </span>
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3 font-mono">
-            <div className="p-3 rounded bg-[#12161C] border bp-border">
-              <span className="text-[#848E9C] text-[10px]">Batches Evaluated</span>
-              <div className="text-[15px] font-bold text-white mt-1 tabular-nums">
+            <div className="p-3 rounded bg-surface-card border border-line-default">
+              <span className="text-content-muted text-[10px]">Batches Evaluated</span>
+              <div className="text-[15px] font-bold text-content-primary mt-1 tabular-nums">
                 {soakData.batches.total_evaluated} Batches
               </div>
-              <span className="text-[9px] text-[#0ECB81]">
+              <span className="text-[9px] text-trade-emerald">
                 {soakData.batches.non_empty_cleared} Non-Empty | {soakData.batches.empty_batches} Empty | {soakData.batches.void_batches} Voids
               </span>
             </div>
 
-            <div className="p-3 rounded bg-[#12161C] border bp-border">
-              <span className="text-[#848E9C] text-[10px]">Invariants I-1, I-4, I-12</span>
-              <div className="text-[15px] font-bold text-[#0ECB81] mt-1 tabular-nums">
+            <div className="p-3 rounded bg-surface-card border border-line-default">
+              <span className="text-content-muted text-[10px]">Invariants I-1, I-4, I-12</span>
+              <div className="text-[15px] font-bold text-trade-emerald mt-1 tabular-nums">
                 100% Passed
               </div>
-              <span className="text-[9px] text-[#848E9C]">
+              <span className="text-[9px] text-content-muted">
                 {soakData.invariants.i1_passed} Conservation Checks
               </span>
             </div>
 
-            <div className="p-3 rounded bg-[#12161C] border bp-border">
-              <span className="text-[#848E9C] text-[10px]">Clear-to-Settle Latency</span>
-              <div className="text-[15px] font-bold text-white mt-1 tabular-nums">
+            <div className="p-3 rounded bg-surface-card border border-line-default">
+              <span className="text-content-muted text-[10px]">Clear-to-Settle Latency</span>
+              <div className="text-[15px] font-bold text-content-primary mt-1 tabular-nums">
                 {soakData.latency_telemetry.clear_to_settle_ms.p50} ms
               </div>
-              <span className="text-[9px] text-[#848E9C]">
+              <span className="text-[9px] text-content-muted">
                 P90: {soakData.latency_telemetry.clear_to_settle_ms.p90} ms (Min: {soakData.latency_telemetry.clear_to_settle_ms.min}ms)
               </span>
             </div>
 
-            <div className="p-3 rounded bg-[#12161C] border bp-border">
-              <span className="text-[#848E9C] text-[10px]">Target-Ahead Landing (H5)</span>
-              <div className="text-[15px] font-bold text-[#00F0FF] mt-1 tabular-nums">
+            <div className="p-3 rounded bg-surface-card border border-line-default">
+              <span className="text-content-muted text-[10px]">Target-Ahead Landing (H5)</span>
+              <div className="text-[15px] font-bold text-trade-cyan mt-1 tabular-nums">
                 {soakData.latency_telemetry.target_ahead_landing.on_time_success_rate_pct}% On-Time
               </div>
-              <span className="text-[9px] text-[#848E9C]">
+              <span className="text-[9px] text-content-muted">
                 {soakData.latency_telemetry.target_ahead_landing.landed_in_target_batch}/{soakData.latency_telemetry.target_ahead_landing.total_orders_tracked} orders (L={soakData.latency_telemetry.target_ahead_landing.lookahead_L}, N={soakData.latency_telemetry.target_ahead_landing.batch_duration_N})
               </span>
             </div>
 
-            <div className="p-3 rounded bg-[#12161C] border bp-border">
-              <span className="text-[#848E9C] text-[10px]">Transactions Confirmed</span>
-              <div className="text-[15px] font-bold text-white mt-1 tabular-nums">
+            <div className="p-3 rounded bg-surface-card border border-line-default">
+              <span className="text-content-muted text-[10px]">Transactions Confirmed</span>
+              <div className="text-[15px] font-bold text-content-primary mt-1 tabular-nums">
                 {soakData.transactions.confirmed} / {soakData.transactions.total_submitted}
               </div>
-              <span className="text-[9px] text-[#848E9C]">
+              <span className="text-[9px] text-content-muted">
                 {soakData.transactions.failed} failed ({Object.keys(soakData.transactions.failure_causes).length > 0 ? "6008 BatchInPast" : "0 errors"})
               </span>
             </div>
 
-            <div className="p-3 rounded bg-[#12161C] border bp-border">
-              <span className="text-[#848E9C] text-[10px]">RPC Call Rate & Cost</span>
-              <div className="text-[15px] font-bold text-[#EAB308] mt-1 tabular-nums">
+            <div className="p-3 rounded bg-surface-card border border-line-default">
+              <span className="text-content-muted text-[10px]">RPC Call Rate & Cost</span>
+              <div className="text-[15px] font-bold text-trade-amber mt-1 tabular-nums">
                 {soakData.rpc_telemetry.rpc_calls_per_minute} req/min
               </div>
-              <span className="text-[9px] text-[#848E9C]">
+              <span className="text-[9px] text-content-muted">
                 {soakData.rpc_telemetry.sol_spent} SOL spent ({soakData.duration_seconds}s soak)
               </span>
             </div>
@@ -281,15 +281,15 @@ export const EvidenceView: React.FC = () => {
         </div>
 
         {/* UX Conformance Acceptance Test Suite (UX-1 through UX-16) */}
-        <div className="bg-[#0E1217] rounded-lg border bp-border p-4 space-y-3">
+        <div className="bg-surface-card rounded-lg border border-line-default p-4 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-[#0ECB81]" />
-              <span className="font-bold text-white text-[13px]">
+              <ShieldCheck className="w-4 h-4 text-trade-emerald" />
+              <span className="font-bold text-content-primary text-[13px]">
                 UX Acceptance Test Conformance Matrix (09-UX_SPEC.md §10)
               </span>
             </div>
-            <span className="px-2 py-0.5 rounded bg-[#162720] text-[#0ECB81] text-[10px] font-bold border border-[#0ECB81]/30 font-mono">
+            <span className="px-2 py-0.5 rounded bg-trade-emerald/10 text-trade-emerald text-[10px] font-bold border border-trade-emerald/30 font-mono">
               21/21 PASSED [MEASURED]
             </span>
           </div>
@@ -297,7 +297,7 @@ export const EvidenceView: React.FC = () => {
           <div className="overflow-x-auto">
             <table className="w-full text-left font-mono text-[11px]">
               <thead>
-                <tr className="text-[#848E9C] text-[10px] uppercase border-b bp-border bg-[#12161C] font-sans">
+                <tr className="text-content-muted text-[10px] uppercase border-b border-line-default bg-surface-card font-sans">
                   <th className="py-2 px-3">Test ID</th>
                   <th className="py-2 px-3">Name & Description</th>
                   <th className="py-2 px-3">Evaluation Mode</th>
@@ -305,19 +305,19 @@ export const EvidenceView: React.FC = () => {
                   <th className="py-2 px-3 text-right">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y bp-border text-[#F0F3F6]">
+              <tbody className="divide-y border-line-default text-content-primary">
                 {uxTests.map((t) => (
-                  <tr key={t.id} className="hover:bg-[#161B22] transition-colors">
-                    <td className="py-2 px-3 font-bold text-[#00F0FF]">{t.id}</td>
-                    <td className="py-2 px-3 font-sans font-medium text-white">{t.name}</td>
-                    <td className="py-2 px-3 text-[#848E9C]">
-                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${t.type.includes("Manual") ? "bg-[#EAB308]/15 text-[#EAB308]" : "bg-[#00F0FF]/15 text-[#00F0FF]"}`}>
+                  <tr key={t.id} className="hover:bg-surface-panel transition-colors">
+                    <td className="py-2 px-3 font-bold text-trade-cyan">{t.id}</td>
+                    <td className="py-2 px-3 font-sans font-medium text-content-primary">{t.name}</td>
+                    <td className="py-2 px-3 text-content-muted">
+                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${t.type.includes("Manual") ? "bg-trade-amber/15 text-trade-amber" : "bg-trade-cyan/15 text-trade-cyan"}`}>
                         {t.type}
                       </span>
                     </td>
-                    <td className="py-2 px-3 text-[#B7BDC6]">{t.result}</td>
+                    <td className="py-2 px-3 text-content-secondary">{t.result}</td>
                     <td className="py-2 px-3 text-right">
-                      <span className="text-[9px] px-2 py-0.5 rounded bg-[#0ECB81]/15 text-[#0ECB81] font-bold border border-[#0ECB81]/30">
+                      <span className="text-[9px] px-2 py-0.5 rounded bg-trade-emerald/15 text-trade-emerald font-bold border border-trade-emerald/30">
                         {t.status}
                       </span>
                     </td>
@@ -329,169 +329,169 @@ export const EvidenceView: React.FC = () => {
         </div>
 
         {/* Backstop Vault Economics: Ladder, Taker Cost & Maker PnL (Report 6 Item 10) */}
-        <div className="bg-[#0E1217] rounded-lg border bp-border p-4 space-y-3">
+        <div className="bg-surface-card rounded-lg border border-line-default p-4 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-[#0ECB81]" />
-              <span className="font-bold text-white text-[13px]">
+              <TrendingUp className="w-4 h-4 text-trade-emerald" />
+              <span className="font-bold text-content-primary text-[13px]">
                 Backstop Vault Economics & Taker Execution Cost
               </span>
             </div>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#EAB308]/15 text-[#EAB308] border border-[#EAB308]/30 font-bold">
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-trade-amber/15 text-trade-amber border border-trade-amber/30 font-bold">
               DEMO LIQUIDITY ONLY
             </span>
           </div>
 
-          <p className="text-[11px] text-[#848E9C]">
+          <p className="text-[11px] text-content-muted">
             The Backstop Vault continuously quotes a deterministic 3-rung ladder on both sides of the Pyth oracle mid-price. Sized specifically to provide deep crossing liquidity for Devnet testing and demonstration.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
             {/* Vault Ladder Parameters */}
-            <div className="p-3 rounded bg-[#12161C] border bp-border space-y-2">
+            <div className="p-3 rounded bg-surface-card border border-line-default space-y-2">
               <div className="flex items-center justify-between text-[11px]">
-                <span className="font-bold text-white">Quoting Ladder Geometry</span>
-                <span className="text-[10px] font-mono text-[#0ECB81]">[CONFIGURED]</span>
+                <span className="font-bold text-content-primary">Quoting Ladder Geometry</span>
+                <span className="text-[10px] font-mono text-trade-emerald">[CONFIGURED]</span>
               </div>
               <div className="space-y-1 font-mono text-[11px]">
-                <div className="flex justify-between text-[#848E9C]">
+                <div className="flex justify-between text-content-muted">
                   <span>Rung 1 (Inner):</span>
-                  <span className="text-white">±12 bps · 500 lots (0.50 SOL)</span>
+                  <span className="text-content-primary">±12 bps · 500 lots (0.50 SOL)</span>
                 </div>
-                <div className="flex justify-between text-[#848E9C]">
+                <div className="flex justify-between text-content-muted">
                   <span>Rung 2 (Mid):</span>
-                  <span className="text-white">±18 bps · 1,000 lots (1.00 SOL)</span>
+                  <span className="text-content-primary">±18 bps · 1,000 lots (1.00 SOL)</span>
                 </div>
-                <div className="flex justify-between text-[#848E9C]">
+                <div className="flex justify-between text-content-muted">
                   <span>Rung 3 (Outer):</span>
-                  <span className="text-white">±25 bps · 2,000 lots (2.00 SOL)</span>
+                  <span className="text-content-primary">±25 bps · 2,000 lots (2.00 SOL)</span>
                 </div>
-                <div className="flex justify-between text-[#848E9C] pt-1 border-t bp-border">
+                <div className="flex justify-between text-content-muted pt-1 border-t border-line-default">
                   <span>Total Passive Depth:</span>
-                  <span className="text-[#00F0FF] font-bold">3,500 lots (3.50 SOL / side)</span>
+                  <span className="text-trade-cyan font-bold">3,500 lots (3.50 SOL / side)</span>
                 </div>
-                <div className="flex justify-between text-[#848E9C]">
+                <div className="flex justify-between text-content-muted">
                   <span>Ladder VWAP (3.5 SOL):</span>
-                  <span className="text-white font-mono">21.1 bps [COMPUTED]</span>
+                  <span className="text-content-primary font-mono">21.1 bps [COMPUTED]</span>
                 </div>
               </div>
             </div>
 
             {/* Computed Taker Cost vs Simulated Maker PnL (Spec §6.1 & Round 10) */}
-            <div className="p-3 rounded bg-[#12161C] border bp-border space-y-2">
+            <div className="p-3 rounded bg-surface-card border border-line-default space-y-2">
               <div className="flex items-center justify-between text-[11px]">
-                <span className="font-bold text-white">Taker Cost vs Maker PnL (1 SOL Order)</span>
-                <span className="text-[10px] font-mono text-[#00F0FF]">[COMPUTED + SIMULATED]</span>
+                <span className="font-bold text-content-primary">Taker Cost vs Maker PnL (1 SOL Order)</span>
+                <span className="text-[10px] font-mono text-trade-cyan">[COMPUTED + SIMULATED]</span>
               </div>
               <div className="space-y-1 font-mono text-[11px]">
-                <div className="flex justify-between text-[#848E9C]">
+                <div className="flex justify-between text-content-muted">
                   <span>Uniform Clearing Offset:</span>
-                  <span className="text-white">21.00 bps (single P* trades all 1.0 SOL) [COMPUTED]</span>
+                  <span className="text-content-primary">21.00 bps (single P* trades all 1.0 SOL) [COMPUTED]</span>
                 </div>
-                <div className="flex justify-between text-[#848E9C]">
+                <div className="flex justify-between text-content-muted">
                   <span>Trading Fee:</span>
-                  <span className="text-[#848E9C]">5.00 bps (0.05%)</span>
+                  <span className="text-content-muted">5.00 bps (0.05%)</span>
                 </div>
-                <div className="flex justify-between text-[#848E9C] pt-1 border-t bp-border">
+                <div className="flex justify-between text-content-muted pt-1 border-t border-line-default">
                   <span>One-Way Taker Cost:</span>
-                  <span className="text-[#F6465D] font-bold">26.00 bps (~$0.39 on 1 SOL) [COMPUTED]</span>
+                  <span className="text-trade-coral font-bold">26.00 bps (~$0.39 on 1 SOL) [COMPUTED]</span>
                 </div>
-                <div className="flex justify-between text-[#848E9C]">
+                <div className="flex justify-between text-content-muted">
                   <span>Round-Trip Taker Cost:</span>
-                  <span className="text-[#F6465D] font-bold">52.00 bps (~$0.78 on 1 SOL) [COMPUTED]</span>
+                  <span className="text-trade-coral font-bold">52.00 bps (~$0.78 on 1 SOL) [COMPUTED]</span>
                 </div>
-                <div className="flex justify-between text-[#848E9C] pt-1 border-t bp-border">
+                <div className="flex justify-between text-content-muted pt-1 border-t border-line-default">
                   <span>Simulated Maker PnL:</span>
-                  <span className="text-[#0ECB81] font-bold">+6.97 bps [SIMULATED]</span>
+                  <span className="text-trade-emerald font-bold">+6.97 bps [SIMULATED]</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="p-2.5 rounded bg-[#0B0E11] border bp-border text-[10px] text-[#848E9C]">
-            <strong className="text-white">Note on Devnet Liquidity:</strong> The Backstop Vault is an autonomous protocol component providing synthetic liquidity for evaluation and testing. In production, competitive institutional makers quote narrower spreads inside the uniform price batch crossing.
+          <div className="p-2.5 rounded bg-surface-canvas border border-line-default text-[10px] text-content-muted">
+            <strong className="text-content-primary">Note on Devnet Liquidity:</strong> The Backstop Vault is an autonomous protocol component providing synthetic liquidity for evaluation and testing. In production, competitive institutional makers quote narrower spreads inside the uniform price batch crossing.
           </div>
         </div>
 
         {/* Round 11 & 12 Empirical Verifications: Inventory Saturation, Limit Reversal & Depth Exceeded */}
-        <div className="bg-[#0E1217] rounded-lg border bp-border p-4 space-y-4">
+        <div className="bg-surface-card rounded-lg border border-line-default p-4 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-[#00F0FF]" />
-              <span className="font-bold text-white text-[13px]">
+              <ShieldCheck className="w-4 h-4 text-trade-cyan" />
+              <span className="font-bold text-content-primary text-[13px]">
                 Round 11 & 12 On-Chain Execution: Inventory Limit Reversal & Depth Exceedance
               </span>
             </div>
-            <span className="text-[10px] font-mono text-[#0ECB81] bg-[#162720] border border-[#0ECB81]/30 px-2 py-0.5 rounded">
+            <span className="text-[10px] font-mono text-trade-emerald bg-trade-emerald/10 border border-trade-emerald/30 px-2 py-0.5 rounded">
               VERIFIED ON DEVNET [MEASURED]
             </span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
             {/* Round 11 Card */}
-            <div className="p-3 rounded bg-[#12161C] border bp-border space-y-2">
+            <div className="p-3 rounded bg-surface-card border border-line-default space-y-2">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-white">Round 11: Sell-Side Fills (v0 Historical)</span>
-                <span className="text-[10px] font-mono text-[#848E9C]">v0 Prototype</span>
+                <span className="font-bold text-content-primary">Round 11: Sell-Side Fills (v0 Historical)</span>
+                <span className="text-[10px] font-mono text-content-muted">v0 Prototype</span>
               </div>
               <div className="space-y-1.5 font-mono text-[10px]">
-                <div className="p-1.5 rounded bg-[#0B0E11] border bp-border flex justify-between items-center">
+                <div className="p-1.5 rounded bg-surface-canvas border border-line-default flex justify-between items-center">
                   <span>1. Market Sell 0.10 SOL (100% fill @ -14 bps)</span>
                   <div className="flex gap-1.5">
-                    <a href="https://explorer.solana.com/tx/2tTW7C9E22F7hmk8tp4x1QkAvp7VmmTjNmTMrgXwv96PMV2a2wfmct1T8gKFVVtbFnRVPvETpU9DD7dpvMQB44MP?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">Place</a>
-                    <span className="text-[#848E9C]">·</span>
-                    <a href="https://explorer.solana.com/tx/3s36xgUFGhPtbaWN4JWFccSw3bq2syoXpQwQa6HKWeUCFWpnshxEdsyxVwUNRnoRivh7CA8ZmnPfcbtNtttEJaX1?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">Clear</a>
+                    <a href="https://explorer.solana.com/tx/2tTW7C9E22F7hmk8tp4x1QkAvp7VmmTjNmTMrgXwv96PMV2a2wfmct1T8gKFVVtbFnRVPvETpU9DD7dpvMQB44MP?cluster=devnet" target="_blank" rel="noreferrer" className="text-trade-cyan hover:underline">Place</a>
+                    <span className="text-content-muted">·</span>
+                    <a href="https://explorer.solana.com/tx/3s36xgUFGhPtbaWN4JWFccSw3bq2syoXpQwQa6HKWeUCFWpnshxEdsyxVwUNRnoRivh7CA8ZmnPfcbtNtttEJaX1?cluster=devnet" target="_blank" rel="noreferrer" className="text-trade-cyan hover:underline">Clear</a>
                   </div>
                 </div>
-                <div className="p-1.5 rounded bg-[#0B0E11] border bp-border flex justify-between items-center">
+                <div className="p-1.5 rounded bg-surface-canvas border border-line-default flex justify-between items-center">
                   <span>2. Market Sell 1.00 SOL (100% fill @ -21 bps)</span>
                   <div className="flex gap-1.5">
-                    <a href="https://explorer.solana.com/tx/CXTgS4chGxQhRip3tuBJAcUB1MwagtL2SPmZCw9y4TvWCG9yqdoMEXHdyeFy2mVFfhguUvGCoP4VvrFnomgLCGj?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">Place</a>
-                    <span className="text-[#848E9C]">·</span>
-                    <a href="https://explorer.solana.com/tx/2U67MwqiCrB13JVU4mrHtAMr2ixcXLFFqCQgaSMJ45jmLq2aDBs1KRQmkbnQcYxbnr9mAW2U1yrZHSLjMZuhADJN?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">Clear</a>
+                    <a href="https://explorer.solana.com/tx/CXTgS4chGxQhRip3tuBJAcUB1MwagtL2SPmZCw9y4TvWCG9yqdoMEXHdyeFy2mVFfhguUvGCoP4VvrFnomgLCGj?cluster=devnet" target="_blank" rel="noreferrer" className="text-trade-cyan hover:underline">Place</a>
+                    <span className="text-content-muted">·</span>
+                    <a href="https://explorer.solana.com/tx/2U67MwqiCrB13JVU4mrHtAMr2ixcXLFFqCQgaSMJ45jmLq2aDBs1KRQmkbnQcYxbnr9mAW2U1yrZHSLjMZuhADJN?cluster=devnet" target="_blank" rel="noreferrer" className="text-trade-cyan hover:underline">Clear</a>
                   </div>
                 </div>
-                <div className="p-1.5 rounded bg-[#0B0E11] border bp-border flex justify-between items-center">
+                <div className="p-1.5 rounded bg-surface-canvas border border-line-default flex justify-between items-center">
                   <span>3. Limit Buy 0.10 SOL (100% fill @ +13 bps)</span>
                   <div className="flex gap-1.5">
-                    <a href="https://explorer.solana.com/tx/3cKwaeymhnMTCsCcJcpWDVbtyq3sFiZPbDPimtuqyV6whdwKbF7PhHNafrgVTRcMjYrCTj4gp1UcnptQpc1us1bA?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">Place</a>
-                    <span className="text-[#848E9C]">·</span>
-                    <a href="https://explorer.solana.com/tx/e8SSDGYDHJ1L1bmFAXwVyg5WCTp3ZSoqnskKxWZ2SdBCzqFyKdy41TSovrn6hHSBHeshomd6F3HDvnV1rBppth5?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">Clear</a>
+                    <a href="https://explorer.solana.com/tx/3cKwaeymhnMTCsCcJcpWDVbtyq3sFiZPbDPimtuqyV6whdwKbF7PhHNafrgVTRcMjYrCTj4gp1UcnptQpc1us1bA?cluster=devnet" target="_blank" rel="noreferrer" className="text-trade-cyan hover:underline">Place</a>
+                    <span className="text-content-muted">·</span>
+                    <a href="https://explorer.solana.com/tx/e8SSDGYDHJ1L1bmFAXwVyg5WCTp3ZSoqnskKxWZ2SdBCzqFyKdy41TSovrn6hHSBHeshomd6F3HDvnV1rBppth5?cluster=devnet" target="_blank" rel="noreferrer" className="text-trade-cyan hover:underline">Clear</a>
                   </div>
                 </div>
-                <div className="p-1.5 rounded bg-[#0B0E11] border bp-border flex justify-between items-center">
+                <div className="p-1.5 rounded bg-surface-canvas border border-line-default flex justify-between items-center">
                   <span>4. Market Buy 5.00 SOL (Partial: 3.5 SOL @ +37 bps)</span>
                   <div className="flex gap-1.5">
-                    <a href="https://explorer.solana.com/tx/jeKSbsoCaMLcuckNmRD6eNPfUAPb5SMm5cCCDXZzRYHCogrQRxMj6QJBUWkpMCau5UT7Lycj7q1BF5S6JJdsrp7?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">Place</a>
-                    <span className="text-[#848E9C]">·</span>
-                    <a href="https://explorer.solana.com/tx/kMx1x7TDzCHGXbXJz8QuZy7fhBCUVLF7o1QxYmypR6GGgcE5hpezmCbvBGBJDYSmZVRKG8xkdNJSUeYXjm8DD9r?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">Clear</a>
+                    <a href="https://explorer.solana.com/tx/jeKSbsoCaMLcuckNmRD6eNPfUAPb5SMm5cCCDXZzRYHCogrQRxMj6QJBUWkpMCau5UT7Lycj7q1BF5S6JJdsrp7?cluster=devnet" target="_blank" rel="noreferrer" className="text-trade-cyan hover:underline">Place</a>
+                    <span className="text-content-muted">·</span>
+                    <a href="https://explorer.solana.com/tx/kMx1x7TDzCHGXbXJz8QuZy7fhBCUVLF7o1QxYmypR6GGgcE5hpezmCbvBGBJDYSmZVRKG8xkdNJSUeYXjm8DD9r?cluster=devnet" target="_blank" rel="noreferrer" className="text-trade-cyan hover:underline">Clear</a>
                   </div>
                 </div>
               </div>
             </div>
 
             {/* Round 12 & v1 Deployment Card */}
-            <div className="p-3 rounded bg-[#12161C] border bp-border space-y-2">
+            <div className="p-3 rounded bg-surface-card border border-line-default space-y-2">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-white">v1 Audited Protocol Verifications</span>
-                <span className="text-[10px] font-mono text-[#0ECB81]">Live Devnet [MEASURED]</span>
+                <span className="font-bold text-content-primary">v1 Audited Protocol Verifications</span>
+                <span className="text-[10px] font-mono text-trade-emerald">Live Devnet [MEASURED]</span>
               </div>
               <div className="space-y-1.5 font-mono text-[10px]">
-                <div className="p-1.5 rounded bg-[#0B0E11] border bp-border flex justify-between items-center">
+                <div className="p-1.5 rounded bg-surface-canvas border border-line-default flex justify-between items-center">
                   <span>1. Flat Withdrawal (Stale Outage Safe)</span>
-                  <a href="https://explorer.solana.com/tx/5Ks8ExMAXRRi98dGky6wYNDG1wRaJqFTrRqrDLoVCsZWgKhG4ieFgyXtFTZYzMa6MpBe4zSGdf1k4fr6dzs7QCTY?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">View Tx</a>
+                  <a href="https://explorer.solana.com/tx/5Ks8ExMAXRRi98dGky6wYNDG1wRaJqFTrRqrDLoVCsZWgKhG4ieFgyXtFTZYzMa6MpBe4zSGdf1k4fr6dzs7QCTY?cluster=devnet" target="_blank" rel="noreferrer" className="text-trade-cyan hover:underline">View Tx</a>
                 </div>
-                <div className="p-1.5 rounded bg-[#0B0E11] border bp-border flex justify-between items-center">
+                <div className="p-1.5 rounded bg-surface-canvas border border-line-default flex justify-between items-center">
                   <span>2. Backstop Vault Quoting (CU: 21,148)</span>
-                  <a href="https://explorer.solana.com/tx/2bAx78v7rZ3JB8mfVjJyoRrY6T9m72UQCCFx1g8ZMn9vGd2VW2zrEtx1wFhzF86k3igge97UcP1tD7ujCUnDkj2G?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">View Tx</a>
+                  <a href="https://explorer.solana.com/tx/2bAx78v7rZ3JB8mfVjJyoRrY6T9m72UQCCFx1g8ZMn9vGd2VW2zrEtx1wFhzF86k3igge97UcP1tD7ujCUnDkj2G?cluster=devnet" target="_blank" rel="noreferrer" className="text-trade-cyan hover:underline">View Tx</a>
                 </div>
-                <div className="p-1.5 rounded bg-[#0B0E11] border bp-border flex justify-between items-center">
+                <div className="p-1.5 rounded bg-surface-canvas border border-line-default flex justify-between items-center">
                   <span>3. Ring Slot Expire & Release (CU: 9,872)</span>
-                  <a href="https://explorer.solana.com/tx/3ihyaVt2QKafiuMqRmYpbdpku3nvi5XXe6uuPUj1YPaQU1SWZXwF2CTQBmTMmquMYX1mE9mC1dASLuHVsAZbe9Wn?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">View Tx</a>
+                  <a href="https://explorer.solana.com/tx/3ihyaVt2QKafiuMqRmYpbdpku3nvi5XXe6uuPUj1YPaQU1SWZXwF2CTQBmTMmquMYX1mE9mC1dASLuHVsAZbe9Wn?cluster=devnet" target="_blank" rel="noreferrer" className="text-trade-cyan hover:underline">View Tx</a>
                 </div>
-                <div className="p-1.5 rounded bg-[#0B0E11] border bp-border flex justify-between items-center">
+                <div className="p-1.5 rounded bg-surface-canvas border border-line-default flex justify-between items-center">
                   <span>4. Vault Sizing 3.5 SOL (Tx 5HHPbD...)</span>
-                  <a href="https://explorer.solana.com/tx/5HHPbDuVQEkLNs93XJsDZccFviwqfCjERTmKW1AGHSCTFuruiC42w1UXiHmuYovpUZQRx5pzRRfCkYPCFewErGBi?cluster=devnet" target="_blank" rel="noreferrer" className="text-[#0ECB81] hover:underline">View Tx</a>
+                  <a href="https://explorer.solana.com/tx/5HHPbDuVQEkLNs93XJsDZccFviwqfCjERTmKW1AGHSCTFuruiC42w1UXiHmuYovpUZQRx5pzRRfCkYPCFewErGBi?cluster=devnet" target="_blank" rel="noreferrer" className="text-trade-emerald hover:underline">View Tx</a>
                 </div>
               </div>
             </div>
@@ -499,27 +499,27 @@ export const EvidenceView: React.FC = () => {
         </div>
 
         {/* Trusted Multi-Venue Oracle Median Benchmark & Test Mode [MEASURED] */}
-        <div className="bg-[#0E1217] rounded-lg border bp-border p-4 space-y-4">
+        <div className="bg-surface-card rounded-lg border border-line-default p-4 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Activity className="w-4 h-4 text-[#F59E0B]" />
-              <span className="font-bold text-white text-[13px]">
+              <Activity className="w-4 h-4 text-trade-amber" />
+              <span className="font-bold text-content-primary text-[13px]">
                 Trusted Multi-Venue Oracle Median Benchmark & Mode [MEASURED]
               </span>
             </div>
-            <span className="text-[10px] font-mono text-[#F59E0B] bg-[#F59E0B]/10 border border-[#F59E0B]/30 px-2 py-0.5 rounded">
+            <span className="text-[10px] font-mono text-trade-amber bg-trade-amber/10 border border-trade-amber/30 px-2 py-0.5 rounded">
               Oracle: trusted multi-venue median (test mode)
             </span>
           </div>
 
-          <p className="text-[11px] text-[#848E9C]">
+          <p className="text-[11px] text-content-muted">
             To eliminate external single-point-of-failure oracle downtime during localnet and development cycles, Epoch integrates an on-chain Authority Oracle backed by an off-chain WebSocket aggregator combining real-time top-of-book (L1 BBO) feeds from 6 major venues: Coinbase, Kraken, Bybit, Backpack, Hyperliquid, and Binance.
           </p>
 
           <div className="overflow-x-auto">
             <table className="w-full text-left font-mono text-[11px]">
               <thead>
-                <tr className="border-b bp-border text-[#848E9C] text-[10px]">
+                <tr className="border-b border-line-default text-content-muted text-[10px]">
                   <th className="py-1.5 px-2">Venue / Pair</th>
                   <th className="py-1.5 px-2">Rate (msg/s)</th>
                   <th className="py-1.5 px-2">P50 Gap</th>
@@ -529,119 +529,119 @@ export const EvidenceView: React.FC = () => {
                   <th className="py-1.5 px-2">Assessment</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#1B222D]">
+              <tbody className="divide-y divide-line-subtle">
                 <tr>
-                  <td className="py-1.5 px-2 text-white font-bold">Backpack (SOL_USDC)</td>
-                  <td className="py-1.5 px-2 text-[#0ECB81]">4.6 msg/s</td>
+                  <td className="py-1.5 px-2 text-content-primary font-bold">Backpack (SOL_USDC)</td>
+                  <td className="py-1.5 px-2 text-trade-emerald">4.6 msg/s</td>
                   <td className="py-1.5 px-2">5 ms</td>
                   <td className="py-1.5 px-2">643 ms</td>
                   <td className="py-1.5 px-2">43 ms</td>
-                  <td className="py-1.5 px-2 text-[#848E9C]">N/A</td>
-                  <td className="py-1.5 px-2 text-[#0ECB81] font-bold">EXCELLENT</td>
+                  <td className="py-1.5 px-2 text-content-muted">N/A</td>
+                  <td className="py-1.5 px-2 text-trade-emerald font-bold">EXCELLENT</td>
                 </tr>
                 <tr>
-                  <td className="py-1.5 px-2 text-white font-bold">Binance (SOLUSDC p443)</td>
-                  <td className="py-1.5 px-2 text-[#0ECB81]">5.0 msg/s</td>
+                  <td className="py-1.5 px-2 text-content-primary font-bold">Binance (SOLUSDC p443)</td>
+                  <td className="py-1.5 px-2 text-trade-emerald">5.0 msg/s</td>
                   <td className="py-1.5 px-2">2 ms</td>
                   <td className="py-1.5 px-2">592 ms</td>
-                  <td className="py-1.5 px-2 text-[#848E9C]">N/A</td>
+                  <td className="py-1.5 px-2 text-content-muted">N/A</td>
                   <td className="py-1.5 px-2">811 ms</td>
-                  <td className="py-1.5 px-2 text-[#0ECB81] font-bold">EXCELLENT</td>
+                  <td className="py-1.5 px-2 text-trade-emerald font-bold">EXCELLENT</td>
                 </tr>
                 <tr>
-                  <td className="py-1.5 px-2 text-white font-bold">Bybit (SOLUSDC)</td>
-                  <td className="py-1.5 px-2 text-[#0ECB81]">2.9 msg/s</td>
+                  <td className="py-1.5 px-2 text-content-primary font-bold">Bybit (SOLUSDC)</td>
+                  <td className="py-1.5 px-2 text-trade-emerald">2.9 msg/s</td>
                   <td className="py-1.5 px-2">82 ms</td>
                   <td className="py-1.5 px-2">699 ms</td>
                   <td className="py-1.5 px-2">17 ms</td>
-                  <td className="py-1.5 px-2 text-[#848E9C]">N/A</td>
-                  <td className="py-1.5 px-2 text-[#0ECB81] font-bold">EXCELLENT</td>
+                  <td className="py-1.5 px-2 text-content-muted">N/A</td>
+                  <td className="py-1.5 px-2 text-trade-emerald font-bold">EXCELLENT</td>
                 </tr>
                 <tr>
-                  <td className="py-1.5 px-2 text-white">Coinbase (SOL-USD)</td>
+                  <td className="py-1.5 px-2 text-content-primary">Coinbase (SOL-USD)</td>
                   <td className="py-1.5 px-2">0.6 msg/s</td>
                   <td className="py-1.5 px-2">32 ms</td>
                   <td className="py-1.5 px-2">3,623 ms</td>
                   <td className="py-1.5 px-2">130 ms</td>
-                  <td className="py-1.5 px-2 text-[#848E9C]">N/A</td>
-                  <td className="py-1.5 px-2 text-[#00F0FF]">HEALTHY</td>
+                  <td className="py-1.5 px-2 text-content-muted">N/A</td>
+                  <td className="py-1.5 px-2 text-trade-cyan">HEALTHY</td>
                 </tr>
                 <tr>
-                  <td className="py-1.5 px-2 text-white">Kraken (SOL/USD)</td>
-                  <td className="py-1.5 px-2 text-[#848E9C]">0.1 msg/s</td>
+                  <td className="py-1.5 px-2 text-content-primary">Kraken (SOL/USD)</td>
+                  <td className="py-1.5 px-2 text-content-muted">0.1 msg/s</td>
                   <td className="py-1.5 px-2">2,935 ms</td>
                   <td className="py-1.5 px-2">14,822 ms</td>
                   <td className="py-1.5 px-2">113 ms</td>
-                  <td className="py-1.5 px-2 text-[#848E9C]">N/A</td>
-                  <td className="py-1.5 px-2 text-[#EAB308]">Depth-Filtered</td>
+                  <td className="py-1.5 px-2 text-content-muted">N/A</td>
+                  <td className="py-1.5 px-2 text-trade-amber">Depth-Filtered</td>
                 </tr>
                 <tr>
-                  <td className="py-1.5 px-2 text-white">Hyperliquid (SOL Perp-Mid)</td>
-                  <td className="py-1.5 px-2 text-[#848E9C]">0.1 msg/s</td>
+                  <td className="py-1.5 px-2 text-content-primary">Hyperliquid (SOL Perp-Mid)</td>
+                  <td className="py-1.5 px-2 text-content-muted">0.1 msg/s</td>
                   <td className="py-1.5 px-2">5,385 ms</td>
                   <td className="py-1.5 px-2">5,608 ms</td>
-                  <td className="py-1.5 px-2 text-[#848E9C]">424 ms</td>
+                  <td className="py-1.5 px-2 text-content-muted">424 ms</td>
                   <td className="py-1.5 px-2">739 ms</td>
-                  <td className="py-1.5 px-2 text-[#EAB308]">Depth-Filtered</td>
+                  <td className="py-1.5 px-2 text-trade-amber">Depth-Filtered</td>
                 </tr>
               </tbody>
             </table>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1 text-[11px] font-mono">
-            <div className="p-3 rounded bg-[#12161C] border bp-border space-y-1">
-              <div className="font-bold text-white">Aggregator Invariant Rules & Liveness</div>
-              <div className="text-[#848E9C]">1. Freshness: WebSocket CONNECTED + Heartbeat ≤ 10s</div>
-              <div className="text-[#848E9C]">2. Outlier Rejection: Drop sources &gt; 30 bps from median</div>
-              <div className="text-[#848E9C]">3. Quorum: Requires ≥ 3 active, non-outlier sources</div>
-              <div className="text-[#848E9C]">4. UI Definition: &quot;6/6 active&quot; = 6 sockets live with valid mid</div>
-              <div className="text-[#848E9C]">5. Public Default: Zero external venues without license</div>
+            <div className="p-3 rounded bg-surface-card border border-line-default space-y-1">
+              <div className="font-bold text-content-primary">Aggregator Invariant Rules & Liveness</div>
+              <div className="text-content-muted">1. Freshness: WebSocket CONNECTED + Heartbeat ≤ 10s</div>
+              <div className="text-content-muted">2. Outlier Rejection: Drop sources &gt; 30 bps from median</div>
+              <div className="text-content-muted">3. Quorum: Requires ≥ 3 active, non-outlier sources</div>
+              <div className="text-content-muted">4. UI Definition: &quot;6/6 active&quot; = 6 sockets live with valid mid</div>
+              <div className="text-content-muted">5. Public Default: Zero external venues without license</div>
             </div>
-            <div className="p-3 rounded bg-[#12161C] border bp-border space-y-1">
-              <div className="font-bold text-white">On-Chain Safety Invariants (post_price)</div>
-              <div className="text-[#848E9C]">1. Authority Isolation: Key must match market.oracle_authority (admin rejected)</div>
-              <div className="text-[#848E9C]">2. Max Jump: 100 bps per update within 50 slots</div>
-              <div className="text-[#848E9C]">3. Outage Bypass: &gt; 50 slots elapsed permits large catch-up</div>
-              <div className="text-[#848E9C]">4. Slot Monotonicity: Clock slot &gt; previous publish_slot</div>
-              <div className="text-[#848E9C]">5. Non-Zero Confidence: conf &gt; 0 strictly enforced</div>
+            <div className="p-3 rounded bg-surface-card border border-line-default space-y-1">
+              <div className="font-bold text-content-primary">On-Chain Safety Invariants (post_price)</div>
+              <div className="text-content-muted">1. Authority Isolation: Key must match market.oracle_authority (admin rejected)</div>
+              <div className="text-content-muted">2. Max Jump: 100 bps per update within 50 slots</div>
+              <div className="text-content-muted">3. Outage Bypass: &gt; 50 slots elapsed permits large catch-up</div>
+              <div className="text-content-muted">4. Slot Monotonicity: Clock slot &gt; previous publish_slot</div>
+              <div className="text-content-muted">5. Non-Zero Confidence: conf &gt; 0 strictly enforced</div>
             </div>
           </div>
 
-          <div className="p-3 rounded bg-[#12161C] border bp-border text-[11px] font-mono space-y-2">
-            <div className="font-bold text-[#0ECB81] flex items-center justify-between">
+          <div className="p-3 rounded bg-surface-card border border-line-default text-[11px] font-mono space-y-2">
+            <div className="font-bold text-trade-emerald flex items-center justify-between">
               <span>10-Minute Multi-Venue Telemetry Benchmark [MEASURED]</span>
-              <span className="text-white text-[10px]">600 Samples (1s interval) | Quorum: 100.00%</span>
+              <span className="text-content-primary text-[10px]">600 Samples (1s interval) | Quorum: 100.00%</span>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[10px]">
               <div>
-                <span className="text-[#848E9C]">Active Venues:</span>
-                <div className="text-white font-bold">6/6 (57.7%) | 5/6 (35.2%)</div>
+                <span className="text-content-muted">Active Venues:</span>
+                <div className="text-content-primary font-bold">6/6 (57.7%) | 5/6 (35.2%)</div>
               </div>
               <div>
-                <span className="text-[#848E9C]">Spread P50 / P95:</span>
-                <div className="text-white font-bold">6.70 bps / 8.60 bps</div>
+                <span className="text-content-muted">Spread P50 / P95:</span>
+                <div className="text-content-primary font-bold">6.70 bps / 8.60 bps</div>
               </div>
               <div>
-                <span className="text-[#848E9C]">Conf P50 / Max:</span>
-                <div className="text-white font-bold">3.35 bps / 15.00 bps</div>
+                <span className="text-content-muted">Conf P50 / Max:</span>
+                <div className="text-content-primary font-bold">3.35 bps / 15.00 bps</div>
               </div>
               <div>
-                <span className="text-[#848E9C]">Max Deviation:</span>
-                <div className="text-white font-bold">Hyperliquid (5.09 bps avg)</div>
+                <span className="text-content-muted">Max Deviation:</span>
+                <div className="text-content-primary font-bold">Hyperliquid (5.09 bps avg)</div>
               </div>
             </div>
-            <div className="text-[10px] text-[#848E9C] border-t border-[#1B222D] pt-1.5">
+            <div className="text-[10px] text-content-muted border-t border-line-subtle pt-1.5">
               Single-venue mean deviations from median: Binance: 0.50 bps | Backpack: 0.39 bps | Bybit: 0.55 bps | Kraken: 1.27 bps | Coinbase: 1.55 bps | Hyperliquid: 5.09 bps.
             </div>
           </div>
         </div>
 
         {/* Asset Vector Logos & Open License Attribution */}
-        <div className="bg-[#0E1217] rounded-lg border bp-border p-4 space-y-3">
+        <div className="bg-surface-card rounded-lg border border-line-default p-4 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <FileText className="w-4 h-4 text-[#EAB308]" />
-              <span className="font-bold text-white text-[13px]">
+              <FileText className="w-4 h-4 text-trade-amber" />
+              <span className="font-bold text-content-primary text-[13px]">
                 Asset Vector Logos & Open Source Attribution
               </span>
             </div>
@@ -649,47 +649,47 @@ export const EvidenceView: React.FC = () => {
               href="/icons/ATTRIBUTION.md"
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 text-[10px] text-[#00F0FF] hover:underline font-mono"
+              className="inline-flex items-center gap-1 text-[10px] text-trade-cyan hover:underline font-mono"
             >
               <span>View ATTRIBUTION.md</span>
               <ExternalLink className="w-3 h-3" />
             </a>
           </div>
 
-          <div className="text-[11px] text-[#848E9C] space-y-2">
+          <div className="text-[11px] text-content-muted space-y-2">
             <p>
               All per-asset logos used in the Reference Prices Strip and Market Selector are authentic vector SVGs licensed under open-source MIT, CC0, or Apache-2.0 licenses. Placeholder geometry has been replaced with official community vectors.
             </p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[10px] pt-1">
-              <div className="p-2 rounded bg-[#12161C] border bp-border">
-                <span className="text-white font-bold">SOL, USDC, BTC, ETH</span>
-                <div className="text-[#0ECB81]">CryptoLogos / Vector MIT</div>
+              <div className="p-2 rounded bg-surface-card border border-line-default">
+                <span className="text-content-primary font-bold">SOL, USDC, BTC, ETH</span>
+                <div className="text-trade-emerald">CryptoLogos / Vector MIT</div>
               </div>
-              <div className="p-2 rounded bg-[#12161C] border bp-border">
-                <span className="text-white font-bold">JUP, PYTH, JTO</span>
-                <div className="text-[#0ECB81]">Official Community SVG CC0</div>
+              <div className="p-2 rounded bg-surface-card border border-line-default">
+                <span className="text-content-primary font-bold">JUP, PYTH, JTO</span>
+                <div className="text-trade-emerald">Official Community SVG CC0</div>
               </div>
-              <div className="p-2 rounded bg-[#12161C] border bp-border">
-                <span className="text-white font-bold">TIA, SUI, INJ</span>
-                <div className="text-[#0ECB81]">Cryptocurrency Icons MIT</div>
+              <div className="p-2 rounded bg-surface-card border border-line-default">
+                <span className="text-content-primary font-bold">TIA, SUI, INJ</span>
+                <div className="text-trade-emerald">Cryptocurrency Icons MIT</div>
               </div>
-              <div className="p-2 rounded bg-[#12161C] border bp-border">
-                <span className="text-white font-bold">NEAR, RENDER</span>
-                <div className="text-[#0ECB81]">Foundation Brands MIT</div>
+              <div className="p-2 rounded bg-surface-card border border-line-default">
+                <span className="text-content-primary font-bold">NEAR, RENDER</span>
+                <div className="text-trade-emerald">Foundation Brands MIT</div>
               </div>
             </div>
           </div>
         </div>
 
         {/* Security & Secret Tracking Verification Notice */}
-        <div className="p-3 rounded-lg bg-[#12161C] border bp-border text-[11px] text-[#848E9C] flex items-center justify-between">
+        <div className="p-3 rounded-lg bg-surface-card border border-line-default text-[11px] text-content-muted flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-[#0ECB81] shrink-0" />
+            <ShieldCheck className="w-4 h-4 text-trade-emerald shrink-0" />
             <span>
-              <strong>Git Repository Integrity:</strong> Verified via <code className="text-[#00F0FF] font-mono">git ls-files</code> that zero private keypairs, <code className="text-[#00F0FF] font-mono">.env</code> secrets, or credentials are tracked in version control.
+              <strong>Git Repository Integrity:</strong> Verified via <code className="text-trade-cyan font-mono">git ls-files</code> that zero private keypairs, <code className="text-trade-cyan font-mono">.env</code> secrets, or credentials are tracked in version control.
             </span>
           </div>
-          <span className="text-[10px] font-mono text-[#0ECB81] shrink-0 font-bold">CLEAN AUDIT [MEASURED]</span>
+          <span className="text-[10px] font-mono text-trade-emerald shrink-0 font-bold">CLEAN AUDIT [MEASURED]</span>
         </div>
       </div>
     </div>

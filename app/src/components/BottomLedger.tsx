@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
+import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import {
   Wallet,
   Coins,
@@ -15,7 +16,9 @@ import {
   Layers,
   ArrowDownLeft,
   ArrowUpRight,
-  GripHorizontal,
+  ShieldCheck,
+  Zap,
+  Lock,
 } from "lucide-react";
 import { formatUsd, formatNumber, formatLots } from "../lib/formatters";
 import { Badge } from "./ui/Badge";
@@ -64,9 +67,9 @@ export interface BottomLedgerProps {
 }
 
 export type LedgerTabKey =
-  | "balances"
   | "positions"
   | "orders"
+  | "balances"
   | "orderHistory"
   | "fills"
   | "fundingHistory"
@@ -85,13 +88,31 @@ export const BottomLedger: React.FC<BottomLedgerProps> = ({
   onMarketClosePosition,
 }) => {
   const { connected } = useWallet();
+  const { setVisible } = useWalletModal();
   const [activeTab, setActiveTab] = useState<LedgerTabKey>("positions");
 
-  // Resizable height logic (min: 160px, max: 450px, default: 220px)
+  // Resizable height logic with localStorage persistence (160px..450px, default 220px)
   const [height, setHeight] = useState<number>(220);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const dragStartY = useRef<number>(0);
   const dragStartHeight = useRef<number>(220);
+
+  // Load saved preference on mount (harmless UI preference only, no sensitive data)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("epoch_ledger_height");
+        if (saved) {
+          const parsed = parseInt(saved, 10);
+          if (!isNaN(parsed) && parsed >= 160 && parsed <= 450) {
+            setHeight(parsed);
+          }
+        }
+      } catch {
+        // Ignore storage errors
+      }
+    }
+  }, []);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     setIsDragging(true);
@@ -106,7 +127,16 @@ export const BottomLedger: React.FC<BottomLedgerProps> = ({
       const newHeight = Math.min(450, Math.max(160, dragStartHeight.current + deltaY));
       setHeight(newHeight);
     };
-    const handleMouseUp = () => setIsDragging(false);
+    const handleMouseUp = () => {
+      setIsDragging(false);
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("epoch_ledger_height", height.toString());
+        } catch {
+          // Ignore storage errors
+        }
+      }
+    };
 
     document.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseup", handleMouseUp);
@@ -114,7 +144,7 @@ export const BottomLedger: React.FC<BottomLedgerProps> = ({
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [isDragging]);
+  }, [isDragging, height]);
 
   const equity =
     collateral + quotePosition + (position ? (position.sizeLots * position.markPrice) / 1000 : 0);
@@ -198,9 +228,47 @@ export const BottomLedger: React.FC<BottomLedgerProps> = ({
       {/* 2. Tab Content Panels */}
       <div className="flex-1 overflow-y-auto p-3">
         {!connected ? (
-          <div className="h-full flex flex-col items-center justify-center text-xs text-content-muted gap-2 py-4">
-            <Wallet className="w-6 h-6 text-content-disabled" />
-            <span>Connect your Solana wallet to view account positions, open orders, and collateral balances.</span>
+          /* Institutional Disconnected State Card */
+          <div className="h-full flex flex-col sm:flex-row items-center justify-between gap-2.5 sm:gap-4 p-3 sm:p-4 rounded-lg bg-surface-card border border-line-default max-w-4xl mx-auto my-auto">
+            <div className="space-y-1 sm:space-y-1.5 flex-1 text-center sm:text-left">
+              <div className="flex items-center justify-center sm:justify-start gap-2">
+                <ShieldCheck className="w-4 h-4 text-trade-cyan" />
+                <h4 className="font-sans font-bold text-xs text-content-primary">
+                  Solana Non-Custodial Account & Portfolio
+                </h4>
+                <Badge variant="cyan" size="xs">
+                  Devnet
+                </Badge>
+              </div>
+              <p className="text-2xs text-content-secondary font-sans leading-relaxed max-w-xl line-clamp-2 sm:line-clamp-none">
+                Connect your Solana wallet to view isolated collateral custody, manage active batch orders, monitor real-time mark-to-market positions, and review cryptographic settlement logs.
+              </p>
+              <div className="hidden sm:flex flex-wrap items-center gap-2 pt-1 font-mono text-[10px] text-content-muted">
+                <span className="flex items-center gap-1 bg-surface-panel px-2 py-0.5 rounded border border-line-subtle">
+                  <Zap className="w-3 h-3 text-trade-emerald" /> Zero MEV Batching
+                </span>
+                <span className="flex items-center gap-1 bg-surface-panel px-2 py-0.5 rounded border border-line-subtle">
+                  <Lock className="w-3 h-3 text-trade-cyan" /> Isolated Margin PDA
+                </span>
+                <span className="flex items-center gap-1 bg-surface-panel px-2 py-0.5 rounded border border-line-subtle">
+                  <Activity className="w-3 h-3 text-trade-amber" /> Pyth Oracle Freshness
+                </span>
+              </div>
+            </div>
+            <div className="shrink-0 flex flex-col items-center gap-1">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setVisible(true)}
+                className="whitespace-nowrap"
+              >
+                <Wallet className="w-3.5 h-3.5 mr-1.5" />
+                Connect Wallet
+              </Button>
+              <span className="text-[9px] text-content-muted font-sans">
+                Phantom, Solflare or Backpack
+              </span>
+            </div>
           </div>
         ) : (
           <>

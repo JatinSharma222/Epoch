@@ -71,20 +71,19 @@ export const Header: React.FC<HeaderProps> = ({
   const oraclePrice = markPrice;
 
   return (
-    <header className="h-[44px] border-b border-line-default bg-surface-header flex items-center justify-between px-3 shrink-0 gap-3 select-none overflow-hidden font-sans">
+    <header className="h-[44px] border-b border-line-default bg-surface-header flex items-center justify-between px-2 sm:px-3 shrink-0 gap-2 select-none overflow-hidden font-sans w-full">
       {/* 1. Left Section: Logo, Navigation Tabs & Market Selector */}
-      <div className="flex items-center gap-3 shrink-0 min-w-0">
+      <div className="flex items-center gap-2 sm:gap-3 shrink min-w-0 overflow-hidden">
         {/* Brand Logo & Tag */}
-        <div className="flex items-center gap-2 pr-3 border-r border-line-default shrink-0">
-          <div className="relative w-20 h-6">
-            <Image
-              src="/logo.png"
-              alt="Epoch Protocol"
-              fill
-              className="object-contain"
-              priority
-            />
-          </div>
+        <div className="flex items-center gap-1.5 sm:gap-2 pr-2 sm:pr-3 border-r border-line-default shrink-0">
+          <Image
+            src="/logo.png"
+            alt="Epoch Protocol"
+            width={72}
+            height={22}
+            className="object-contain h-5 sm:h-6 w-auto"
+            priority
+          />
           <span className="hidden sm:inline-block text-[9px] font-mono tracking-widest uppercase px-1.5 py-0.5 rounded bg-surface-panel border border-line-subtle text-content-muted">
             FBA PERP
           </span>
@@ -92,11 +91,11 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Top Navigation Tabs */}
         {onSelectTab && (
-          <nav className="hidden md:flex items-center gap-1 shrink-0" aria-label="Main Navigation">
+          <nav className="hidden md:flex items-center gap-0.5 sm:gap-1 shrink-0" aria-label="Main Navigation">
             <button
               type="button"
               onClick={() => onSelectTab("trade")}
-              className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+              className={`px-2 sm:px-2.5 py-1 rounded text-xs font-medium transition-colors ${
                 activeTab === "trade"
                   ? "bg-surface-elevated text-trade-cyan font-semibold border border-trade-cyan/30 shadow-xs"
                   : "text-content-secondary hover:text-content-primary hover:bg-surface-hover"
@@ -107,7 +106,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={() => onSelectTab("batches")}
-              className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+              className={`px-2 sm:px-2.5 py-1 rounded text-xs font-medium transition-colors ${
                 activeTab === "batches"
                   ? "bg-surface-elevated text-trade-cyan font-semibold border border-trade-cyan/30 shadow-xs"
                   : "text-content-secondary hover:text-content-primary hover:bg-surface-hover"
@@ -118,7 +117,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={() => onSelectTab("evidence")}
-              className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+              className={`px-2 sm:px-2.5 py-1 rounded text-xs font-medium transition-colors ${
                 activeTab === "evidence"
                   ? "bg-surface-elevated text-trade-cyan font-semibold border border-trade-cyan/30 shadow-xs"
                   : "text-content-secondary hover:text-content-primary hover:bg-surface-hover"
@@ -129,7 +128,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={() => onSelectTab("compare")}
-              className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+              className={`px-2 sm:px-2.5 py-1 rounded text-xs font-medium transition-colors ${
                 activeTab === "compare"
                   ? "bg-surface-elevated text-trade-cyan font-semibold border border-trade-cyan/30 shadow-xs"
                   : "text-content-secondary hover:text-content-primary hover:bg-surface-hover"
@@ -140,7 +139,7 @@ export const Header: React.FC<HeaderProps> = ({
             <Link
               href="/design-system"
               target="_blank"
-              className="px-2 py-1 rounded text-xs text-content-muted hover:text-content-secondary transition-colors"
+              className="hidden 2xl:inline-block px-2 py-1 rounded text-xs text-content-muted hover:text-content-secondary transition-colors"
               title="Open Design System Primitives Catalog"
             >
               Design
@@ -151,13 +150,15 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="hidden lg:block w-px h-4 bg-line-default shrink-0" />
 
         {/* Dynamic Market Selector */}
-        <MarketSelector />
+        <div className="shrink-0">
+          <MarketSelector />
+        </div>
 
-        {/* Price & 24h Change Metric */}
-        <div className="flex flex-col shrink-0">
-          <div className="flex items-center gap-1.5">
+        {/* Price & 24h Change Metric (Hidden on < sm mobile where price is in chart/orderbook) */}
+        <div className="hidden sm:flex flex-col shrink-0">
+          <div className="flex items-center gap-1 sm:gap-1.5">
             <span
-              className={`text-sm font-bold font-mono tracking-tight leading-none tabular-nums ${
+              className={`text-xs sm:text-sm font-bold font-mono tracking-tight leading-none tabular-nums ${
                 isPositive ? "text-trade-emerald" : "text-trade-coral"
               }`}
             >
@@ -173,13 +174,13 @@ export const Header: React.FC<HeaderProps> = ({
               {formatPercent(changePercent, 2)}
             </span>
           </div>
-          <span className="text-2xs font-mono text-content-muted leading-tight tabular-nums mt-0.5">
+          <span className="hidden sm:inline-block text-2xs font-mono text-content-muted leading-tight tabular-nums mt-0.5">
             Oracle: {formatOracle(oraclePrice)}
           </span>
         </div>
 
         {/* 2. Secondary Ticker Metrics */}
-        <div className="hidden xl:flex items-center gap-3.5 text-xs shrink-0">
+        <div className="hidden min-[1350px]:flex items-center gap-3 text-xs shrink-0">
           {/* Funding Rate & Countdown */}
           <div className="flex flex-col">
             <span className="text-content-muted text-2xs font-sans flex items-center gap-1">
@@ -193,7 +194,7 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
           </div>
 
-          {/* Secondary stats: collapse below 1500px per UX-17 and spec */}
+          {/* Extended metrics (24h Vol, Open Interest, Batch countdown) on >= 1500px per UX-17 */}
           <div className="hidden min-[1500px]:flex items-center gap-3.5">
             {/* 24h Epoch Volume */}
             <div className="flex flex-col">
@@ -210,32 +211,32 @@ export const Header: React.FC<HeaderProps> = ({
                 {formatNumber(epochOpenInterestSol, 1)} SOL
               </span>
             </div>
-          </div>
 
-          {/* FBA Batch Status Indicator & Countdown */}
-          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-surface-card border border-line-default text-2xs font-mono">
-            <span className="w-1.5 h-1.5 rounded-full bg-trade-emerald animate-pulse" />
-            <span className="text-content-muted hidden min-[1400px]:inline">
-              Slot #{currentSlot || "..."}
-            </span>
-            <span className="text-line-strong hidden min-[1400px]:inline">·</span>
-            <span className="text-content-primary font-medium">Batch #{currentBatchId}</span>
-            <div className="w-8 h-1.5 rounded-full bg-surface-panel border border-line-subtle overflow-hidden ml-0.5">
-              <div
-                className="h-full bg-gradient-to-r from-trade-cyan to-trade-emerald transition-all duration-300"
-                style={{ width: `${progressPercent}%` }}
-              />
+            {/* FBA Batch Status Indicator & Countdown */}
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-surface-card border border-line-default text-2xs font-mono">
+              <span className="w-1.5 h-1.5 rounded-full bg-trade-emerald animate-pulse" />
+              <span className="text-content-muted hidden min-[1650px]:inline">
+                Slot #{currentSlot || "..."}
+              </span>
+              <span className="text-line-strong hidden min-[1650px]:inline">·</span>
+              <span className="text-content-primary font-medium">Batch #{currentBatchId}</span>
+              <div className="w-8 h-1.5 rounded-full bg-surface-panel border border-line-subtle overflow-hidden ml-0.5">
+                <div
+                  className="h-full bg-gradient-to-r from-trade-cyan to-trade-emerald transition-all duration-300"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+              <span className="text-trade-cyan font-semibold">
+                {slotsRemaining} slot{slotsRemaining === 1 ? "" : "s"}
+              </span>
             </div>
-            <span className="text-trade-cyan font-semibold">
-              {slotsRemaining} slot{slotsRemaining === 1 ? "" : "s"}
-            </span>
           </div>
         </div>
       </div>
 
       {/* 3. Right Header Actions: System Status Center & Wallet Menu */}
-      <div className="flex items-center gap-2 shrink-0 ml-auto">
-        {/* System Status Center (Replaces old multi-row warning banners with compact indicator + diagnostic drawer) */}
+      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 ml-auto">
+        {/* System Status Center */}
         <SystemStatusCenter
           currentSlot={currentSlot}
           currentBatchId={currentBatchId}

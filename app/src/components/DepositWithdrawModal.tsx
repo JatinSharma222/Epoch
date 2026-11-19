@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { X, ArrowDownLeft, ArrowUpRight, Loader2, AlertCircle } from "lucide-react";
+import { Button } from "./ui/Button";
 
 interface DepositWithdrawModalProps {
   isOpen: boolean;
@@ -49,24 +50,37 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 font-mono text-[12px]">
-      <div className="w-full max-w-md bg-[#111418] border bp-border rounded-lg shadow-2xl p-5 relative select-none">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 font-mono text-xs select-none animate-scale-in"
+      role="presentation"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Deposit and Withdraw Collateral"
+        className="w-full max-w-md bg-surface-panel border border-line-strong rounded-lg shadow-modal p-5 relative"
+      >
         <button
+          type="button"
           onClick={onClose}
-          className="absolute top-4 right-4 text-[#848e9c] hover:text-white"
+          className="absolute top-4 right-4 text-content-muted hover:text-content-primary p-1 rounded hover:bg-surface-elevated transition-colors"
+          aria-label="Close deposit and withdrawal modal"
         >
           <X className="w-4 h-4" />
         </button>
 
         {/* Mode Toggle Header */}
-        <div className="flex gap-2 mb-4">
+        <div className="flex gap-2 mb-4 p-1 bg-surface-card rounded-lg border border-line-default">
           <button
             type="button"
             onClick={() => setMode("deposit")}
-            className={`flex-1 py-1.5 rounded font-semibold text-[13px] flex items-center justify-center gap-1.5 transition-all ${
+            className={`flex-1 py-1.5 rounded font-semibold text-xs flex items-center justify-center gap-1.5 transition-all ${
               mode === "deposit"
-                ? "bg-[#162720] text-[#0ecb81] border border-[#0ecb81]/30"
-                : "text-[#848e9c] hover:text-white"
+                ? "bg-trade-emerald/15 text-trade-emerald border border-trade-emerald/40 shadow-xs"
+                : "text-content-muted hover:text-content-primary hover:bg-surface-hover"
             }`}
           >
             <ArrowDownLeft className="w-4 h-4" />
@@ -75,10 +89,10 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
           <button
             type="button"
             onClick={() => setMode("withdraw")}
-            className={`flex-1 py-1.5 rounded font-semibold text-[13px] flex items-center justify-center gap-1.5 transition-all ${
+            className={`flex-1 py-1.5 rounded font-semibold text-xs flex items-center justify-center gap-1.5 transition-all ${
               mode === "withdraw"
-                ? "bg-[#181d24] text-white border bp-border"
-                : "text-[#848e9c] hover:text-white"
+                ? "bg-surface-elevated text-content-primary border border-line-strong shadow-xs"
+                : "text-content-muted hover:text-content-primary hover:bg-surface-hover"
             }`}
           >
             <ArrowUpRight className="w-4 h-4" />
@@ -88,7 +102,7 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <div className="flex justify-between text-[11px] text-[#848e9c] mb-1">
+            <div className="flex justify-between text-2xs text-content-muted mb-1 font-sans">
               <span>Amount</span>
               {mode === "withdraw" && (
                 <span>
@@ -97,31 +111,31 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
               )}
             </div>
 
-            <div className="flex items-center justify-between bg-[#12161c] rounded-md border bp-border px-3 py-2">
+            <div className="flex items-center justify-between bg-surface-card rounded-md border border-line-default px-3 py-2">
               <input
                 type="number"
                 step="0.01"
                 min="0.01"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                className="w-full bg-transparent text-white font-mono text-[14px] font-semibold focus:outline-none"
+                className="w-full bg-transparent text-content-primary font-mono text-sm font-semibold focus:outline-none"
               />
               {mode === "withdraw" && (
                 <button
                   type="button"
                   onClick={() => setAmount(collateralBalance.toString())}
-                  className="px-2 py-0.5 rounded bg-[#181d24] text-[#0ecb81] text-[10px] font-bold uppercase ml-2 hover:bg-[#1f2633]"
+                  className="px-2 py-0.5 rounded bg-surface-elevated text-trade-emerald text-[10px] font-bold uppercase ml-2 hover:bg-surface-hover transition-colors"
                 >
                   Max
                 </button>
               )}
-              <span className="text-[12px] font-bold text-white ml-2">USDC</span>
+              <span className="text-xs font-bold text-content-primary ml-2">USDC</span>
             </div>
           </div>
 
           {/* Flat Position Rule Warning for Withdrawals (Guardrail G-07) */}
           {mode === "withdraw" && !isPositionFlat && (
-            <div className="p-3 rounded bg-[#2a1619] border border-[#f6465d]/30 text-[#f6465d] text-[11px] flex gap-2 items-start">
+            <div className="p-3 rounded bg-trade-coral/10 border border-trade-coral/30 text-trade-coral text-2xs flex gap-2 items-start font-sans">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>
                 <strong>Flat Position & Zero Orders Rule (G-07):</strong> Withdrawals require base position to be 0 and zero active batch orders to ensure exact collateral conservation.
@@ -129,14 +143,20 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
             </div>
           )}
 
-          <button
+          <Button
+            variant={mode === "deposit" ? "buy" : "primary"}
+            size="md"
             type="submit"
-            disabled={loading || numAmount <= 0 || (mode === "withdraw" && (!isPositionFlat || numAmount > collateralBalance))}
-            className="w-full py-2.5 rounded bg-[#0ecb81] hover:bg-[#00a372] text-[#0b0e11] font-bold text-[13px] flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={
+              loading ||
+              numAmount <= 0 ||
+              (mode === "withdraw" && (!isPositionFlat || numAmount > collateralBalance))
+            }
+            className="w-full font-bold"
           >
             {loading ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
                 <span>Processing Transaction...</span>
               </>
             ) : mode === "deposit" ? (
@@ -144,7 +164,7 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
             ) : (
               <span>Withdraw ${numAmount.toFixed(2)} USDC</span>
             )}
-          </button>
+          </Button>
         </form>
       </div>
     </div>

@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from "react";
 import { clear, clearingPrice, computeMatchedHighlights, TickHighlight } from "../lib/clearingEngine";
 import { BookRow } from "../lib/marketData";
-import { Layers, ExternalLink } from "lucide-react";
+import { Layers, ExternalLink, BarChart2 } from "lucide-react";
 
 export interface OrderBookProps {
   currentBatchId: number;
@@ -23,6 +23,8 @@ export interface OrderBookProps {
   onSelectPrice?: (price: number) => void;
 }
 
+export type SideDensity = "both" | "bids" | "asks";
+
 export const OrderBook: React.FC<OrderBookProps> = ({
   currentBatchId,
   oraclePrice,
@@ -36,6 +38,7 @@ export const OrderBook: React.FC<OrderBookProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<"batch_book" | "reference_market">("batch_book");
   const [zoomRange, setZoomRange] = useState<number>(21);
+  const [sideDensity, setSideDensity] = useState<SideDensity>("both");
 
   // Execute client-side reference clearing auction
   const clearResult = useMemo(() => {
@@ -120,6 +123,17 @@ export const OrderBook: React.FC<OrderBookProps> = ({
 
     return rows;
   }, [clearResult, zoomRange, oraclePrice, bidQty, askQty, highlights, userOrders]);
+
+  // Filtered rows based on side density
+  const filteredTicks = useMemo(() => {
+    if (sideDensity === "both") return visibleTicks;
+    if (sideDensity === "bids") {
+      // Show ticks where bids exist or below center
+      return visibleTicks.filter((r) => r.bidLots > 0 || r.offsetBps <= 0);
+    }
+    // Asks only: show ticks where asks exist or above center
+    return visibleTicks.filter((r) => r.askLots > 0 || r.offsetBps >= 0);
+  }, [visibleTicks, sideDensity]);
 
   // Max lots for depth heatmap scaling
   const maxDepthLots = useMemo(() => {
@@ -212,11 +226,55 @@ export const OrderBook: React.FC<OrderBookProps> = ({
             </div>
           </div>
 
+          {/* Side Density Controls: Both Sides / Bids Only / Asks Only */}
+          <div className="px-2.5 py-1 bg-surface-panel/80 border-b border-line-default flex items-center justify-between text-2xs font-sans">
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setSideDensity("both")}
+                className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                  sideDensity === "both"
+                    ? "bg-surface-elevated text-trade-cyan border border-trade-cyan/40 shadow-xs font-semibold"
+                    : "text-content-muted hover:text-content-secondary hover:bg-surface-hover"
+                }`}
+              >
+                Both Sides
+              </button>
+              <button
+                type="button"
+                onClick={() => setSideDensity("bids")}
+                className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                  sideDensity === "bids"
+                    ? "bg-trade-emerald/15 text-trade-emerald border border-trade-emerald/40 shadow-xs font-semibold"
+                    : "text-content-muted hover:text-content-secondary hover:bg-surface-hover"
+                }`}
+              >
+                Bids Only
+              </button>
+              <button
+                type="button"
+                onClick={() => setSideDensity("asks")}
+                className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                  sideDensity === "asks"
+                    ? "bg-trade-coral/15 text-trade-coral border border-trade-coral/40 shadow-xs font-semibold"
+                    : "text-content-muted hover:text-content-secondary hover:bg-surface-hover"
+                }`}
+              >
+                Asks Only
+              </button>
+            </div>
+            <span className="text-[9px] text-content-muted font-mono tracking-tight">FBA UNIFORM</span>
+          </div>
+
           {/* Ladder Column Headers */}
           <div className="grid grid-cols-3 px-3 py-1 text-2xs text-content-muted border-b border-line-default font-sans font-medium">
-            <span className="text-left text-trade-emerald">Bid Sz (SOL)</span>
+            <span className={`text-left ${sideDensity === "asks" ? "text-content-muted" : "text-trade-emerald"}`}>
+              {sideDensity === "asks" ? "—" : "Bid Sz (SOL)"}
+            </span>
             <span className="text-center">Price / Offset</span>
-            <span className="text-right text-trade-coral">Ask Sz (SOL)</span>
+            <span className={`text-right ${sideDensity === "bids" ? "text-content-muted" : "text-trade-coral"}`}>
+              {sideDensity === "bids" ? "—" : "Ask Sz (SOL)"}
+            </span>
           </div>
 
           {/* Overlapping Batch Ladder */}
@@ -228,13 +286,16 @@ export const OrderBook: React.FC<OrderBookProps> = ({
               <div className="text-content-primary font-semibold text-xs">
                 No orders in current batch
               </div>
-              <p className="text-2xs text-content-muted max-w-[200px]">
-                Batch #{currentBatchId} has no active orders. Place an order on the ticket to seed the batch auction book.
+              <p className="text-2xs text-content-muted max-w-[200px] leading-relaxed">
+                Batch #{currentBatchId} has no active orders. Place an order on the ticket to participate in the discrete clearing auction.
               </p>
+              <span className="text-[9px] text-content-muted font-mono bg-surface-card px-2 py-0.5 rounded border border-line-subtle">
+                2-slot clearing window
+              </span>
             </div>
           ) : (
             <div className="flex-1 overflow-y-auto min-h-0 divide-y divide-white/[0.02]">
-              {visibleTicks.map((row) => {
+              {filteredTicks.map((row) => {
                 const isClearing = row.highlight.isClearingLine;
                 const bidStatus = row.highlight.bidStatus;
                 const askStatus = row.highlight.askStatus;
@@ -254,15 +315,15 @@ export const OrderBook: React.FC<OrderBookProps> = ({
                     }`}
                   >
                     {/* Background Cumulative Heatmap Bars */}
-                    {row.bidLots > 0 && (
+                    {row.bidLots > 0 && sideDensity !== "asks" && (
                       <div
-                        className="absolute left-0 top-0 bottom-0 bg-trade-emerald/10 pointer-events-none transition-all duration-150"
+                        className="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-trade-emerald/15 to-trade-emerald/5 pointer-events-none transition-all duration-150"
                         style={{ width: `${Math.min(33, bidPct * 0.33)}%` }}
                       />
                     )}
-                    {row.askLots > 0 && (
+                    {row.askLots > 0 && sideDensity !== "bids" && (
                       <div
-                        className="absolute right-0 top-0 bottom-0 bg-trade-coral/10 pointer-events-none transition-all duration-150"
+                        className="absolute right-0 top-0 bottom-0 bg-gradient-to-l from-trade-coral/15 to-trade-coral/5 pointer-events-none transition-all duration-150"
                         style={{ width: `${Math.min(33, askPct * 0.33)}%` }}
                       />
                     )}
@@ -277,7 +338,9 @@ export const OrderBook: React.FC<OrderBookProps> = ({
                       )}
                       <div
                         className={`flex-1 px-1 py-0.5 rounded text-left tabular-nums ${
-                          bidStatus === "matched"
+                          sideDensity === "asks"
+                            ? "text-content-muted/20"
+                            : bidStatus === "matched"
                             ? "border border-trade-emerald bg-trade-emerald/15 text-trade-emerald font-semibold"
                             : bidStatus === "marginal"
                             ? "border border-dashed border-trade-emerald bg-trade-emerald/10 text-trade-emerald"
@@ -286,7 +349,9 @@ export const OrderBook: React.FC<OrderBookProps> = ({
                             : "text-content-muted/30"
                         }`}
                       >
-                        {row.bidLots > 0 ? (
+                        {sideDensity === "asks" ? (
+                          "—"
+                        ) : row.bidLots > 0 ? (
                           <div className="flex items-center justify-between">
                             <span>{(row.bidLots * 0.001).toFixed(2)}</span>
                             {bidStatus === "marginal" && (
@@ -325,7 +390,9 @@ export const OrderBook: React.FC<OrderBookProps> = ({
                     <div className="flex items-center gap-1 justify-end relative z-1">
                       <div
                         className={`flex-1 px-1 py-0.5 rounded text-right tabular-nums ${
-                          askStatus === "matched"
+                          sideDensity === "bids"
+                            ? "text-content-muted/20"
+                            : askStatus === "matched"
                             ? "border border-trade-coral bg-trade-coral/15 text-trade-coral font-semibold"
                             : askStatus === "marginal"
                             ? "border border-dashed border-trade-coral bg-trade-coral/10 text-trade-coral"
@@ -334,7 +401,9 @@ export const OrderBook: React.FC<OrderBookProps> = ({
                             : "text-content-muted/30"
                         }`}
                       >
-                        {row.askLots > 0 ? (
+                        {sideDensity === "bids" ? (
+                          "—"
+                        ) : row.askLots > 0 ? (
                           <div className="flex items-center justify-between">
                             {askStatus === "marginal" && (
                               <span className="text-[9px] font-sans font-bold bg-trade-coral/30 px-1 rounded mr-1 text-trade-coral">

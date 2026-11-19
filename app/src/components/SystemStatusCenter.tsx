@@ -88,7 +88,7 @@ export const SystemStatusCenter: React.FC<SystemStatusCenterProps> = ({
       <button
         type="button"
         onClick={() => setIsDrawerOpen(true)}
-        className={`flex items-center gap-2 px-2.5 py-1 rounded bg-surface-card border transition-all duration-150 text-2xs font-mono select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-trade-cyan ${
+        className={`flex items-center gap-1.5 sm:gap-2 px-2 sm:px-2.5 py-1 rounded bg-surface-card border transition-all duration-150 text-2xs font-mono select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-trade-cyan shrink-0 ${
           isCritical
             ? "border-trade-coral/60 bg-trade-coral/10 text-trade-coral hover:bg-trade-coral/15"
             : isDegraded
@@ -101,9 +101,9 @@ export const SystemStatusCenter: React.FC<SystemStatusCenterProps> = ({
         aria-expanded={isDrawerOpen}
       >
         <StatusIndicator status={overallStatus} size="xs" pulse={!isHealthy} />
-        <span className="font-semibold">{clusterLabel}</span>
-        <span className="text-line-strong">·</span>
-        <span className="truncate max-w-[150px] sm:max-w-none">
+        <span className="font-semibold text-2xs hidden sm:inline shrink-0">{clusterLabel}</span>
+        <span className="text-line-strong hidden xl:inline shrink-0">·</span>
+        <span className="hidden xl:inline truncate shrink-0 max-w-[140px] 2xl:max-w-none">
           {isCritical ? overallLabel : `Keeper ~239ms/slot`}
         </span>
       </button>

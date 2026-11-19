@@ -36,6 +36,9 @@ export interface OrderTicketProps {
   onOpenDeposit?: () => void;
   orderError?: string | null;
   onClearOrderError?: () => void;
+  initialSide?: "BUY" | "SELL";
+  isMobileSheet?: boolean;
+  onCloseMobile?: () => void;
 }
 
 export const OrderTicket: React.FC<OrderTicketProps> = ({
@@ -44,6 +47,7 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
   availableEquity,
   isPlacingOrder,
   selectedPrice,
+  selectedOffsetBps,
   bidQty = [],
   askQty = [],
   userPositionLots = 0,
@@ -51,11 +55,20 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
   onOpenDeposit,
   orderError,
   onClearOrderError,
+  initialSide = "BUY",
+  isMobileSheet = false,
+  onCloseMobile,
 }) => {
   const { connected } = useWallet();
   const { setVisible } = useWalletModal();
 
-  const [side, setSide] = useState<"BUY" | "SELL">("BUY");
+  const [side, setSide] = useState<"BUY" | "SELL">(initialSide);
+
+  useEffect(() => {
+    if (initialSide) {
+      setSide(initialSide);
+    }
+  }, [initialSide]);
   const [orderType, setOrderType] = useState<"market" | "limit">("market");
   const [userEditedPrice, setUserEditedPrice] = useState<boolean>(false);
 
@@ -358,7 +371,32 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
   }, [connected, availableEquity, marginRequired, validationError, isPlacingOrder, side, numQty]);
 
   return (
-    <div className="w-[280px] xl:w-[310px] flex flex-col min-h-0 bg-surface-header select-none text-xs overflow-y-auto border-l border-line-default font-sans">
+    <div
+      className={
+        isMobileSheet
+          ? "w-full flex flex-col min-h-0 bg-surface-panel select-none text-xs overflow-y-auto font-sans"
+          : "w-[280px] xl:w-[310px] hidden lg:flex flex-col min-h-0 bg-surface-header select-none text-xs overflow-y-auto border-l border-line-default font-sans"
+      }
+    >
+      {/* Mobile Sheet Top Bar */}
+      {isMobileSheet && (
+        <div className="flex items-center justify-between px-3 py-2 border-b border-line-default bg-surface-card">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-content-primary">SOL-PERP</span>
+            <span className="text-[10px] font-mono text-content-muted">Batch #{currentBatchId}</span>
+          </div>
+          {onCloseMobile && (
+            <button
+              type="button"
+              onClick={onCloseMobile}
+              className="p-1 rounded hover:bg-surface-elevated text-content-muted hover:text-content-primary transition-colors"
+              aria-label="Close order ticket drawer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      )}
       {/* 1. Side Selector: Buy/Long (Emerald) vs Sell/Short (Coral) */}
       <div className="p-2.5 pb-2 border-b border-line-default">
         <div className="grid grid-cols-2 gap-1.5 p-1 bg-surface-panel rounded-lg border border-line-subtle">

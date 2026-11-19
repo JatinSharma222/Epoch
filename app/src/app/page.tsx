@@ -44,6 +44,10 @@ export default function Home() {
     isOpen: boolean;
     mode: "deposit" | "withdraw";
   }>({ isOpen: false, mode: "deposit" });
+  const [mobileOrderDrawer, setMobileOrderDrawer] = useState<{
+    isOpen: boolean;
+    side: "BUY" | "SELL";
+  }>({ isOpen: false, side: "BUY" });
 
   // Live Market State
   const [markPrice, setMarkPrice] = useState<number>(119.60);
@@ -756,6 +760,54 @@ export default function Home() {
         vaultInventoryNotice={vaultInventoryNotice}
       />
 
+      {/* 1.5 Mobile Sub-Header Route Switcher (< 768px) */}
+      <div className="md:hidden flex items-center justify-around bg-surface-header border-b border-line-default px-2 py-1 shrink-0 font-sans text-xs select-none">
+        <button
+          type="button"
+          onClick={() => setActiveTab("trade")}
+          className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+            activeTab === "trade"
+              ? "bg-surface-elevated text-trade-cyan font-semibold border border-trade-cyan/30 shadow-xs"
+              : "text-content-secondary hover:text-content-primary"
+          }`}
+        >
+          Trade
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("batches")}
+          className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+            activeTab === "batches"
+              ? "bg-surface-elevated text-trade-cyan font-semibold border border-trade-cyan/30 shadow-xs"
+              : "text-content-secondary hover:text-content-primary"
+          }`}
+        >
+          Batches
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("evidence")}
+          className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+            activeTab === "evidence"
+              ? "bg-surface-elevated text-trade-cyan font-semibold border border-trade-cyan/30 shadow-xs"
+              : "text-content-secondary hover:text-content-primary"
+          }`}
+        >
+          Evidence
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("compare")}
+          className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+            activeTab === "compare"
+              ? "bg-surface-elevated text-trade-cyan font-semibold border border-trade-cyan/30 shadow-xs"
+              : "text-content-secondary hover:text-content-primary"
+          }`}
+        >
+          Compare
+        </button>
+      </div>
+
       {/* 2. Main Workspace Layout (Frozen if RPC outage per Guardrail G-09) */}
       <div
         className={`flex-1 flex overflow-hidden ${
@@ -764,7 +816,7 @@ export default function Home() {
       >
         {/* Dynamic Center Viewport */}
         {activeTab === "trade" && (
-          <div className="flex-1 flex flex-col min-w-0 bg-surface-canvas overflow-hidden">
+          <div className="flex-1 flex flex-col min-w-0 bg-surface-canvas overflow-hidden pb-14 lg:pb-0 relative">
             {/* Top Workspace: Chart + Order Book + Order Ticket */}
             <div className="flex-1 flex min-h-0 overflow-hidden">
               {/* Candlestick TradingView Chart */}
@@ -791,7 +843,7 @@ export default function Home() {
                 onSelectPrice={setSelectedPrice}
               />
 
-              {/* Order Placement Console */}
+              {/* Order Placement Console (Desktop / Laptop >= 1024px) */}
               <OrderTicket
                 currentBatchId={currentBatchId}
                 oraclePrice={markPrice}
@@ -832,6 +884,72 @@ export default function Home() {
                 });
               }}
             />
+
+            {/* Sticky Mobile Action Bar (< 1024px) */}
+            <div className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-surface-header/95 backdrop-blur-md border-t border-line-default px-3 py-2 flex items-center gap-2 select-none font-sans shadow-lg">
+              <button
+                type="button"
+                data-testid="mobile-buy-button"
+                onClick={() => setMobileOrderDrawer({ isOpen: true, side: "BUY" })}
+                className="flex-1 py-2.5 px-3 rounded-lg bg-trade-emerald hover:bg-trade-emerald/90 text-black font-bold text-xs shadow-sm active:scale-95 transition-all flex items-center justify-center gap-1.5 font-sans"
+              >
+                <span className="w-2 h-2 rounded-full bg-black/40" />
+                <span>Buy / Long</span>
+              </button>
+              <button
+                type="button"
+                data-testid="mobile-sell-button"
+                onClick={() => setMobileOrderDrawer({ isOpen: true, side: "SELL" })}
+                className="flex-1 py-2.5 px-3 rounded-lg bg-trade-coral hover:bg-trade-coral/90 text-white font-bold text-xs shadow-sm active:scale-95 transition-all flex items-center justify-center gap-1.5 font-sans"
+              >
+                <span className="w-2 h-2 rounded-full bg-white/40" />
+                <span>Sell / Short</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Mobile Order Entry Drawer Sheet */}
+        {mobileOrderDrawer.isOpen && (
+          <div
+            className="fixed inset-0 z-50 flex flex-col justify-end bg-black/60 backdrop-blur-xs select-none animate-scale-in"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setMobileOrderDrawer({ isOpen: false, side: "BUY" });
+            }}
+            role="presentation"
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Mobile Order Entry Ticket"
+              className="w-full max-h-[85vh] bg-surface-panel border-t border-line-strong rounded-t-2xl shadow-modal flex flex-col overflow-hidden animate-slide-up"
+            >
+              <div className="w-12 h-1 rounded-full bg-line-strong mx-auto mt-2 mb-1 shrink-0" />
+              <OrderTicket
+                currentBatchId={currentBatchId}
+                oraclePrice={markPrice}
+                availableEquity={collateral}
+                isPlacingOrder={isPlacingOrder}
+                selectedPrice={selectedPrice}
+                selectedOffsetBps={selectedOffsetBps}
+                bidQty={bidQty}
+                askQty={askQty}
+                userPositionLots={position?.sizeLots || 0}
+                onPlaceOrder={async (args) => {
+                  await handlePlaceOrder(args);
+                  setMobileOrderDrawer({ isOpen: false, side: "BUY" });
+                }}
+                onOpenDeposit={() => {
+                  setMobileOrderDrawer({ isOpen: false, side: "BUY" });
+                  setDepositWithdrawModal({ isOpen: true, mode: "deposit" });
+                }}
+                orderError={orderError}
+                onClearOrderError={() => setOrderError(null)}
+                initialSide={mobileOrderDrawer.side}
+                isMobileSheet={true}
+                onCloseMobile={() => setMobileOrderDrawer({ isOpen: false, side: "BUY" })}
+              />
+            </div>
           </div>
         )}
 
