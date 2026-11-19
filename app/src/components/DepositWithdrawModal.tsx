@@ -119,12 +119,12 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
             </div>
           </div>
 
-          {/* Flat Position Rule Warning for Withdrawals */}
+          {/* Flat Position Rule Warning for Withdrawals (Guardrail G-07) */}
           {mode === "withdraw" && !isPositionFlat && (
             <div className="p-3 rounded bg-[#2a1619] border border-[#f6465d]/30 text-[#f6465d] text-[11px] flex gap-2 items-start">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>
-                <strong>Flat Position Rule:</strong> Withdrawals require base position to be 0 (no open positions or pending orders) to ensure exact collateral conservation.
+                <strong>Flat Position & Zero Orders Rule (G-07):</strong> Withdrawals require base position to be 0 and zero active batch orders to ensure exact collateral conservation.
               </span>
             </div>
           )}

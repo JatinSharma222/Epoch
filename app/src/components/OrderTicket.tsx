@@ -302,9 +302,11 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
 
   const handleSliderMove = (val: number) => {
     setSliderVal(val);
-    const maxUsd = Math.max(availableEquity * 10, 100);
-    const maxSol = maxUsd / (numPrice || oraclePrice || 1);
-    const calculated = Math.max(0.1, (maxSol * val) / 100).toFixed(2);
+    const maxSol =
+      reduceOnly && userPositionLots !== 0
+        ? Math.abs(userPositionLots * 0.001)
+        : Math.max(availableEquity * 10, 100) / (numPrice || oraclePrice || 1);
+    const calculated = Math.max(0.01, (maxSol * val) / 100).toFixed(2);
     setQtySol(calculated);
   };
 

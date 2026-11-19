@@ -473,7 +473,7 @@ export default function Home() {
     }
   }, [connected, publicKey]);
 
-  // Order Placement Handler (09-UX_SPEC.md §4 & §5 & Guardrails G-01..G-06)
+  // Order Placement Handler (09-UX_SPEC.md §4 & §5 & Guardrails G-01..G-06, G-09)
   const handlePlaceOrder = async ({
     side,
     price,
@@ -489,6 +489,9 @@ export default function Home() {
     lifetimeBatches: number;
     reduceOnly: boolean;
   }) => {
+    // Guardrail G-09: Block transaction placement during RPC disconnection
+    if (isDevnetOutage) return;
+
     setIsPlacingOrder(true);
     setOrderError(null);
     const numBatches = Math.max(1, Math.min(4, lifetimeBatches || 1));
@@ -622,8 +625,9 @@ export default function Home() {
     );
   };
 
-  // Faucet Request Handler (Guardrail G-01 compliant)
+  // Faucet Request Handler (Guardrails G-01 & G-09 compliant)
   const handleRequestFaucet = async (amountUsd: number) => {
+    if (isDevnetOutage) return;
     const program = getAnchorProgram();
     if (program && publicKey) {
       try {
@@ -650,8 +654,9 @@ export default function Home() {
     }
   };
 
-  // Deposit Handler (Guardrail G-01 compliant)
+  // Deposit Handler (Guardrails G-01 & G-09 compliant)
   const handleDeposit = async (amountUsd: number) => {
+    if (isDevnetOutage) return;
     const program = getAnchorProgram();
     if (program && publicKey) {
       try {
@@ -680,8 +685,14 @@ export default function Home() {
     }
   };
 
-  // Withdraw Handler (Guardrail G-01 compliant)
+  // Withdraw Handler (Guardrails G-01, G-07 & G-09 compliant)
   const handleWithdraw = async (amountUsd: number) => {
+    if (isDevnetOutage) return;
+    // Guardrail G-07: Prohibit withdrawal when either a non-zero position or active orders exist
+    if ((position && position.sizeLots !== 0) || activeOrders.length > 0) {
+      console.warn("Withdrawal blocked by Guardrail G-07: position not flat or active orders exist");
+      return;
+    }
     const program = getAnchorProgram();
     if (program && publicKey) {
       try {
@@ -843,7 +854,7 @@ export default function Home() {
         mode={depositWithdrawModal.mode}
         onClose={() => setDepositWithdrawModal({ isOpen: false, mode: "deposit" })}
         collateralBalance={collateral}
-        isPositionFlat={position ? position.sizeLots === 0 : true}
+        isPositionFlat={(position ? position.sizeLots === 0 : true) && activeOrders.length === 0}
         onDeposit={handleDeposit}
         onWithdraw={handleWithdraw}
       />

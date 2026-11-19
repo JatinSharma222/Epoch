@@ -431,78 +431,23 @@ export const BottomLedger: React.FC<BottomLedgerProps> = ({
 
             {/* 4. ORDER HISTORY TAB */}
             {activeTab === "orderHistory" && (
-              <table className="w-full text-left font-mono text-2xs">
-                <thead>
-                  <tr className="text-content-muted border-b border-line-default pb-1 font-sans">
-                    <th className="py-1 font-medium">Time</th>
-                    <th className="py-1 font-medium">Market</th>
-                    <th className="py-1 font-medium">Side</th>
-                    <th className="py-1 font-medium">Target Batch</th>
-                    <th className="py-1 font-medium">Limit Offset</th>
-                    <th className="py-1 font-medium text-right">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y border-line-subtle text-content-primary">
-                  <tr className="hover:bg-surface-hover">
-                    <td className="py-1.5 text-content-muted">14:28:12 UTC</td>
-                    <td className="py-1.5 font-bold text-content-primary">SOL-PERP</td>
-                    <td className="py-1.5 text-trade-emerald font-semibold">BUY</td>
-                    <td className="py-1.5">Batch #141</td>
-                    <td className="py-1.5">+3 bps</td>
-                    <td className="py-1.5 text-right text-trade-emerald font-semibold">FILLED</td>
-                  </tr>
-                </tbody>
-              </table>
+              <div className="py-8 text-center text-content-muted">
+                <p>No historical orders recorded in current session.</p>
+              </div>
             )}
 
             {/* 5. TRADE HISTORY TAB */}
             {activeTab === "fills" && (
-              <table className="w-full text-left font-mono text-2xs">
-                <thead>
-                  <tr className="text-content-muted border-b border-line-default pb-1 font-sans">
-                    <th className="py-1 font-medium">Batch ID</th>
-                    <th className="py-1 font-medium">Side</th>
-                    <th className="py-1 font-medium">Clearing Price</th>
-                    <th className="py-1 font-medium">Filled Lots</th>
-                    <th className="py-1 font-medium">Protocol Fee</th>
-                    <th className="py-1 font-medium text-right">Execution Type</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y border-line-subtle text-content-primary">
-                  <tr className="hover:bg-surface-hover">
-                    <td className="py-1.5 text-content-primary font-semibold">Batch #141</td>
-                    <td className="py-1.5 text-trade-emerald font-semibold">BUY</td>
-                    <td className="py-1.5">$150.045</td>
-                    <td className="py-1.5">50 Lots (0.05 SOL)</td>
-                    <td className="py-1.5 text-content-muted">$0.0075</td>
-                    <td className="py-1.5 text-right text-trade-cyan">Uniform Match</td>
-                  </tr>
-                </tbody>
-              </table>
+              <div className="py-8 text-center text-content-muted">
+                <p>No trades executed in current session.</p>
+              </div>
             )}
 
             {/* 6. FUNDING HISTORY TAB */}
             {activeTab === "fundingHistory" && (
-              <table className="w-full text-left font-mono text-2xs">
-                <thead>
-                  <tr className="text-content-muted border-b border-line-default pb-1 font-sans">
-                    <th className="py-1 font-medium">Timestamp</th>
-                    <th className="py-1 font-medium">Market</th>
-                    <th className="py-1 font-medium">Funding Rate</th>
-                    <th className="py-1 font-medium">Position Size</th>
-                    <th className="py-1 font-medium text-right">Funding Payment</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y border-line-subtle text-content-primary">
-                  <tr className="hover:bg-surface-hover">
-                    <td className="py-1.5 text-content-muted">14:00:00 UTC</td>
-                    <td className="py-1.5 text-content-primary">SOL-PERP</td>
-                    <td className="py-1.5 text-trade-amber">+0.00041%</td>
-                    <td className="py-1.5">50 Lots</td>
-                    <td className="py-1.5 text-right text-trade-emerald">+$0.0031</td>
-                  </tr>
-                </tbody>
-              </table>
+              <div className="py-8 text-center text-content-muted">
+                <p>No funding payments recorded in current session.</p>
+              </div>
             )}
 
             {/* 7. BATCH CLEARANCE HISTORY TAB */}
